@@ -1,0 +1,15 @@
+.Codex/
+.codex/
+AGENTS.md
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+.wrangler/
+.dev.vars*
+.env*
+!.env.example
+*.mp4
+/videos  mandados por el cliente/
+*.log
