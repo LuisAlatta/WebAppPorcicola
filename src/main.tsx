@@ -7,6 +7,7 @@ import { BocetoDashboard } from './components/BocetoDashboard';
 import { BocetoListado } from './components/BocetoListado';
 import { BocetoFormulario } from './components/BocetoFormulario';
 import { BocetoDetalle } from './components/BocetoDetalle';
+import { ModuloAdministracion } from './components/ModuloAdministracion';
 import './style.css';
 
 function getInitialView(): Vista {
@@ -15,6 +16,7 @@ function getInitialView(): Vista {
     if (path === '/animales' || path === '/listado') return 'listado';
     if (path === '/alta' || path === '/formulario') return 'formulario';
     if (path === '/detalle' || path.startsWith('/animal/')) return 'detalle';
+    if (path === '/administracion' || path === '/admin') return 'administracion';
     if (path === '/login') return 'login';
     if (path === '/inicio' || path === '/') return 'inicio';
   }
@@ -60,6 +62,7 @@ function App() {
       if (vista === 'listado') targetPath = '/animales';
       else if (vista === 'formulario') targetPath = '/alta';
       else if (vista === 'detalle') targetPath = `/animal/${selectedAnimalId}`;
+      else if (vista === 'administracion') targetPath = '/administracion';
       else if (vista === 'login') targetPath = '/login';
       else if (vista === 'inicio') targetPath = '/inicio';
       window.history.pushState(null, '', targetPath);
@@ -121,6 +124,13 @@ function App() {
         return (
           <BocetoDetalle
             animalId={selectedAnimalId}
+            onNavigate={handleNavigate}
+          />
+        );
+      case 'administracion':
+        return (
+          <ModuloAdministracion
+            perfil={perfilActual}
             onNavigate={handleNavigate}
           />
         );

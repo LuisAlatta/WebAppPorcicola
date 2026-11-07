@@ -12,13 +12,17 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
 
 ## Estado real
 
-- **T01, T02, T03 y T04 completadas. T05 (Módulo exclusivo de administración) en curso.**
-- Se implementó la autenticación completa y gestión de sesiones: inicialización bootstrap de un solo uso del primer administrador (`POST /api/auth/bootstrap`) con bloqueo estricto a segundos intentos (403), hashing criptográfico PBKDF2 WebCrypto con SHA-256 (100k iteraciones), sesiones revocables en D1 con tokens hasheados, cookies `HttpOnly`/`Secure`/`SameSite=Lax` y soporte de cabecera Bearer, revocación inmediata en logout (`POST /api/auth/logout`), protección ante cuentas desactivadas, rate limiting ante intentos fallidos (429) y defensas CSRF por origen.
-- Se actualizaron los componentes visuales: login con identidad institucional de la granja (Granja Porcícola San Luis · MiGranjaPro), control táctil de visibilidad de contraseña (ver/ocultar con iconos SVG), y barra de navegación que refleja usuario autenticado y perfil activo.
-- Se preparó el esquema inicial de base de datos en `migrations/0001_initial_schema.sql` con usuarios, sesiones, intentos de login, galpones y asignaciones de usuarios.
-- Hay 23 pruebas automatizadas pasando en Vitest (aislamiento Cloudflare, bocetos de interfaz, Worker 404, rutas E2E, exportaciones, D1 Miniflare y suite de autenticación e integración). En local pasaron las 23 pruebas, TypeScript, ESLint y la compilación.
-- Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`). Diez advertencias moderadas en dependencias de desarrollo derivadas de `minimatch` bajo `eslint` 10.
-- El commit previo verificado en GitHub Actions con éxito es `666fcb8` (ejecución 42424458900).
+- **T01, T02, T03, T04 y T05 completadas. T06 (Registrar eventos con reintentos y auditoría) en curso.**
+- Se implementó el módulo exclusivo de administración (`worker/admin.ts`, `migrations/0002_administration_schema.sql` y `src/components/ModuloAdministracion.tsx`):
+  - Exclusividad en servidor: rutas bajo `/api/admin/*` protegidas con 401 si no hay sesión y 403 Forbidden si el perfil no es `administrador` (CA-27).
+  - Gestión integral de usuarios para los 4 perfiles (`administrador`, `responsable`, `operario`, `veterinario`) con hashing PBKDF2 y preservación de autoría histórica.
+  - Gestión de galpones (`CFG-06`): código único, nombre, zona, capacidad en cabezas, estados (`preparacion`, `operativo`, `inactivo`) y eliminación segura si carece de registros.
+  - Asignación atómica de equipo operativo (`ADM-02`, `ADM-03`, `CA-28`): asignación conjunta de Responsable, Operario y Veterinario; bloqueo estricto si se intenta activar un galpón con equipo incompleto; registro de cambios en `barn_team_history` con vigencias, autor y titular anterior; revocación inmediata de acceso del profesional sustituido; y reasignación o desactivación atómica si un Responsable activo perdería su último galpón.
+  - Invariante de administrador: impedimento de desactivar o degradar de rol al único administrador activo de la granja.
+  - Componente de interfaz `ModuloAdministracion.tsx` con navegación por pestañas (Cuentas, Galpones, Asignación de Equipo e Historial), controles táctiles accesibles (>=44px), modales limpios y uso estricto de iconos SVG.
+- Se cuenta con 30 pruebas automatizadas pasando en Vitest (aislamiento Cloudflare, bocetos, Worker 404, rutas E2E, exportaciones PDF/XLSX, D1 Miniflare, autenticación e integración administrativa). En local pasaron las 30 pruebas, TypeScript (`tsc --noEmit`), ESLint (`eslint .`) y la compilación (`vite build`).
+- Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`).
+- El commit previo verificado en GitHub Actions con éxito es `75c2c9f` (ejecución 42425588778).
 
 ## Repositorio y archivos de referencia
 

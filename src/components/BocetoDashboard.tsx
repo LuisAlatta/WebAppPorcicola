@@ -23,28 +23,49 @@ export function BocetoDashboard({ perfil, onNavigate, onSelectAnimal }: BocetoDa
     switch (perfil) {
       case 'administrador':
         return (
-          <div className="dashboard-grid">
-            <div className="kpi-card">
-              <span className="kpi-label">Usuarios activos</span>
-              <span className="kpi-value">5</span>
-              <span className="kpi-detail">4 roles operativos</span>
+          <>
+            <div className="dashboard-grid mb-4">
+              <div className="kpi-card">
+                <span className="kpi-label">Usuarios activos</span>
+                <span className="kpi-value">5</span>
+                <span className="kpi-detail">4 roles operativos</span>
+              </div>
+              <div className="kpi-card">
+                <span className="kpi-label">Galpones en servicio</span>
+                <span className="kpi-value">2</span>
+                <span className="kpi-detail">Galpón A y Galpón B</span>
+              </div>
+              <div className="kpi-card">
+                <span className="kpi-label">Base de datos D1</span>
+                <span className="kpi-value text-success">Aislada</span>
+                <span className="kpi-detail">Staging vs Producción</span>
+              </div>
+              <div className="kpi-card">
+                <span className="kpi-label">Auditoría de eventos</span>
+                <span className="kpi-value">Activa</span>
+                <span className="kpi-detail">Reintentos con clave única</span>
+              </div>
             </div>
-            <div className="kpi-card">
-              <span className="kpi-label">Galpones en servicio</span>
-              <span className="kpi-value">2</span>
-              <span className="kpi-detail">Galpón A y Galpón B</span>
+
+            <div className="card p-4 bg-light mb-4">
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <div>
+                  <h4 className="font-bold text-base">Panel de Control de Administración (ADM-01)</h4>
+                  <p className="text-xs text-muted">Gestión exclusiva de cuentas de usuario, galpones y asignación de equipos.</p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => onNavigate('administracion')}
+                >
+                  <span className="inline-flex items-center justify-center gap-2 leading-none">
+                    <IconShield size={16} />
+                    <span>Abrir Módulo Administración</span>
+                  </span>
+                </button>
+              </div>
             </div>
-            <div className="kpi-card">
-              <span className="kpi-label">Base de datos D1</span>
-              <span className="kpi-value text-success">Aislada</span>
-              <span className="kpi-detail">Staging vs Producción</span>
-            </div>
-            <div className="kpi-card">
-              <span className="kpi-label">Auditoría de eventos</span>
-              <span className="kpi-value">Activa</span>
-              <span className="kpi-detail">Reintentos con clave única</span>
-            </div>
-          </div>
+          </>
         );
 
       case 'responsable':

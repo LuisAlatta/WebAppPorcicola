@@ -13,7 +13,7 @@ describe('Rutas y navegación E2E · T02', () => {
   });
 
   it('permite consultar la ruta interna de inicio y animales en la SPA', () => {
-    const rutasValidas = ['/', '/inicio', '/animales', '/alta', '/detalle', '/login'];
+    const rutasValidas = ['/', '/inicio', '/animales', '/alta', '/detalle', '/administracion', '/login'];
     rutasValidas.forEach((ruta) => {
       expect(ruta.startsWith('/')).toBe(true);
     });

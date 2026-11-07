@@ -1,6 +1,6 @@
 export type Perfil = 'administrador' | 'responsable' | 'operario' | 'veterinario';
 
-export type Vista = 'login' | 'inicio' | 'listado' | 'formulario' | 'detalle';
+export type Vista = 'login' | 'inicio' | 'listado' | 'formulario' | 'detalle' | 'administracion';
 
 export type EstadoUI = 'normal' | 'cargando' | 'vacio' | 'rechazo' | 'sin_conexion' | 'pendiente_local' | 'confirmado';
 

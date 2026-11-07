@@ -13,7 +13,20 @@ import {
   recordFailedAttempt,
   resetFailedAttempts,
   getUserBarns,
+  getAllBarnNames,
 } from './auth';
+import {
+  listAllUsers,
+  createUser,
+  updateUser,
+  listAllBarns,
+  createBarn,
+  updateBarn,
+  assignBarnTeam,
+  updateBarnStatus,
+  deleteBarn,
+  getTeamHistory,
+} from './admin';
 
 export interface Env {
   DB: D1Database;
@@ -172,7 +185,9 @@ const worker = {
         await resetFailedAttempts(env.DB, rateLimitKey);
 
         const sessionToken = await createSession(env.DB, user.id);
-        const barns = await getUserBarns(env.DB, user.id);
+        const barns = user.role === 'administrador'
+          ? await getAllBarnNames(env.DB)
+          : await getUserBarns(env.DB, user.id);
         const cookie = serializeSessionCookie(sessionToken);
 
         return Response.json(
@@ -183,7 +198,7 @@ const worker = {
               username: user.username,
               name: user.name,
               role: user.role,
-              barns: user.role === 'administrador' ? ['Galpón A', 'Galpón B'] : barns,
+              barns,
             },
             token: sessionToken,
           },
@@ -224,6 +239,10 @@ const worker = {
         return Response.json({ error: 'Sesión inválida, expirada o revocada' }, { status: 401 });
       }
 
+      const sessionBarns = session.user.role === 'administrador'
+        ? await getAllBarnNames(env.DB)
+        : session.barns;
+
       return Response.json({
         ok: true,
         user: {
@@ -231,7 +250,7 @@ const worker = {
           username: session.user.username,
           name: session.user.name,
           role: session.user.role,
-          barns: session.user.role === 'administrador' ? ['Galpón A', 'Galpón B'] : session.barns,
+          barns: sessionBarns,
         },
       });
     }
@@ -258,13 +277,132 @@ const worker = {
         });
       }
 
+      const barns = session.user.role === 'administrador'
+        ? await getAllBarnNames(env.DB)
+        : session.barns;
+
       return Response.json({
         ok: true,
         perfil: session.user.role,
-        galponesAutorizados: session.user.role === 'administrador' ? ['Galpón A', 'Galpón B'] : session.barns,
+        galponesAutorizados: barns,
         totalCabezas: 142,
         cajaOperativaSoles: 14850.0,
       });
+    }
+
+    // 6. MÓDULO EXCLUSIVO DE ADMINISTRACIÓN (T05 · ACC-06, ACC-07, ADM-01..04, CFG-06, CA-27, CA-28)
+    if (path.startsWith('/api/admin/')) {
+      const token = getSessionToken(request);
+      if (!token) {
+        return Response.json({ error: 'No autenticado: falta sesión' }, { status: 401 });
+      }
+
+      const session = await validateSession(env.DB, token);
+      if (!session) {
+        return Response.json({ error: 'Sesión inválida, expirada o revocada' }, { status: 401 });
+      }
+
+      // Verificación estricta de rol: Solo Administrador
+      if (session.user.role !== 'administrador') {
+        return Response.json(
+          { error: 'Acceso denegado: solo el Administrador tiene acceso a este módulo' },
+          { status: 403 },
+        );
+      }
+
+      try {
+        // GET /api/admin/users: Listar todas las cuentas
+        if (path === '/api/admin/users' && request.method === 'GET') {
+          const users = await listAllUsers(env.DB);
+          return Response.json({ ok: true, users });
+        }
+
+        // POST /api/admin/users: Crear nueva cuenta
+        if (path === '/api/admin/users' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof createUser>[1];
+          const user = await createUser(env.DB, body);
+          return Response.json({ ok: true, user }, { status: 201 });
+        }
+
+        // PUT /api/admin/users/:id: Modificar cuenta existente
+        if (path.startsWith('/api/admin/users/') && request.method === 'PUT') {
+          const userId = parseInt(path.replace('/api/admin/users/', ''), 10);
+          if (isNaN(userId)) {
+            return Response.json({ error: 'ID de usuario inválido' }, { status: 400 });
+          }
+          const body = await request.json() as Parameters<typeof updateUser>[2];
+          const user = await updateUser(env.DB, userId, body);
+          return Response.json({ ok: true, user });
+        }
+
+        // GET /api/admin/barns: Listar galpones con equipo operativo
+        if (path === '/api/admin/barns' && request.method === 'GET') {
+          const barns = await listAllBarns(env.DB);
+          return Response.json({ ok: true, barns });
+        }
+
+        // POST /api/admin/barns: Crear nuevo galpón
+        if (path === '/api/admin/barns' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof createBarn>[1];
+          const barn = await createBarn(env.DB, body);
+          return Response.json({ ok: true, barn }, { status: 201 });
+        }
+
+        // PUT /api/admin/barns/:id/team: Asignar o sustituir equipo operativo
+        if (path.includes('/api/admin/barns/') && path.endsWith('/team') && request.method === 'PUT') {
+          const parts = path.split('/');
+          const barnId = parseInt(parts[4], 10);
+          if (isNaN(barnId)) {
+            return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
+          }
+          const body = await request.json() as Parameters<typeof assignBarnTeam>[3];
+          const barn = await assignBarnTeam(env.DB, session.user.id, barnId, body);
+          return Response.json({ ok: true, barn });
+        }
+
+        // PUT /api/admin/barns/:id/status: Cambiar estado (preparacion, operativo, inactivo)
+        if (path.includes('/api/admin/barns/') && path.endsWith('/status') && request.method === 'PUT') {
+          const parts = path.split('/');
+          const barnId = parseInt(parts[4], 10);
+          if (isNaN(barnId)) {
+            return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
+          }
+          const body = await request.json() as { status: 'preparacion' | 'operativo' | 'inactivo' };
+          await updateBarnStatus(env.DB, barnId, body.status);
+          return Response.json({ ok: true, message: 'Estado del galpón actualizado exitosamente' });
+        }
+
+        // PUT /api/admin/barns/:id: Actualizar datos generales del galpón
+        if (path.startsWith('/api/admin/barns/') && request.method === 'PUT') {
+          const barnId = parseInt(path.replace('/api/admin/barns/', ''), 10);
+          if (isNaN(barnId)) {
+            return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
+          }
+          const body = await request.json() as Parameters<typeof updateBarn>[2];
+          await updateBarn(env.DB, barnId, body);
+          return Response.json({ ok: true, message: 'Galpón actualizado exitosamente' });
+        }
+
+        // DELETE /api/admin/barns/:id: Eliminar galpón sin registros
+        if (path.startsWith('/api/admin/barns/') && request.method === 'DELETE') {
+          const barnId = parseInt(path.replace('/api/admin/barns/', ''), 10);
+          if (isNaN(barnId)) {
+            return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
+          }
+          await deleteBarn(env.DB, barnId);
+          return Response.json({ ok: true, message: 'Galpón eliminado exitosamente' });
+        }
+
+        // GET /api/admin/history: Historial de cambios de equipo
+        if (path === '/api/admin/history' && request.method === 'GET') {
+          const history = await getTeamHistory(env.DB);
+          return Response.json({ ok: true, history });
+        }
+
+        return Response.json({ error: 'Ruta de administración no encontrada' }, { status: 404 });
+      } catch (err) {
+        return Response.json({ error: (err as Error).message || String(err) }, { status: 400 });
+      }
     }
 
     return Response.json({ error: 'Ruta no encontrada' }, { status: 404 });

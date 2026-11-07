@@ -5,6 +5,7 @@ import {
   IconList,
   IconPlus,
   IconPig,
+  IconShield,
   IconLogOut,
   IconWifiOff,
   IconAlertTriangle,
@@ -137,6 +138,19 @@ export function Navbar({
             <span>Detalle 002</span>
           </span>
         </button>
+
+        {perfilActual === 'administrador' && (
+          <button
+            type="button"
+            className={`nav-tab ${vistaActual === 'administracion' ? 'nav-tab-active' : ''}`}
+            onClick={() => onNavigate('administracion')}
+          >
+            <span className="inline-flex items-center justify-center gap-2 leading-none">
+              <IconShield size={16} />
+              <span>Administración</span>
+            </span>
+          </button>
+        )}
       </nav>
 
       {estadoUI === 'sin_conexion' && (

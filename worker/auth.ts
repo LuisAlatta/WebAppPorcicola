@@ -160,6 +160,11 @@ export async function getUserBarns(db: D1Database, userId: number): Promise<stri
   return (res.results ?? []).map((r: Record<string, unknown>) => String(r.name));
 }
 
+export async function getAllBarnNames(db: D1Database): Promise<string[]> {
+  const res = await db.prepare('SELECT name FROM barns ORDER BY code ASC').all();
+  return (res.results ?? []).map((r: Record<string, unknown>) => String(r.name));
+}
+
 export async function createSession(db: D1Database, userId: number, durationDays = 7): Promise<string> {
   const token = generateToken(32);
   const tokenHash = await hashToken(token);

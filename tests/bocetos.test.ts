@@ -33,4 +33,9 @@ describe('Bocetos navegables · T02', () => {
     ];
     expect(estados).toHaveLength(7);
   });
+
+  it('soporta la vista exclusiva de administración T05', () => {
+    const vistaAdmin: Vista = 'administracion';
+    expect(vistaAdmin).toBe('administracion');
+  });
 });

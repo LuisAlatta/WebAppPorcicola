@@ -25,21 +25,24 @@ describe('Autenticación, sesiones y primer administrador · T04', () => {
     db = await runtime.getD1Database('DB');
     await db.exec('PRAGMA foreign_keys = ON;');
 
-    // Cargar y ejecutar la migración inicial 0001
-    const schemaSql = await readFile(new URL('../migrations/0001_initial_schema.sql', import.meta.url), 'utf8');
-    const cleanSql = schemaSql
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => !line.startsWith('--'))
-      .join(' ');
+    // Cargar y ejecutar las migraciones 0001 y 0002 en orden
+    const migrationFiles = ['0001_initial_schema.sql', '0002_administration_schema.sql'];
+    for (const file of migrationFiles) {
+      const schemaSql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
+      const cleanSql = schemaSql
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => !line.startsWith('--'))
+        .join(' ');
 
-    const statements = cleanSql
-      .split(';')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+      const statements = cleanSql
+        .split(';')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
 
-    for (const stmt of statements) {
-      await db.exec(stmt + ';');
+      for (const stmt of statements) {
+        await db.exec(stmt + ';');
+      }
     }
   });
 
