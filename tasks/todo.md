@@ -233,6 +233,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 
 | Fecha | Tarea | Estado | Prueba ejecutada y resultado real | Evidencia / commit | Pendiente o decisión |
 |---|---|---|---|---|---|
+| 2026-11-07 | T02 | En curso | Wrangler whoami verificó cuenta designada; D1 staging creada y consultada; tipos regenerados para staging. npm test 3/3, typecheck y build correctos. | wrangler.jsonc y tasks/decisiones.md | Falta comprobar CI remoto con cambio defectuoso, configuración de producción separada y bocetos. |
 | 2026-11-07 | T03 | En curso | Miniflare D1: fallo de restricción en segunda escritura revierte el lote; dos peticiones concurrentes de salida sobre un saldo de 10 dejan saldo 3 y un movimiento. npm test: 3 pruebas aprobadas. | tests/d1.integration.test.ts | Faltan migraciones, claves foráneas, pruebas de duplicados, pérdida de respuesta y evaluación de PDF/XLSX. No se cierra T03 hasta completar T02 y todos sus criterios. |
 | 2026-11-07 | T02 | En curso | npm ci, build y test en copia temporal; typecheck y lint pasan; rutas / y /animales 200, API desconocida 404. | Configuración local de Vite y Worker | Faltan CI ejecutado con prueba defectuosa, entornos D1 y secretos separados, bocetos y validación de clon limpio. Auditoría registra 10 alertas moderadas en dependencias de desarrollo. |
 | 2026-11-07 | T01 | Completada | Revisión de requisitos, sección 13 y trazabilidad; 13 temas con responsable de validación y tarea límite. | tasks/decisiones.md | Datos de producción y Android reales pendientes de responsables. |

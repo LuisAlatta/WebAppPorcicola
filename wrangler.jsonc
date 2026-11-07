@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "web-porcicola",
+  "account_id": "0acfa25b5f619f94d581b8cf882e2eec",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "env": {
+    "staging": {
+      "name": "web-porcicola-staging",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "webporcicola-staging",
+          "database_id": "0e990468-3530-4e3a-a1df-530721ce38d7"
+        }
+      ]
+    }
+  }
+}

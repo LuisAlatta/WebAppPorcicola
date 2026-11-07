@@ -16,6 +16,6 @@ Actualizado durante T01. Los responsables indicados son los roles que deben vali
 | Android disponible, navegador, volumen y concurrencia | Responsable operativo | T26–T30 | Pruebas locales con datos sintéticos; pendiente inventario real. |
 | Respaldo, tiempo de recuperación y pérdida tolerable | Responsable de granja | T29–T31 | Probar restauración en entorno aislado y medir tiempos. |
 | Ubicaciones, usuarios, lotes y saldos de apertura | Responsable operativo | T30 | Plantillas y datos ficticios hasta recibir información aprobada. |
-| Cuenta Cloudflare, dominio y entorno de producción | Administrador del proyecto | T31 | Mantener pruebas locales y recursos aislados. |
+| Cuenta Cloudflare, dominio y entorno de producción | Administrador del proyecto | T31 | Cuenta confirmada: newluisalattago@gmail.com, ID 0acfa25b5f619f94d581b8cf882e2eec. Base de pruebas separada: webporcicola-staging. Dominio y entorno de producción pendientes. |
 
 Ventas, finanzas, suministros y reportes PDF y Excel forman parte de la entrega completa.
