@@ -8,7 +8,7 @@
     "noEmit": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
-    "types": ["node"]
+    "types": ["node", "@cloudflare/workers-types"]
   },
-  "include": ["src", "worker", "tests", "vite.config.ts"]
+  "include": ["src", "worker", "tests", "vite.config.ts", "worker-configuration.d.ts"]
 }

@@ -27,8 +27,25 @@ function App() {
   const [estadoUI, setEstadoUI] = useState<EstadoUI>('normal');
   const [selectedAnimalId, setSelectedAnimalId] = useState<string>('002');
   const [estaAutenticado, setEstaAutenticado] = useState<boolean>(true);
+  const [usuarioActual, setUsuarioActual] = useState<string>('encargado@granja.pe');
 
   useEffect(() => {
+    // Verificar si hay sesión activa en el servidor
+    const verificarSesion = async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json() as { ok: boolean; user: { role: Perfil; username: string } };
+          setPerfilActual(data.user.role);
+          setUsuarioActual(data.user.username);
+          setEstaAutenticado(true);
+        }
+      } catch {
+        // En entorno local desconectado se mantiene el estado interactivo
+      }
+    };
+    verificarSesion();
+
     const handlePopState = () => {
       setVistaActual(getInitialView());
     };
@@ -49,13 +66,19 @@ function App() {
     }
   };
 
-  const handleLogin = (perfil: Perfil) => {
+  const handleLogin = (perfil: Perfil, username?: string) => {
     setPerfilActual(perfil);
+    if (username) setUsuarioActual(username);
     setEstaAutenticado(true);
     handleNavigate('inicio');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignorar fallo de red
+    }
     setEstaAutenticado(false);
     handleNavigate('login');
   };
@@ -111,6 +134,7 @@ function App() {
           vistaActual={vistaActual}
           perfilActual={perfilActual}
           estadoUI={estadoUI}
+          usuario={usuarioActual}
           onNavigate={handleNavigate}
           onChangePerfil={(p) => setPerfilActual(p)}
           onChangeEstadoUI={(e) => setEstadoUI(e)}

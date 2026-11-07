@@ -3,7 +3,10 @@ import worker from '../worker/index';
 
 describe('Rutas y navegación E2E · T02', () => {
   it('el worker devuelve 404 para rutas API no definidas', async () => {
-    const res = await worker.fetch(new Request('http://localhost/api/desconocida'));
+    const res = await worker.fetch(
+      new Request('http://localhost/api/desconocida'),
+      { DB: {} as unknown as D1Database },
+    );
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body).toEqual({ error: 'Ruta no encontrada' });

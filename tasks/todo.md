@@ -1,6 +1,6 @@
 # Control de ejecución
 
-Estado actual: Fase 1 (T01, T02, T03 y Cierre 1) completada; Fase 2 Acceso (T04) lista para iniciar; implementación funcional y despliegue pendientes. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: T01 a T04 completadas; T05 (Módulo exclusivo de administración) en curso; implementación funcional y despliegue pendientes. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -11,7 +11,7 @@ Estado actual: Fase 1 (T01, T02, T03 y Cierre 1) completada; Fase 2 Acceso (T04)
 
 ## 2. Acceso
 
-- [ ] T04 · Implementar sesiones y primer administrador · dependencias 03.
+- [x] T04 · Implementar sesiones y primer administrador · dependencias 03.
 - [ ] T05 · Implementar módulo exclusivo de administración · dependencias 04.
 - [ ] T06 · Registrar eventos con reintentos y auditoría · dependencias 05.
 - [ ] T07 · Configurar la granja y sus parámetros · dependencias 05,06.
@@ -78,11 +78,11 @@ Estado actual: Fase 1 (T01, T02, T03 y Cierre 1) completada; Fase 2 Acceso (T04)
 
 | Requisito | Tarea responsable | Prueba o evidencia al completar |
 |---|---|---|
-| ACC-01 | T04 | Pendiente |
+| ACC-01 | T04 | Verificado con tests/auth.integration.test.ts y BocetoLogin |
 | ACC-02 | T27 | Pendiente |
-| ACC-03 | T04 | Pendiente |
+| ACC-03 | T04 | Verificado con tests/auth.integration.test.ts y modelo de roles D1 |
 | ACC-04 | T06 | Pendiente |
-| ACC-05 | T04 | Pendiente |
+| ACC-05 | T04 | Verificado con BocetoLogin (identidad Granja San Luis, visibilidad de clave, perfil y logout) |
 | ACC-06 | T05 | Pendiente |
 | ACC-07 | T05 | Pendiente |
 | ADM-01 | T05 | Pendiente |
@@ -233,6 +233,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 
 | Fecha | Tarea | Estado | Prueba ejecutada y resultado real | Evidencia / commit | Pendiente o decisión |
 |---|---|---|---|---|---|
+| 2026-11-07 | T04 | Completada | Autenticación completa implementada: inicialización bootstrap de un solo uso con bloqueo a segundos intentos (403), PBKDF2 WebCrypto con SHA-256 (100k iteraciones), sesiones revocables en D1 con tokens hasheados, cookies HttpOnly/Secure/SameSite=Lax y Bearer auth, logout con revocación inmediata y Max-Age=0, protección ante cuentas desactivadas, rate limiting de intentos fallidos (429), defensas CSRF por origen y protección de datos operativos (401 sin sesión). Interfaz de login actualizada con identidad institucional y control de visibilidad de contraseña (ACC-01, ACC-03, ACC-05). 23/23 pruebas pasadas. | worker/auth.ts, worker/index.ts, migrations/0001_initial_schema.sql, tests/auth.integration.test.ts, src/components/BocetoLogin.tsx | Siguiente tarea: T05 (Módulo exclusivo de administración y activación de equipo completo). |
 | 2026-11-07 | T03 y Cierre 1 | Completada | En Miniflare D1: atomicidad en lote, claves foráneas, restricciones UNIQUE/CHECK, concurrencia de saldo con precondición (solo 1 de 2 solicitudes de 7 sobre 10 tiene éxito, saldo final 3), idempotencia ante pérdida de red y rechazo 409 por payload alterado, y migraciones ordenadas con tabla _d1_migrations. En exportaciones: generación real y validación de PDF paginado con pdf-lib y XLSX OpenXML con fflate (acentos, moneda S/, pesos kg, <500ms y <150KB para 300 filas). Decisión: exportación en cliente con datos autorizados por API. 16/16 pruebas pasadas. | tests/d1.integration.test.ts, tests/export.test.ts, src/utils/exportPdf.ts, src/utils/exportXlsx.ts, tasks/decisiones.md | Fase 1 concluida con éxito. Siguiente paso: Fase 2 Acceso (T04: sesiones y primer administrador). |
 | 2026-11-07 | T02 | Completada | Bocetos navegables interactivos implementados en React con 4 perfiles y 5 vistas; estados de carga, vacío, error/rechazo, offline, pendiente local y confirmado; moneda S/, peso kg y fechas locales. Scripts test:integration y test:e2e configurados. 11/11 pruebas pasadas, typecheck, lint y build production/staging correctos. | src/components/, src/types/, tests/bocetos.test.ts, tests/routes.e2e.test.ts, README.md | Continuar con T03: migraciones D1, reintentos y evaluación de exportadores PDF/XLSX. |
 | 2026-11-07 | T02 y T03 | En curso | D1 de staging y producción separadas; test de configuración detectó intencionalmente un ID compartido. En Miniflare pasaron restricciones, referencia foránea, duplicado e índice. npm test: 6/6; typecheck, lint y build production correctos. | tests/configuration.test.ts, tests/d1.integration.test.ts, wrangler.jsonc | Faltan bocetos, comprobación de fallo en CI remoto, secretos por ambiente, migraciones y pruebas de exportación. Ninguna de las dos tareas se marca completa. |

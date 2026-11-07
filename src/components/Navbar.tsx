@@ -16,6 +16,7 @@ interface NavbarProps {
   vistaActual: Vista;
   perfilActual: Perfil;
   estadoUI: EstadoUI;
+  usuario?: string;
   onNavigate: (vista: Vista) => void;
   onChangePerfil: (perfil: Perfil) => void;
   onChangeEstadoUI: (estado: EstadoUI) => void;
@@ -26,6 +27,7 @@ export function Navbar({
   vistaActual,
   perfilActual,
   estadoUI,
+  usuario,
   onNavigate,
   onChangePerfil,
   onChangeEstadoUI,
@@ -39,7 +41,8 @@ export function Navbar({
             <IconPig size={22} className="brand-icon" />
             <span className="brand-text">Web Porcícola</span>
           </div>
-          <span className="badge-env">T02 · Boceto</span>
+          <span className="badge-env">T04 · Sesión activa</span>
+          {usuario && <span className="text-xs text-muted user-badge-navbar">({usuario})</span>}
         </div>
 
         <div className="navbar-controls">

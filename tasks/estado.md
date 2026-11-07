@@ -12,14 +12,13 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
 
 ## Estado real
 
-- **Fase 1 completada (T01, T02, T03 y Cierre 1). Fase 2 (Acceso: T04 en adelante) lista para iniciar.**
-- Se implementaron los bocetos navegables interactivos completos en React con TypeScript estricto: Acceso por perfil, Inicio con paneles específicos para los 4 roles, Listado con filtros y estados de carga/vacío, Alta/Corrección con moneda S/, peso kg y fechas locales, y Detalle zootécnico del animal 002 con alerta de retiro vigente y cronología. Se agregaron comandos npm para test:integration y test:e2e. El Worker devuelve 404 para rutas API no disponibles.
-- Se verificó la atomicidad de D1 en el runtime local con Miniflare: reversión de lote ante fallo, restricciones UNIQUE y CHECK, claves foráneas con índice, concurrencia de saldo con precondición, migraciones secuenciales ordenadas y reintentos idempotentes con cabecera de reproducción y rechazo 409 ante modificación de datos.
-- Se evaluaron e implementaron los exportadores PDF (`pdf-lib`) y XLSX (`fflate` con OpenXML nativo) comprobando acentos, importes en S/, pesos en kg, paginación y compatibilidad. Se adoptó la decisión técnica de generar reportes en cliente con datos autorizados por la API para preservar los límites de CPU y memoria (128 MB) del Worker y garantizar operatividad en Android PWA.
-- Se prepararon React, TypeScript, Vite, Cloudflare Workers, configuración de ESLint, Vitest, y GitHub Actions. La versión de Wrangler está fijada en el archivo de dependencias. Node.js 24 es la versión usada por CI.
-- Hay 16 pruebas automatizadas pasando en Vitest (aislamiento Cloudflare, bocetos de interfaz, Worker 404, rutas E2E, exportaciones y D1 local con Miniflare). En local pasaron las dieciséis pruebas, TypeScript, ESLint y la compilación.
+- **T01, T02, T03 y T04 completadas. T05 (Módulo exclusivo de administración) en curso.**
+- Se implementó la autenticación completa y gestión de sesiones: inicialización bootstrap de un solo uso del primer administrador (`POST /api/auth/bootstrap`) con bloqueo estricto a segundos intentos (403), hashing criptográfico PBKDF2 WebCrypto con SHA-256 (100k iteraciones), sesiones revocables en D1 con tokens hasheados, cookies `HttpOnly`/`Secure`/`SameSite=Lax` y soporte de cabecera Bearer, revocación inmediata en logout (`POST /api/auth/logout`), protección ante cuentas desactivadas, rate limiting ante intentos fallidos (429) y defensas CSRF por origen.
+- Se actualizaron los componentes visuales: login con identidad institucional de la granja (Granja Porcícola San Luis · MiGranjaPro), control táctil de visibilidad de contraseña (ver/ocultar con iconos SVG), y barra de navegación que refleja usuario autenticado y perfil activo.
+- Se preparó el esquema inicial de base de datos en `migrations/0001_initial_schema.sql` con usuarios, sesiones, intentos de login, galpones y asignaciones de usuarios.
+- Hay 23 pruebas automatizadas pasando en Vitest (aislamiento Cloudflare, bocetos de interfaz, Worker 404, rutas E2E, exportaciones, D1 Miniflare y suite de autenticación e integración). En local pasaron las 23 pruebas, TypeScript, ESLint y la compilación.
 - Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`). Diez advertencias moderadas en dependencias de desarrollo derivadas de `minimatch` bajo `eslint` 10.
-- El commit previo verificado en GitHub Actions con éxito es `6512396` (ejecución 42423802196).
+- El commit previo verificado en GitHub Actions con éxito es `666fcb8` (ejecución 42424458900).
 
 ## Repositorio y archivos de referencia
 
@@ -44,10 +43,9 @@ Todavía faltan definir y configurar los secretos separados, migraciones, domini
 
 ## Pasos concretos para continuar
 
-1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 16 pruebas deben pasar.
-2. **Iniciar T04 (Sesiones y primer administrador).** Implementar inicialización única de administrador, contraseñas protegidas con hash, sesiones seguras con cookies HttpOnly/Secure en el Worker, control de concurrencia e interfaz de login conectada.
-3. **Continuar con T05 a T07.** Módulo exclusivo de administración para los cuatro perfiles, vigencias, galpones y parámetros configurables.
-4. **Seguir según dependencias.** Registrar evidencia y resultado real antes de marcar cada tarea.
+1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 23 pruebas deben pasar.
+2. **Implementar T05 (Módulo exclusivo de administración).** Crear endpoints y formularios para alta/edición de cuentas en los cuatro perfiles, gestión de galpones, activación en bloque de equipo completo, vigencias de asignación y prohibición estricta de acceso de otros roles.
+3. **Cerrar Fase 2 con T06, T07 y Cierre 2.** Auditoría de eventos, configuración paramétrica y verificación cruzada de sesiones.
 
 ## Instrucción para continuar
 
