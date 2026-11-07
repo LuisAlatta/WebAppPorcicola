@@ -4,7 +4,7 @@ Estado inicial: planificación preparada; implementación, pruebas y despliegue 
 
 ## 1. Preparación
 
-- [ ] T01 · Fijar alcance y decisiones · dependencias —.
+- [x] T01 · Fijar alcance y decisiones · dependencias —.
 - [ ] T02 · Crear proyecto reproducible · dependencias 01.
 - [ ] T03 · Probar D1 y exportaciones antes de comprometer la arquitectura · dependencias 02.
 - [ ] Cierre 1: Instalar en una copia limpia y repetir la prueba de atomicidad en el runtime de Workers. Registrar la elección de exportadores.
@@ -233,6 +233,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 
 | Fecha | Tarea | Estado | Prueba ejecutada y resultado real | Evidencia / commit | Pendiente o decisión |
 |---|---|---|---|---|---|
+| 2026-11-07 | T01 | Completada | Revisión de requisitos, sección 13 y trazabilidad; 13 temas con responsable de validación y tarea límite. | tasks/decisiones.md | Datos de producción y Android reales pendientes de responsables. |
 
 ## Decisiones de la granja
 
