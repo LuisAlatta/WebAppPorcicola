@@ -35,12 +35,29 @@ const runtime = new Miniflare({
 describe('D1 en runtime local', () => {
   beforeAll(async () => {
     const db = await runtime.getD1Database('DB');
+    await db.exec('PRAGMA foreign_keys = ON;');
     await db.exec('CREATE TABLE stock (id INTEGER PRIMARY KEY, quantity INTEGER NOT NULL CHECK(quantity >= 0));');
     await db.exec('CREATE TABLE movements (id INTEGER PRIMARY KEY, quantity INTEGER NOT NULL CHECK(quantity < 10));');
+    await db.exec('CREATE TABLE animals (id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE);');
+    await db.exec('CREATE TABLE weights (id INTEGER PRIMARY KEY, animal_id INTEGER NOT NULL REFERENCES animals(id), weight INTEGER NOT NULL CHECK(weight > 0));');
+    await db.exec('CREATE INDEX weights_by_animal ON weights(animal_id);');
     await db.exec('INSERT INTO stock VALUES (1, 20);');
   });
 
   afterAll(async () => { await runtime.dispose(); });
+
+  it('aplica restricciones de identidad, referencia y peso', async () => {
+    const db = await runtime.getD1Database('DB');
+    await db.prepare('INSERT INTO animals VALUES (?, ?)').bind(1, '002').run();
+    await expect(db.prepare('INSERT INTO animals VALUES (?, ?)').bind(2, '002').run()).rejects.toThrow();
+    await expect(db.prepare('INSERT INTO weights VALUES (?, ?, ?)').bind(1, 99, 10).run()).rejects.toThrow();
+    await expect(db.prepare('INSERT INTO weights VALUES (?, ?, ?)').bind(2, 1, 0).run()).rejects.toThrow();
+    await db.prepare('INSERT INTO weights VALUES (?, ?, ?)').bind(3, 1, 10).run();
+    const rows = await db.prepare('SELECT weight FROM weights WHERE animal_id = ?').bind(1).all();
+    expect(rows.results).toHaveLength(1);
+    const plan = await db.prepare('EXPLAIN QUERY PLAN SELECT weight FROM weights WHERE animal_id = ?').bind(1).all();
+    expect(JSON.stringify(plan.results)).toContain('weights_by_animal');
+  });
 
   it('revierte el lote cuando una escritura posterior falla', async () => {
     const response = await runtime.dispatchFetch('http://localhost/?amount=10');

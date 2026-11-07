@@ -9,6 +9,16 @@
     "run_worker_first": ["/api/*"]
   },
   "env": {
+    "production": {
+      "name": "web-porcicola-produccion",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "webporcicola-produccion",
+          "database_id": "1a6f4451-bde8-46cf-beae-ed4dd76d34c0"
+        }
+      ]
+    },
     "staging": {
       "name": "web-porcicola-staging",
       "d1_databases": [
