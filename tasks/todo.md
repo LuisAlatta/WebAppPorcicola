@@ -1,6 +1,6 @@
 # Control de ejecución
 
-Estado inicial: planificación preparada; implementación, pruebas y despliegue pendientes. Consultar [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: T01 completada; T02 y T03 en curso; implementación funcional y despliegue pendientes. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
