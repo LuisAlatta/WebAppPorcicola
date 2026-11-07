@@ -12,13 +12,14 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
 
 ## Estado real
 
-- **T01 y T02 completadas. T03 en curso.** El resto del plan está pendiente. El siguiente paso es cerrar T03, sin marcar ninguna tarea completa antes de cumplir todos sus criterios.
+- **Fase 1 completada (T01, T02, T03 y Cierre 1). Fase 2 (Acceso: T04 en adelante) lista para iniciar.**
 - Se implementaron los bocetos navegables interactivos completos en React con TypeScript estricto: Acceso por perfil, Inicio con paneles específicos para los 4 roles, Listado con filtros y estados de carga/vacío, Alta/Corrección con moneda S/, peso kg y fechas locales, y Detalle zootécnico del animal 002 con alerta de retiro vigente y cronología. Se agregaron comandos npm para test:integration y test:e2e. El Worker devuelve 404 para rutas API no disponibles.
+- Se verificó la atomicidad de D1 en el runtime local con Miniflare: reversión de lote ante fallo, restricciones UNIQUE y CHECK, claves foráneas con índice, concurrencia de saldo con precondición, migraciones secuenciales ordenadas y reintentos idempotentes con cabecera de reproducción y rechazo 409 ante modificación de datos.
+- Se evaluaron e implementaron los exportadores PDF (`pdf-lib`) y XLSX (`fflate` con OpenXML nativo) comprobando acentos, importes en S/, pesos en kg, paginación y compatibilidad. Se adoptó la decisión técnica de generar reportes en cliente con datos autorizados por la API para preservar los límites de CPU y memoria (128 MB) del Worker y garantizar operatividad en Android PWA.
 - Se prepararon React, TypeScript, Vite, Cloudflare Workers, configuración de ESLint, Vitest, y GitHub Actions. La versión de Wrangler está fijada en el archivo de dependencias. Node.js 24 es la versión usada por CI.
-- Hay 11 pruebas automatizadas pasando en Vitest (aislamiento Cloudflare, bocetos de interfaz, Worker 404, rutas E2E y D1 local con Miniflare).
-- La prueba D1 comprobó un lote que se revierte por una restricción, dos solicitudes concurrentes sobre un saldo de prueba, un identificador duplicado, una clave foránea y el uso de un índice. Aún no comprueba la operación completa de inventario, las migraciones ni una pérdida de respuesta real.
-- El último estado de código revisado antes de este documento es `ef7b897`. La ejecución de GitHub Actions para ese commit terminó correctamente: [ejecución 42421923118](https://github.com/LuisAlatta/WebAppPorcicola/actions/runs/42421923118). En local pasaron seis pruebas, TypeScript, ESLint y la compilación. Repetir las comprobaciones al retomar.
-- La auditoría registró diez advertencias moderadas en dependencias de desarrollo. Una comprobación anterior de dependencias de producción no encontró vulnerabilidades; repetirla porque los resultados pueden cambiar. Evaluar soluciones compatibles, sin forzar actualizaciones que rompan el proyecto.
+- Hay 16 pruebas automatizadas pasando en Vitest (aislamiento Cloudflare, bocetos de interfaz, Worker 404, rutas E2E, exportaciones y D1 local con Miniflare). En local pasaron las dieciséis pruebas, TypeScript, ESLint y la compilación.
+- Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`). Diez advertencias moderadas en dependencias de desarrollo derivadas de `minimatch` bajo `eslint` 10.
+- El commit previo verificado en GitHub Actions con éxito es `6512396` (ejecución 42423802196).
 
 ## Repositorio y archivos de referencia
 
@@ -43,11 +44,10 @@ Todavía faltan definir y configurar los secretos separados, migraciones, domini
 
 ## Pasos concretos para continuar
 
-1. **Reproducir el estado.** Ejecutar `npm ci`, `npm run typecheck`, `npm run lint`, `npm test` y `npm run build`. Abrir la aplicación local con `npm run dev` y verificar la ruta de inicio. Registrar resultados reales, no solo los comandos.
-2. **Cerrar T02.** Preparar y comprobar los bocetos navegables previstos en el plan: acceso, inicio por perfil, listado, alta/corrección y detalle. El boceto debe dejar claro si todavía no ejecuta operaciones reales. Comprobar instalación desde un clon limpio, separación de entornos y secretos cuando existan, y que un cambio defectuoso detenga CI. Ya se comprobó un fallo de prueba local al compartir el ID de D1; **aún no se demostró el fallo en CI remoto**. Solo entonces marcar T02.
-3. **Cerrar T03.** Repetir las pruebas D1 existentes y ampliar migraciones, restricciones, duplicados, reintento tras pérdida de respuesta y concurrencia. Evaluar generación y lectura de PDF/XLSX con acentos, importes y varias páginas, medir volumen, tiempo y memoria y registrar la elección. Se probó instalar `exceljs` y se retiró al detectar una advertencia moderada en su cadena de dependencias; no se seleccionó una biblioteca definitiva.
-4. **Seguir T04 en adelante.** Construir sesiones y primer administrador, después usuarios, permisos por galpón y auditoría. Continuar según dependencias, con pruebas de interfaz, servidor, datos y permisos en cada tarea. Actualizar `todo.md` con evidencia, commit y pendientes antes de marcarla.
-5. **Cierre final.** Ejecutar los 32 casos de aceptación, probar instalación y operación en Android real, restaurar una copia en una base aislada y efectuar el piloto con los cuatro perfiles. El despliegue y su comprobación corresponden a las tareas finales del plan.
+1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 16 pruebas deben pasar.
+2. **Iniciar T04 (Sesiones y primer administrador).** Implementar inicialización única de administrador, contraseñas protegidas con hash, sesiones seguras con cookies HttpOnly/Secure en el Worker, control de concurrencia e interfaz de login conectada.
+3. **Continuar con T05 a T07.** Módulo exclusivo de administración para los cuatro perfiles, vigencias, galpones y parámetros configurables.
+4. **Seguir según dependencias.** Registrar evidencia y resultado real antes de marcar cada tarea.
 
 ## Instrucción para continuar
 
