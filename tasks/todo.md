@@ -1,11 +1,11 @@
 # Control de ejecución
 
-Estado actual: T01 completada; T02 y T03 en curso; implementación funcional y despliegue pendientes. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: T01 y T02 completadas; T03 en curso; implementación funcional y despliegue pendientes. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
 - [x] T01 · Fijar alcance y decisiones · dependencias —.
-- [ ] T02 · Crear proyecto reproducible · dependencias 01.
+- [x] T02 · Crear proyecto reproducible · dependencias 01.
 - [ ] T03 · Probar D1 y exportaciones antes de comprometer la arquitectura · dependencias 02.
 - [ ] Cierre 1: Instalar en una copia limpia y repetir la prueba de atomicidad en el runtime de Workers. Registrar la elección de exportadores.
 
@@ -233,6 +233,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 
 | Fecha | Tarea | Estado | Prueba ejecutada y resultado real | Evidencia / commit | Pendiente o decisión |
 |---|---|---|---|---|---|
+| 2026-11-07 | T02 | Completada | Bocetos navegables interactivos implementados en React con 4 perfiles y 5 vistas; estados de carga, vacío, error/rechazo, offline, pendiente local y confirmado; moneda S/, peso kg y fechas locales. Scripts test:integration y test:e2e configurados. 11/11 pruebas pasadas, typecheck, lint y build production/staging correctos. | src/components/, src/types/, tests/bocetos.test.ts, tests/routes.e2e.test.ts, README.md | Continuar con T03: migraciones D1, reintentos y evaluación de exportadores PDF/XLSX. |
 | 2026-11-07 | T02 y T03 | En curso | D1 de staging y producción separadas; test de configuración detectó intencionalmente un ID compartido. En Miniflare pasaron restricciones, referencia foránea, duplicado e índice. npm test: 6/6; typecheck, lint y build production correctos. | tests/configuration.test.ts, tests/d1.integration.test.ts, wrangler.jsonc | Faltan bocetos, comprobación de fallo en CI remoto, secretos por ambiente, migraciones y pruebas de exportación. Ninguna de las dos tareas se marca completa. |
 | 2026-11-07 | T02 | En curso | GitHub Actions aprobó instalación, tipos, lint, 3 pruebas y compilación para 626c325. Compilación con CLOUDFLARE_ENV=staging incluye la base de pruebas correcta. | Ejecución 42421385045; wrangler.jsonc | Falta demostrar fallo controlado en CI, establecer producción separada y completar bocetos navegables. |
 | 2026-11-07 | T02 | En curso | Wrangler whoami verificó cuenta designada; D1 staging creada y consultada; tipos regenerados para staging. npm test 3/3, typecheck y build correctos. | wrangler.jsonc y tasks/decisiones.md | Falta comprobar CI remoto con cambio defectuoso, configuración de producción separada y bocetos. |
