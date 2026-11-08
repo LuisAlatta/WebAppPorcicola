@@ -13,6 +13,7 @@ export type Vista =
   | 'sanidad'
   | 'alertas'
   | 'finanzas'
+  | 'reportes'
   | 'configuracion'
   | 'administracion';
 

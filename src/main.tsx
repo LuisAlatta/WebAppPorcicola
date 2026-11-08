@@ -15,6 +15,7 @@ import { ModuloSanidad } from './components/ModuloSanidad';
 import { ModuloAlertas } from './components/ModuloAlertas';
 const ModuloFinanzas = lazy(() => import('./components/ModuloFinanzas').then(module => ({default:module.ModuloFinanzas})));
 const ModuloAnimales = lazy(() => import('./components/ModuloAnimales').then(module => ({default:module.ModuloAnimales})));
+const ModuloReportes = lazy(() => import('./components/ModuloReportes').then(module => ({default:module.ModuloReportes})));
 import './style.css';
 
 function getInitialView(): Vista {
@@ -30,6 +31,7 @@ function getInitialView(): Vista {
     if (path === '/sanidad') return 'sanidad';
     if (path === '/alertas') return 'alertas';
     if (path === '/finanzas') return 'finanzas';
+    if (path === '/reportes') return 'reportes';
     if (path === '/configuracion' || path === '/config') return 'configuracion';
     if (path === '/administracion' || path === '/admin') return 'administracion';
     if (path === '/login') return 'login';
@@ -92,6 +94,7 @@ function App() {
       else if (vista === 'sanidad') targetPath = '/sanidad';
       else if (vista === 'alertas') targetPath = '/alertas';
       else if (vista === 'finanzas') targetPath = '/finanzas';
+      else if (vista === 'reportes') targetPath = '/reportes';
       else if (vista === 'configuracion') targetPath = '/configuracion';
       else if (vista === 'administracion') targetPath = '/administracion';
       else if (vista === 'login') targetPath = '/login';
@@ -163,6 +166,8 @@ function App() {
         return <ModuloAlertas perfil={perfilActual} />;
       case 'finanzas':
         return <Suspense fallback={<div className="module-container">Cargando finanzas…</div>}><ModuloFinanzas perfil={perfilActual} /></Suspense>;
+      case 'reportes':
+        return <Suspense fallback={<div className="module-container">Cargando reportes…</div>}><ModuloReportes perfil={perfilActual} /></Suspense>;
       case 'animales':
         return <Suspense fallback={<div className="module-container">Cargando animales…</div>}><ModuloAnimales perfil={perfilActual} /></Suspense>;
       case 'reproduccion':

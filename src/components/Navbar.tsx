@@ -207,6 +207,10 @@ export function Navbar({
           <span className="inline-flex items-center justify-center gap-2 leading-none"><IconCoins size={16}/><span>Finanzas</span></span>
         </button>
 
+        <button type="button" className={`nav-tab ${vistaActual === 'reportes' ? 'nav-tab-active' : ''}`} onClick={() => onNavigate('reportes')}>
+          <span className="inline-flex items-center justify-center gap-2 leading-none"><IconClipboard size={16}/><span>Reportes</span></span>
+        </button>
+
         {perfilActual === 'administrador' && (
           <button
             type="button"
