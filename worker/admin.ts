@@ -992,6 +992,15 @@ export async function updateBarnStatus(
     throw new Error('Galpón no encontrado');
   }
 
+  if (newStatus === 'inactivo' && barn.status !== 'inactivo') {
+    const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out')
+        THEN -quantity ELSE quantity END), 0) AS heads FROM inventory_movements WHERE barn_id = ?`)
+      .bind(barnId).first<{ heads: number }>();
+    if (Number(occupied?.heads ?? 0) > 0) {
+      throw new Error(`No se puede cerrar el galpón: quedan ${Number(occupied?.heads)} cabezas sin trasladar o dar de baja`);
+    }
+  }
+
   // Comprobación crítica: Activar solo cuando el equipo esté completo (ADM-02, CA-27, CA-28)
   if (newStatus === 'operativo') {
     if (!barn.responsable_id || !barn.operario_id || !barn.veterinario_id) {

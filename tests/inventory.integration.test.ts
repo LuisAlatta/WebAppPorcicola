@@ -19,7 +19,9 @@ const runtime = new Miniflare({
 });
 
 interface Balance {
+  barnId: number;
   barnName: string;
+  locationCode: string | null;
   lotCode: string | null;
   stageCode: string;
   sex: string;
@@ -104,6 +106,7 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
       '0004_farm_config_schema.sql',
       '0005_inventory_schema.sql',
       '0006_animals_schema.sql',
+      '0007_transfer_and_stock_guard.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -334,7 +337,7 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
     });
     expect(incompatible.status).toBe(409);
     const body = await incompatible.json() as { error: string };
-    expect(body.error).toContain('Saldo insuficiente');
+    expect(body.error).toContain('Corrección incompatible con');
   });
 
   it('cancela los traslados internos en el total de la granja', async () => {
@@ -437,5 +440,56 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
     const body = await res.json() as { movements: { movementType: string }[] };
     expect(body.movements).toHaveLength(1);
     expect(body.movements[0].movementType).toBe('death');
+  });
+
+  it('traslada cabezas en una sola operación y exige acceso a ambos galpones', async () => {
+    const seeded = await register({ movementType: 'initial', barnId: 1, locationCode: null, lotCode: null, effectiveDate: '2026-05-01', quantity: 12, operationKey: 't10-source' });
+    expect(seeded.status).toBe(201);
+    const destinationSeeded = await register({ movementType: 'initial', barnId: 2, locationCode: null, lotCode: null, effectiveDate: '2026-05-01', quantity: 8, operationKey: 't10-destination' });
+    expect(destinationSeeded.status).toBe(201);
+    const body = {
+      effectiveDate: '2026-05-02', sourceBarnId: 1, destinationBarnId: 2,
+      locationCode: null, lotCode: null, stageCode: 'levante', sex: 'macho', quantity: 5,
+      reason: 'Traslado de prueba', operationKey: 't10-transfer',
+    };
+    const denied = await api('/api/inventory/transfers', { method: 'POST', body: JSON.stringify(body) }, operarioToken);
+    expect(denied.status).toBe(403);
+    const transferred = await api('/api/inventory/transfers', { method: 'POST', body: JSON.stringify(body) });
+    expect(transferred.status).toBe(201);
+    const replay = await api('/api/inventory/transfers', { method: 'POST', body: JSON.stringify(body) });
+    expect(replay.status).toBe(200);
+    const legs = await db.prepare("SELECT movement_type, COUNT(*) AS n FROM inventory_movements WHERE transfer_group_id = (SELECT transfer_group_id FROM inventory_movements WHERE operation_log_id = (SELECT id FROM operation_log WHERE operation_key = 't10-transfer') LIMIT 1) GROUP BY movement_type").all<{ movement_type: string; n: number }>();
+    expect(legs.results).toHaveLength(2);
+    expect(legs.results?.map((row) => row.movement_type).sort()).toEqual(['transfer_in', 'transfer_out']);
+    const stock = await snapshot('2026-05-02');
+    expect(stock.balances.find((row) => row.barnId === 1 && row.locationCode === null && row.lotCode === null && row.stageCode === 'levante' && row.sex === 'macho')?.heads).toBe(7);
+    expect(stock.balances.find((row) => row.barnId === 2 && row.locationCode === null && row.lotCode === null && row.stageCode === 'levante' && row.sex === 'macho')?.heads).toBe(13);
+  });
+
+  it('concilia el conteo físico con un ajuste aprobado y auditable', async () => {
+    const seed = await register({ movementType: 'initial', barnId: 1, effectiveDate: '2026-06-01', quantity: 12, operationKey: 't10-count-seed' });
+    expect(seed.status).toBe(201);
+    const payload = { barnId: 1, locationCode: 'galpon_a', lotCode: 'lote_levante_a', stageCode: 'levante',
+      sex: 'macho', effectiveDate: '2026-06-01', countedHeads: 10, reason: 'Conteo físico aprobado', operationKey: 't10-count' };
+    const response = await api('/api/inventory/reconciliations', { method: 'POST', body: JSON.stringify(payload) });
+    expect(response.status).toBe(201);
+    const result = await response.json() as { expectedHeads: number; countedHeads: number; variance: number };
+    expect(result.countedHeads).toBe(10);
+    expect(result.variance).toBe(10 - result.expectedHeads);
+    const replay = await api('/api/inventory/reconciliations', { method: 'POST', body: JSON.stringify(payload) });
+    expect(replay.status).toBe(200);
+    const count = await db.prepare('SELECT COUNT(*) AS n FROM inventory_reconciliations WHERE operation_log_id = (SELECT id FROM operation_log WHERE operation_key = ?)').bind('t10-count').first<{ n: number }>();
+    expect(count?.n).toBe(1);
+  });
+
+  it('serializa dos retiros concurrentes para que el stock nunca sea negativo', async () => {
+    const seed = await register({ barnId: 1, sex: 'pendiente', effectiveDate: '2026-08-01', quantity: 10, operationKey: 't10-concurrent-seed' });
+    expect(seed.status).toBe(201);
+    const requests = await Promise.all([
+      register({ movementType: 'sale', barnId: 1, sex: 'pendiente', effectiveDate: '2026-08-02', quantity: 7, reason: 'Venta concurrente uno', operationKey: 't10-concurrent-a' }),
+      register({ movementType: 'sale', barnId: 1, sex: 'pendiente', effectiveDate: '2026-08-02', quantity: 7, reason: 'Venta concurrente dos', operationKey: 't10-concurrent-b' }),
+    ]);
+    const outcomes = await Promise.all(requests.map(async (response) => ({ status: response.status, error: (await response.clone().json() as { error?: string }).error })));
+    expect(outcomes.map((outcome) => outcome.status).sort(), JSON.stringify(outcomes)).toEqual([201, 409]);
   });
 });

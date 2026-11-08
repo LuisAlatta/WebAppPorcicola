@@ -47,6 +47,8 @@ import {
   getInventorySnapshot,
   listInventoryMovements,
   registerMovement,
+  transferInventory,
+  reconcileInventory,
 } from './inventory';
 import {
   listAnimals,
@@ -411,8 +413,9 @@ const worker = {
 
         return Response.json({ error: 'Ruta de configuración no encontrada' }, { status: 404 });
       } catch (err) {
+        const message = (err as Error).message || String(err);
         const status = err instanceof ApiError ? err.status : 400;
-        return Response.json({ error: (err as Error).message || String(err) }, { status });
+        return Response.json({ error: message }, { status });
       }
     }
 
@@ -473,10 +476,23 @@ const worker = {
           );
         }
 
+        if (path === '/api/inventory/transfers' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof transferInventory>[2];
+          const result = await transferInventory(env.DB, session.user.id, body, scope);
+          return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
+        }
+
+        if (path === '/api/inventory/reconciliations' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof reconcileInventory>[2];
+          const result = await reconcileInventory(env.DB, session.user.id, body, scope);
+          return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
+        }
+
         return Response.json({ error: 'Ruta de inventario no encontrada' }, { status: 404 });
       } catch (err) {
-        const status = err instanceof ApiError ? err.status : 400;
-        return Response.json({ error: (err as Error).message || String(err) }, { status });
+        const message = (err as Error).message || String(err);
+        const status = err instanceof ApiError ? err.status : /guard_id|inventory_movements\.id/.test(message) ? 409 : 400;
+        return Response.json({ error: message }, { status });
       }
     }
 

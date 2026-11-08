@@ -114,7 +114,7 @@ interface FormState {
   reason: string;
 }
 
-type Section = 'existencias' | 'registrar' | 'movimientos';
+type Section = 'existencias' | 'registrar' | 'movimientos' | 'traslado';
 
 const MOVEMENT_LABELS: Record<MovementType, string> = {
   initial: 'Saldo inicial',
@@ -209,6 +209,8 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
   const [saving, setSaving] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>('');
+  const [transferDestination, setTransferDestination] = useState<string>('');
+  const [inventoryOperationMode, setInventoryOperationMode] = useState<'transfer' | 'reconcile'>('transfer');
 
   const loadSnapshot = useCallback(async (date: string) => {
     setLoading(true);
@@ -279,6 +281,51 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
   };
 
   const requiresCause = form.movementType === 'death' || form.movementType === 'sale';
+
+  const submitTransfer = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (soloLectura || !form.barnId || !transferDestination || !form.stageCode || !form.quantity || !form.reason.trim()) {
+      setFormError('Complete galpón de origen y destino, etapa, cantidad y motivo.');
+      return;
+    }
+    setSaving(true); setFormError(null); setSuccess(null);
+    try {
+      const res = await fetch('/api/inventory/transfers', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceBarnId: Number(form.barnId), destinationBarnId: Number(transferDestination),
+          effectiveDate: form.effectiveDate, stageCode: form.stageCode, sex: form.sex, quantity: Number(form.quantity),
+          locationCode: form.locationCode || null, lotCode: form.lotCode || null, reason: form.reason,
+          operationKey }) });
+      const body = await res.json() as { error?: string; replayed?: boolean };
+      if (!res.ok) { setFormError(body.error ?? 'No se pudo registrar el traslado.'); return; }
+      setSuccess(body.replayed ? 'Traslado confirmado sin duplicarlo.' : 'Traslado registrado: salida y recepción quedaron vinculadas.');
+      setOperationKey(newOperationKey('traslado'));
+      setForm((prev) => ({ ...prev, quantity: '', reason: '' }));
+      await loadSnapshot(asOf);
+    } catch { setFormError('No se pudo confirmar el traslado.'); }
+    finally { setSaving(false); }
+  };
+
+  const submitReconciliation = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (soloLectura || !form.barnId || !form.stageCode || !form.quantity || Number(form.quantity) < 0 || !form.reason.trim()) {
+      setFormError('Complete galpón, etapa, conteo físico y motivo.');
+      return;
+    }
+    setSaving(true); setFormError(null); setSuccess(null);
+    try {
+      const res = await fetch('/api/inventory/reconciliations', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barnId: Number(form.barnId), effectiveDate: form.effectiveDate, stageCode: form.stageCode,
+          sex: form.sex, locationCode: form.locationCode || null, lotCode: form.lotCode || null,
+          countedHeads: Number(form.quantity), reason: form.reason, operationKey }) });
+      const body = await res.json() as { error?: string; expectedHeads?: number; countedHeads?: number; variance?: number };
+      if (!res.ok) { setFormError(body.error ?? 'No se pudo conciliar el inventario.'); return; }
+      setSuccess(`Conteo guardado. Libro: ${body.expectedHeads}; físico: ${body.countedHeads}; ajuste: ${body.variance}.`);
+      setOperationKey(newOperationKey('conteo'));
+      setForm((prev) => ({ ...prev, quantity: '', reason: '' }));
+      await loadSnapshot(asOf);
+    } catch { setFormError('No se pudo confirmar la conciliación.'); }
+    finally { setSaving(false); }
+  };
 
   const causeOptions = form.movementType === 'death'
     ? options?.deathCauses ?? []
@@ -459,6 +506,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
             <IconList size={14} />
             <span>Movimientos</span>
           </span>
+        </button>
+        <button type="button" className={`btn btn-sm ${section === 'traslado' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setSection('traslado')}>
+          <span className="inline-flex items-center justify-center gap-2 leading-none"><IconRefreshCw size={14} /><span>Traslado y conteo</span></span>
         </button>
       </div>
 
@@ -884,6 +934,38 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                   </span>
                 </button>
               </div>
+            </form>
+          )}
+        </div>
+      )}
+
+      {data && section === 'traslado' && (
+        <div className="card">
+          <div className="card-header-clean mb-2">
+            <span className="section-title">Traslado y conciliación física</span>
+            <span className="text-xs text-muted">El traslado afecta ambos galpones en una sola operación; el conteo registra y audita la diferencia.</span>
+          </div>
+          {soloLectura ? <div className="note-box text-sm">El perfil Veterinario puede consultar, pero no registrar cambios de inventario.</div> : (
+            <form onSubmit={inventoryOperationMode === 'transfer' ? submitTransfer : submitReconciliation} className="form-stack">
+              {formError && <div className="alert alert-error" role="alert">{formError}</div>}
+              <div className="form-grid">
+                <div className="form-group"><label className="form-label" htmlFor="t10-mode">Operación</label>
+                  <select id="t10-mode" className="form-select" value={inventoryOperationMode} onChange={(event) => setInventoryOperationMode(event.target.value as 'transfer' | 'reconcile')}>
+                    <option value="transfer">Trasladar entre galpones</option><option value="reconcile">Conciliar conteo físico</option>
+                  </select>
+                </div>
+                <div className="form-group"><label className="form-label" htmlFor="t10-date">Fecha efectiva</label><input id="t10-date" type="date" className="form-input" max={farmToday()} value={form.effectiveDate} onChange={(event) => setField('effectiveDate', event.target.value)} required /></div>
+                <div className="form-group"><label className="form-label" htmlFor="t10-source">Galpón</label><select id="t10-source" className="form-select" value={form.barnId} onChange={(event) => setField('barnId', event.target.value)} required>{options?.barns.map((barn) => <option key={barn.id} value={barn.id}>{barn.name}</option>)}</select></div>
+                {inventoryOperationMode === 'transfer' && <div className="form-group"><label className="form-label" htmlFor="t10-dest">Galpón destino</label><select id="t10-dest" className="form-select" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} required><option value="">Seleccione destino</option>{options?.barns.filter((barn) => String(barn.id) !== form.barnId).map((barn) => <option key={barn.id} value={barn.id}>{barn.name}</option>)}</select></div>}
+                <div className="form-group"><label className="form-label" htmlFor="t10-stage">Etapa</label><select id="t10-stage" className="form-select" value={form.stageCode} onChange={(event) => setField('stageCode', event.target.value)} required>{options?.stages.map((stage) => <option key={stage.code} value={stage.code}>{stage.name}</option>)}</select></div>
+                <div className="form-group"><label className="form-label" htmlFor="t10-sex">Sexo</label><select id="t10-sex" className="form-select" value={form.sex} onChange={(event) => setField('sex', event.target.value as Sex)}>{Object.entries(SEX_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></div>
+                <div className="form-group"><label className="form-label" htmlFor="t10-quantity">{inventoryOperationMode === 'transfer' ? 'Cabezas a trasladar' : 'Cabezas contadas'}</label><input id="t10-quantity" type="number" min={inventoryOperationMode === 'transfer' ? 1 : 0} step="1" className="form-input" value={form.quantity} onChange={(event) => setField('quantity', event.target.value)} required /></div>
+                <div className="form-group"><label className="form-label" htmlFor="t10-location">Ubicación</label><select id="t10-location" className="form-select" value={form.locationCode} onChange={(event) => setField('locationCode', event.target.value)}><option value="">Sin asignar</option>{options?.locations.map((location) => <option key={location.code} value={location.code}>{location.name}</option>)}</select></div>
+                <div className="form-group"><label className="form-label" htmlFor="t10-lot">Lote</label><select id="t10-lot" className="form-select" value={form.lotCode} onChange={(event) => setField('lotCode', event.target.value)}><option value="">Sin lote</option>{options?.lots.map((lot) => <option key={lot.code} value={lot.code}>{lot.name}</option>)}</select></div>
+                <div className="form-group"><label className="form-label" htmlFor="t10-reason">Motivo y aprobación</label><input id="t10-reason" className="form-input" value={form.reason} onChange={(event) => setField('reason', event.target.value)} required maxLength={300} /></div>
+              </div>
+              <div className="form-actions"><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando…' : 'Registrar operación'}</button></div>
+              {success && <div className="alert alert-success" role="status">{success}</div>}
             </form>
           )}
         </div>

@@ -162,6 +162,25 @@ function movementDelta(type: MovementType, quantity: number): number {
   return quantity;
 }
 
+/** Revalida el mínimo histórico dentro del mismo batch que escribe los movimientos. */
+function stockGuardStatement(
+  db: D1Database,
+  barnId: number,
+  locationCode: string | null,
+  lotCode: string | null,
+  stageCode: string,
+  sex: Sex,
+) {
+  return db.prepare(`INSERT INTO inventory_write_guard (guard_id)
+    SELECT CASE WHEN COALESCE((SELECT MIN(running) FROM (
+      SELECT SUM(delta) OVER (ORDER BY effective_date, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running
+      FROM (SELECT effective_date, id,
+        CASE WHEN movement_type IN ('sale','death','transfer_out') THEN -quantity ELSE quantity END AS delta
+        FROM inventory_movements WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?)
+    )), 0) >= 0 THEN 0 ELSE -1 END`)
+    .bind(barnId, locationCode, lotCode, stageCode, sex);
+}
+
 function mapMovement(row: Row): InventoryMovement {
   const type = String(row.movement_type) as MovementType;
   return {
@@ -443,6 +462,9 @@ export async function getInventorySnapshot(
     const total = Number(row.total);
     const stage = ensureStage(String(row.stage_code));
 
+    // Un traslado interno no es una entrada productiva ni una salida de la granja.
+    if (type === 'transfer_in' || type === 'transfer_out') continue;
+
     if (POSITIVE_TYPES.includes(type) || (type === 'adjustment' && positive)) {
       const amount = Math.abs(total);
       stage.entries += amount;
@@ -585,8 +607,11 @@ export async function registerMovement(
 ): Promise<{ movement: InventoryMovement; replayed: boolean }> {
   const type = String(input.movementType ?? '') as MovementType;
   if (!MOVEMENT_TYPES.includes(type)) throw new ApiError(400, 'Tipo de movimiento inválido');
+  if (type === 'transfer_in' || type === 'transfer_out') {
+    throw new ApiError(400, 'Los traslados se registran como una operación conjunta');
+  }
   if (!WRITABLE_TYPES.includes(type)) {
-    throw new ApiError(400, 'Los traslados internos se registran desde el módulo de traslados (T10)');
+    throw new ApiError(400, 'Tipo de movimiento no disponible');
   }
 
   const effectiveDate = parseDate(input.effectiveDate, 'Fecha del movimiento');
@@ -677,8 +702,9 @@ export async function registerMovement(
   const timeline = (bucketRows.results ?? []).map((row) => ({
     date: String(row.effective_date),
     delta: movementDelta(String(row.movement_type) as MovementType, Number(row.quantity)),
+    detail: `${String(row.movement_type)} #${String(row.id)} (${Number(row.quantity)} cabezas)`,
   }));
-  timeline.push({ date: effectiveDate, delta: movementDelta(type, quantity) });
+  timeline.push({ date: effectiveDate, delta: movementDelta(type, quantity), detail: `corrección propuesta ${type} (${quantity} cabezas)` });
   timeline.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   let running = 0;
@@ -687,14 +713,12 @@ export async function registerMovement(
     if (running < 0) {
       throw new ApiError(
         409,
-        `Saldo insuficiente en ${stageCode}/${sex}: el movimiento dejaría ${running} cabezas el ${entry.date}`,
+        `Corrección incompatible con ${entry.detail} el ${entry.date}: el saldo quedaría en ${running} cabezas (${stageCode}/${sex})`,
       );
     }
   }
 
-  const idRow = await db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM inventory_movements')
-    .first<{ next_id: number }>();
-  const id = Number(idRow?.next_id ?? 1);
+  const id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
   const createdAt = new Date().toISOString();
 
   const movement: InventoryMovement = {
@@ -733,6 +757,7 @@ export async function registerMovement(
   });
 
   const result = await commitOperation(db, claim, [
+    db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
     db.prepare(`
       INSERT INTO inventory_movements (
         id, operation_log_id, movement_type, effective_date, barn_id, location_code, lot_code,
@@ -742,6 +767,8 @@ export async function registerMovement(
       id, claim.id, type, effectiveDate, barnId, locationCode, lotCode,
       stageCode, sex, quantity, causeCode, notes, actorUserId, createdAt,
     ),
+    stockGuardStatement(db, barnId, locationCode, lotCode, stageCode, sex),
+    db.prepare('DELETE FROM inventory_write_guard'),
   ], [{
     entityType: 'inventory_movement',
     entityId: id,
@@ -759,4 +786,167 @@ export async function registerMovement(
     movement: result.replayed ? (result.result as InventoryMovement) : movement,
     replayed: result.replayed,
   };
+}
+
+export interface TransferInput {
+  effectiveDate?: unknown;
+  sourceBarnId?: unknown;
+  destinationBarnId?: unknown;
+  locationCode?: unknown;
+  lotCode?: unknown;
+  stageCode?: unknown;
+  sex?: unknown;
+  quantity?: unknown;
+  notes?: unknown;
+  operationKey?: string;
+  reason?: string;
+}
+
+/** Registra salida y entrada con un grupo compartido y atomicidad D1. */
+export async function transferInventory(
+  db: D1Database,
+  actorUserId: number,
+  input: TransferInput,
+  scope: ScopeOptions = {},
+): Promise<{ transferGroupId: string; replayed: boolean }> {
+  const effectiveDate = parseDate(input.effectiveDate, 'Fecha del traslado');
+  if (effectiveDate > today()) throw new ApiError(400, 'La fecha del traslado no puede ser futura');
+  const sourceBarnId = Number(input.sourceBarnId);
+  const destinationBarnId = Number(input.destinationBarnId);
+  if (!Number.isInteger(sourceBarnId) || !Number.isInteger(destinationBarnId) || sourceBarnId <= 0 || destinationBarnId <= 0) {
+    throw new ApiError(400, 'Seleccione los galpones de origen y destino');
+  }
+  if (sourceBarnId === destinationBarnId) throw new ApiError(400, 'El origen y destino deben ser diferentes');
+  const quantity = Number(input.quantity);
+  if (!Number.isInteger(quantity) || quantity <= 0) throw new ApiError(400, 'La cantidad debe ser un entero positivo');
+  const stageCode = requireText(input.stageCode, 'Etapa', 60);
+  const sex = String(input.sex ?? '') as Sex;
+  if (!SEXES.includes(sex)) throw new ApiError(400, 'Sexo inválido');
+  const locationCode = optionalCode(input.locationCode);
+  const lotCode = optionalCode(input.lotCode);
+  const reason = normalizeReason(input.reason, { required: true, fallback: 'Traslado interno' });
+  const barns = await db.prepare('SELECT id, name FROM barns WHERE id IN (?, ?)').bind(sourceBarnId, destinationBarnId).all<{ id: number; name: string }>();
+  if ((barns.results ?? []).length !== 2) throw new ApiError(404, 'No se encontró uno de los galpones');
+  for (const barn of barns.results ?? []) {
+    if (scope.allowedBarnNames && !scope.allowedBarnNames.includes(barn.name)) {
+      throw new ApiError(403, 'Debe tener acceso a ambos galpones para registrar el traslado');
+    }
+  }
+  const payload = { effectiveDate, sourceBarnId, destinationBarnId, locationCode, lotCode, stageCode, sex, quantity };
+  const existing = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (existing) return { transferGroupId: String((existing.result as { transferGroupId: string }).transferGroupId), replayed: true };
+
+  // Evita aceptar una corrección que deje saldo negativo en cualquier fecha posterior.
+  for (const [barnId, delta] of [[sourceBarnId, -quantity], [destinationBarnId, quantity]] as const) {
+    const rows = await db.prepare(`SELECT effective_date, movement_type, quantity FROM inventory_movements
+      WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
+      ORDER BY effective_date, id`).bind(barnId, locationCode, lotCode, stageCode, sex).all<Row>();
+    const timeline = (rows.results ?? []).map((row) => ({ date: String(row.effective_date), delta: movementDelta(String(row.movement_type) as MovementType, Number(row.quantity)) }));
+    timeline.push({ date: effectiveDate, delta });
+    timeline.sort((a, b) => a.date.localeCompare(b.date));
+    let balance = 0;
+    for (const item of timeline) {
+      balance += item.delta;
+      if (balance < 0) throw new ApiError(409, `Saldo insuficiente en galpón ${barnId}: ${balance} cabezas el ${item.date}`);
+    }
+  }
+
+  const transferGroupId = crypto.randomUUID();
+  const claim = await createOperationClaim({
+    operationKey: input.operationKey,
+    operationType: 'inventory.transfer',
+    authorUserId: actorUserId,
+    entityType: 'inventory_transfer',
+    entityId: Number(transferGroupId.slice(0, 8).replace(/-/g, '') || '0'),
+    barnId: sourceBarnId,
+    effectiveDate,
+    payload,
+    result: { transferGroupId },
+  });
+  const insert = (barnId: number, type: 'transfer_out' | 'transfer_in') => db.prepare(`
+    INSERT INTO inventory_movements (operation_log_id, movement_type, effective_date, barn_id,
+      location_code, lot_code, stage_code, sex, quantity, transfer_group_id, notes, created_by_user_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(claim.id, type, effectiveDate, barnId, locationCode, lotCode, stageCode, sex, quantity,
+    transferGroupId, typeof input.notes === 'string' ? input.notes.slice(0, 300) : null, actorUserId, claim.recordedAt);
+  const commit = await commitOperation(db, claim, [
+    db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
+    insert(sourceBarnId, 'transfer_out'),
+    insert(destinationBarnId, 'transfer_in'),
+    stockGuardStatement(db, sourceBarnId, locationCode, lotCode, stageCode, sex),
+    stockGuardStatement(db, destinationBarnId, locationCode, lotCode, stageCode, sex),
+    db.prepare('DELETE FROM inventory_write_guard'),
+  ], [
+    { entityType: 'inventory_transfer', entityId: 1, action: 'create', actorUserId, barnId: sourceBarnId,
+      reason, previousData: null, newData: { ...payload, transferGroupId }, effectiveDate, recordedAt: claim.recordedAt },
+  ]);
+  return { transferGroupId: String((commit.result as { transferGroupId: string }).transferGroupId), replayed: commit.replayed };
+}
+
+export interface ReconcileInput {
+  barnId?: unknown;
+  locationCode?: unknown;
+  lotCode?: unknown;
+  stageCode?: unknown;
+  sex?: unknown;
+  effectiveDate?: unknown;
+  countedHeads?: unknown;
+  reason?: string;
+  operationKey?: string;
+}
+
+/** Compara el conteo físico con el libro y registra solo la diferencia aprobada. */
+export async function reconcileInventory(
+  db: D1Database,
+  actorUserId: number,
+  input: ReconcileInput,
+  scope: ScopeOptions = {},
+): Promise<{ expectedHeads: number; countedHeads: number; variance: number; replayed: boolean }> {
+  const barnId = Number(input.barnId);
+  const countedHeads = Number(input.countedHeads);
+  const effectiveDate = parseDate(input.effectiveDate, 'Fecha del conteo');
+  if (effectiveDate > today()) throw new ApiError(400, 'La fecha no puede ser futura');
+  if (!Number.isInteger(barnId) || barnId <= 0) throw new ApiError(400, 'Galpón inválido');
+  if (!Number.isInteger(countedHeads) || countedHeads < 0) throw new ApiError(400, 'El conteo debe ser un entero igual o mayor que cero');
+  const stageCode = requireText(input.stageCode, 'Etapa', 60);
+  const sex = String(input.sex ?? '') as Sex;
+  if (!SEXES.includes(sex)) throw new ApiError(400, 'Sexo inválido');
+  const locationCode = optionalCode(input.locationCode);
+  const lotCode = optionalCode(input.lotCode);
+  const barn = await db.prepare('SELECT id, name FROM barns WHERE id = ?').bind(barnId).first<{ id: number; name: string }>();
+  if (!barn) throw new ApiError(404, 'Galpón no encontrado');
+  if (scope.allowedBarnNames && !scope.allowedBarnNames.includes(barn.name)) throw new ApiError(403, 'Acceso denegado al galpón');
+  const expectedRow = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out')
+      THEN -quantity ELSE quantity END), 0) AS heads
+    FROM inventory_movements WHERE barn_id = ? AND location_code IS ? AND lot_code IS ?
+      AND stage_code = ? AND sex = ? AND effective_date <= ?`)
+    .bind(barnId, locationCode, lotCode, stageCode, sex, effectiveDate).first<{ heads: number }>();
+  const expectedHeads = Number(expectedRow?.heads ?? 0);
+  const variance = countedHeads - expectedHeads;
+  // El hash de idempotencia usa solo los datos enviados; el esperado cambia al aplicar el ajuste.
+  const payload = { barnId, locationCode, lotCode, stageCode, sex, effectiveDate, countedHeads };
+  const reason = normalizeReason(input.reason, { required: true, fallback: 'Conciliación física' });
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) return { ...(replay.result as Omit<Awaited<ReturnType<typeof reconcileInventory>>, 'replayed'>), replayed: true };
+  const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'inventory.reconciliation',
+    authorUserId: actorUserId, entityType: 'inventory_reconciliation', entityId: 0, barnId, effectiveDate,
+    payload, result: { expectedHeads, countedHeads, variance } });
+  const adjustmentId = variance === 0 ? null : Date.now() * 1000 + Math.floor(Math.random() * 1000);
+  const createdAt = claim.recordedAt;
+  const effects = [db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)')];
+  if (adjustmentId !== null) effects.push(db.prepare(`INSERT INTO inventory_movements
+    (id, operation_log_id, movement_type, effective_date, barn_id, location_code, lot_code, stage_code, sex,
+     quantity, notes, created_by_user_id, created_at)
+    VALUES (?, ?, 'adjustment', ?, ?, ?, ?, ?, ?, ?, 'Ajuste por conciliación física', ?, ?)`)
+    .bind(adjustmentId, claim.id, effectiveDate, barnId, locationCode, lotCode, stageCode, sex, variance, actorUserId, createdAt));
+  effects.push(db.prepare(`INSERT INTO inventory_reconciliations
+    (operation_log_id, barn_id, location_code, lot_code, stage_code, sex, effective_date, expected_heads,
+     counted_heads, variance, adjustment_movement_id, created_by_user_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(claim.id, barnId, locationCode, lotCode, stageCode, sex, effectiveDate, expectedHeads, countedHeads, variance, adjustmentId, actorUserId, createdAt));
+  effects.push(stockGuardStatement(db, barnId, locationCode, lotCode, stageCode, sex));
+  effects.push(db.prepare('DELETE FROM inventory_write_guard'));
+  const commit = await commitOperation(db, claim, effects, [{ entityType: 'inventory_reconciliation', entityId: 0,
+    action: 'create', actorUserId, barnId, reason, previousData: { expectedHeads }, newData: payload, effectiveDate, recordedAt: createdAt }]);
+  return { ...(commit.result as Omit<Awaited<ReturnType<typeof reconcileInventory>>, 'replayed'>), replayed: commit.replayed };
 }

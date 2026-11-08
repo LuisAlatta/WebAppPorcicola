@@ -28,7 +28,7 @@ describe('Módulo exclusivo de administración · T05', () => {
     await db.exec('PRAGMA foreign_keys = ON;');
 
     // Ejecutar migraciones 0001 y 0002
-    const migrationFiles = ['0001_initial_schema.sql', '0002_administration_schema.sql', '0003_events_audit_schema.sql'];
+    const migrationFiles = ['0001_initial_schema.sql', '0002_administration_schema.sql', '0003_events_audit_schema.sql', '0004_farm_config_schema.sql', '0005_inventory_schema.sql', '0006_animals_schema.sql', '0007_transfer_and_stock_guard.sql'];
     for (const file of migrationFiles) {
       const schemaSql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
       const cleanSql = schemaSql
@@ -406,6 +406,18 @@ describe('Módulo exclusivo de administración · T05', () => {
     expect(tryActivateRes.status).toBe(400);
     const err = await tryActivateRes.json() as { error: string };
     expect(err.error).toContain('equipo está incompleto');
+  });
+
+  it('no permite cerrar un galpón con saldo de animales', async () => {
+    await db.prepare(`INSERT INTO inventory_movements
+      (movement_type, effective_date, barn_id, stage_code, sex, quantity, created_by_user_id, created_at)
+      VALUES ('initial', '2026-05-01', 1, 'levante', 'macho', 1, ?, '2026-05-01T12:00:00.000Z')`).bind(adminId).run();
+    const response = await worker.fetch(new Request('http://localhost/api/admin/barns/1/status', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ status: 'inactivo' }),
+    }), { DB: db });
+    expect(response.status).toBe(400);
+    expect((await response.json() as { error: string }).error).toContain('No se puede cerrar el galpón');
   });
 
   it('no permite dejar a un Usuario activo sin galpones asignados sin reasignación o desactivación', async () => {

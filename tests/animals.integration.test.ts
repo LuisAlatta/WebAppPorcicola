@@ -123,6 +123,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0004_farm_config_schema.sql',
       '0005_inventory_schema.sql',
       '0006_animals_schema.sql',
+      '0007_transfer_and_stock_guard.sql',
     ];
 
     for (const file of migrationFiles) {
