@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { IconRefreshCw, IconWheat } from './icons';
 import { farmToday, newOperationKey, fetchOperation } from '../utils/operations';
 import type { Perfil } from '../types';
 
@@ -34,7 +35,24 @@ export function ModuloAlimentacion({ perfil }:{perfil:Perfil}) {
   const createWarehouse=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setError('');try{const res=await fetchOperation('/api/feed/warehouses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...newWarehouse,operationKey:newOperationKey('almacen')})});const body=await res.json() as {error?:string};if(!res.ok)throw new Error(body.error||'No se pudo crear el almacén');setNewWarehouse({code:'',name:'',location:''});setNotice('Almacén creado.');await load()}catch(e){setError(e instanceof Error?e.message:'No se pudo crear')}finally{setBusy(false)}};
   const stockKg=inventory?.totals.availableKg??0;
   return <main className="module-container">
-    <div className="module-heading"><div><p className="eyebrow">Control de insumos</p><h1>Alimentación y almacenes</h1><p className="text-muted">Existencias por alimento y lote, consumo por galpón o animal y costo trazable.</p></div><button className="btn btn-secondary" onClick={()=>void load()} type="button">Actualizar</button></div>
+    <div className="module-heading">
+      <div>
+        <div className="eyebrow">Control de insumos</div>
+        <h1 className="title-module">
+          <IconWheat size={22} className="text-primary" />
+          <span>Alimentación y almacenes</span>
+        </h1>
+        <p className="text-xs text-muted mt-1">
+          Existencias de insumos por almacén, movimientos, raciones y consumos.
+        </p>
+      </div>
+      <button className="btn btn-outline btn-sm" onClick={()=>void load()} type="button">
+        <span className="inline-flex items-center justify-center gap-2 leading-none">
+          <IconRefreshCw size={14} />
+          <span>Actualizar</span>
+        </span>
+      </button>
+    </div>
     {error&&<div className="alert alert-danger" role="alert">{error}</div>}{notice&&<div className="alert alert-success" role="status">{notice}</div>}
     <section className="stats-grid"><article className="stat-card"><span>Existencia a la fecha</span><strong>{stockKg.toLocaleString('es-PE')} kg</strong></article><article className="stat-card"><span>Recibido acumulado</span><strong>{(inventory?.totals.receivedKg??0).toLocaleString('es-PE')} kg</strong></article><article className="stat-card"><span>Entregado / retirado</span><strong>{(inventory?.totals.withdrawnKg??0).toLocaleString('es-PE')} kg</strong></article><article className="stat-card"><span>Costo asignado a consumos</span><strong>S/ {((inventory?.totals.allocatedCostMinor??0)/100).toFixed(2)}</strong></article></section>
     <section className="card"><div className="card-header"><h2>Raciones y cobertura estimada</h2><span className="text-muted">Pronóstico informativo; no descuenta almacén.</span></div><div className="table-responsive"><table className="data-table"><thead><tr><th>Etapa</th><th>Cabezas</th><th>Alimento</th><th>Demanda diaria</th><th>Necesidad de etapa</th><th>Necesidad mensual</th><th>Disponible</th><th>Cobertura</th><th>Estado</th><th>Faltante mensual</th></tr></thead><tbody>{projection.map(row=><tr key={row.stageCode}><td>{row.stageName}</td><td>{row.heads}</td><td>{row.feedName??'Sin alimento vinculado'}{row.requirements.length>0&&<small className="block text-muted">{row.requirements.join(' · ')}</small>}</td><td>{row.dailyKg===null?'—':`${row.dailyKg} kg`}</td><td>{row.stageNeedKg===null?'—':`${row.stageNeedKg} kg`}</td><td>{row.monthlyNeedKg===null?'—':`${row.monthlyNeedKg} kg`}</td><td>{row.availableKg} kg</td><td>{row.coveredDays===null?'—':`${row.coveredDays} días`}</td><td><span className={`badge-status ${row.requirements.length?'badge-warning':row.monthlyShortageKg===0?'badge-success':'badge-danger'}`}>{row.requirements.length?'Configurar':row.monthlyShortageKg===0?'Suficiente':'Faltante'}</span></td><td>{row.monthlyShortageKg===null?'—':`${row.monthlyShortageKg} kg`}</td></tr>)}{!projection.length&&<tr><td colSpan={10}>Sin datos de ración para esta fecha.</td></tr>}</tbody></table></div></section>

@@ -1,4 +1,5 @@
 import React,{useCallback,useEffect,useState} from 'react';
+import { IconBell, IconRefreshCw } from './icons';
 import {farmToday,newOperationKey} from '../utils/operations';
 import type {Perfil} from '../types';
 
@@ -18,7 +19,25 @@ export function ModuloAlertas({perfil}:{perfil:Perfil}){
  const loadRecipients=async(id:number)=>{const response=await fetch(`/api/alerts/${id}/notifications`);const data=await response.json() as {notifications?:NotificationRecipient[];error?:string};if(!response.ok){setError(data.error||'No se pudo consultar a quién se notificó');return;}setRecipientHistory(current=>({...current,[id]:data.notifications??[]}));};
  const saveRule=async(event:React.FormEvent)=>{event.preventDefault();const response=await fetch('/api/alerts/rules',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...ruleForm,overdueDays:Number(ruleForm.overdueDays)})});const data=await response.json() as {error?:string};if(!response.ok){setError(data.error||'No se pudo guardar la regla');return;}setNotice('Regla crítica actualizada.');await load();};
  const isAdmin=perfil==='administrador';
- return <main className="module-container"><div className="module-heading"><div><p className="eyebrow">Agenda de la granja</p><h1>Alertas y pendientes</h1><p className="text-muted">Fecha local: {farmToday()}. Las alertas se sincronizan al consultar y diariamente en segundo plano.</p></div><button className="btn btn-secondary" type="button" onClick={()=>void load()}>Actualizar</button></div>
+ return <main className="module-container">
+    <div className="module-heading">
+      <div>
+        <div className="eyebrow">Agenda de la granja</div>
+        <h1 className="title-module">
+          <IconBell size={22} className="text-primary" />
+          <span>Alertas y pendientes</span>
+        </h1>
+        <p className="text-xs text-muted mt-1">
+          Agenda diaria de eventos pendientes, vacunas y partos programados.
+        </p>
+      </div>
+      <button className="btn btn-outline btn-sm" type="button" onClick={()=>void load()}>
+        <span className="inline-flex items-center justify-center gap-2 leading-none">
+          <IconRefreshCw size={14} />
+          <span>Actualizar</span>
+        </span>
+      </button>
+    </div>
  {error&&<div className="alert alert-danger" role="alert">{error}</div>}{notice&&<div className="alert alert-success" role="status">{notice}</div>}
  <section className="card"><div className="card-header"><div><h2>Notificaciones <span className="badge">{unreadCount} sin leer</span></h2><p className="text-muted">Leer una notificación no marca la tarea como atendida.</p></div></div>{notifications.length===0?<p>No tienes notificaciones.</p>:<ul className="notification-list">{notifications.map(item=><li key={item.id} className={item.readAt?'':'notification-unread'}><strong>{item.priority==='critical'?'Crítica · ':''}{item.title}</strong><p>{item.body}{item.barnName?` · ${item.barnName}`:''}</p><small>{item.createdAt}</small><p><a href={item.actionUrl}>Abrir actuación</a></p>{!item.readAt&&<button className="btn btn-secondary" type="button" onClick={()=>void markRead(item.id)}>Marcar leída</button>}</li>)}</ul>}</section>
  {isAdmin&&<section className="card"><div className="card-header"><div><h2>Reglas de escalamiento crítico</h2><p className="text-muted">El plazo se cuenta desde la fecha prevista vencida. Los avisos críticos mantienen su tarea pendiente.</p></div></div><form className="form-grid" onSubmit={saveRule}><label>Tipo de alerta<select value={ruleForm.alertType} onChange={e=>setRuleForm({...ruleForm,alertType:e.target.value})}>{Object.entries(labels).filter(([key])=>['vaccine','farrowing','weaning','treatment','feeding','manual','low_weight','sale_suggestion'].includes(key)).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><label>Días vencidos antes de escalar<input required type="number" min="0" max="3650" value={ruleForm.overdueDays} onChange={e=>setRuleForm({...ruleForm,overdueDays:e.target.value})}/></label><label><input type="checkbox" checked={ruleForm.isActive} onChange={e=>setRuleForm({...ruleForm,isActive:e.target.checked})}/> Regla activa</label><fieldset className="form-span-2"><legend>Notificar a</legend>{[['responsable','Usuario responsable'],['operario','Operario'],['veterinario','Médico veterinario'],['administrador','Administrador']].map(([role,label])=><label key={role}><input type="checkbox" checked={ruleForm.roles.includes(role)} onChange={e=>setRuleForm(current=>({...current,roles:e.target.checked?[...current.roles,role]:current.roles.filter(item=>item!==role)}))}/> {label}</label>)}</fieldset><div className="form-span-2"><button className="btn btn-primary" disabled={busy}>Guardar regla</button></div></form>{rules.length>0&&<ul>{rules.map(rule=><li key={rule.alertType}>{labels[rule.alertType]??rule.alertType}: {rule.isActive?`crítica tras ${rule.overdueDays} día(s)`:'regla inactiva'} · {rule.roles.join(', ')}</li>)}</ul>}</section>}

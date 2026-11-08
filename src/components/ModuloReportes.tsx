@@ -1,4 +1,5 @@
 import React,{useCallback,useEffect,useMemo,useState} from 'react';
+import { IconBarChart, IconRefreshCw } from './icons';
 import type {Perfil} from '../types';
 import { generarReportePdf } from '../utils/exportPdf';
 import { generarReporteXlsx } from '../utils/exportXlsx';
@@ -18,7 +19,25 @@ export function ModuloReportes({perfil}:{perfil:Perfil}){
  const addFilter=()=>{if(filterKey&&filterValue.trim())setFilters(old=>({...old,[filterKey]:filterValue.trim()}));setFilterKey('');setFilterValue('');}; const duplicate=async(id:string)=>{const response=await fetch(`/api/reports/definitions/${encodeURIComponent(id)}/duplicate`,{method:'POST'});const data=await response.json() as {error?:string};if(!response.ok)setError(data.error||'No se pudo duplicar');else{setNotice('Informe duplicado.');await load();}};
  const makePreset=()=>{const p=presets[perfil];setSource(p.source);setName(p.name);setPurpose(p.purpose);setColumns(p.columns);setGroupBy(p.groupBy);setFilters({});setFilterKey('');setFilterValue('');setSection('crear');setTimeout(()=>void run({...p,from,to}),0);};
  const exportReport=async(format:'pdf'|'xlsx',share=false)=>{if(!preview)return;setBusy(true);setError('');setNotice('');try{const response=await fetch('/api/reports/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({definition:{...preview.definition,name:preview.definition.name??name,purpose:preview.definition.purpose??purpose}})});const data=await response.json() as Preview&{error?:string;farmName?:string};if(!response.ok)throw new Error(data.error||'No se pudo preparar el informe completo');const fileColumns=data.definition.columns.map(key=>{const field=sources.find(item=>item.id===data.definition.source)?.fields.find(item=>item.key===key);return{key,label:field?.label??key,dataType:field?.dataType??'text',unit:field?.unit};});const generatedAt=new Intl.DateTimeFormat('es-PE',{dateStyle:'short',timeStyle:'short',timeZone:'America/Lima'}).format(new Date());const options={title:data.definition.name||'Reporte de granja',purpose:data.definition.purpose||'Informe de gestión porcina',generatedAt,from:data.definition.from,to:data.definition.to,asOf:data.asOf,filters:{...data.definition.filters,Galpón:data.definition.barnId?barns.find(barn=>String(barn.id)===String(data.definition.barnId))?.name??String(data.definition.barnId):'Todos los asignados'},columns:fileColumns,rows:data.rows,totals:data.totals,moneyTotals:data.moneyTotals};const bytes=format==='pdf'?await generarReportePdf({...options,farm:data.farmName??'Granja'}):generarReporteXlsx({...options,sheetName:options.title});const mime=format==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';const extension=format==='pdf'?'pdf':'xlsx';const fileName=`${options.title.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'-').replace(/^-|-$/g,'').slice(0,70)||'reporte'}.${extension}`;const file=new File([new Uint8Array(bytes).buffer as ArrayBuffer],fileName,{type:mime});if(share){if(!navigator.canShare?.({files:[file]})||!navigator.share)throw new Error('El dispositivo no admite compartir este archivo. Usa Descargar PDF o Descargar Excel.');await navigator.share({files:[file],title:options.title});setNotice(`Informe completo (${data.rows.length} filas) compartido.`);}else{const url=URL.createObjectURL(file);const anchor=document.createElement('a');anchor.href=url;anchor.download=fileName;anchor.click();URL.revokeObjectURL(url);setNotice(`Informe completo (${data.rows.length} filas) descargado.`);}}catch(e){if(e instanceof Error&&e.name==='AbortError')return;setError(share?'No se pudo compartir el archivo. Usa Descargar PDF o Descargar Excel.':e instanceof Error?e.message:'Error al exportar');}finally{setBusy(false);}};
- return <main className="module-container"><div className="module-heading"><div><p className="eyebrow">Datos de la granja</p><h1>Reportes y panel</h1><p className="text-muted">Informes según tu perfil y los galpones asignados. Los valores se consultan nuevamente al actualizar.</p></div><button className="btn btn-secondary" onClick={()=>void load()}>Actualizar datos</button></div>
+  return <main className="module-container">
+    <div className="module-heading">
+      <div>
+        <div className="eyebrow">Datos de la granja</div>
+        <h1 className="title-module">
+          <IconBarChart size={22} className="text-primary" />
+          <span>Reportes y panel</span>
+        </h1>
+        <p className="text-xs text-muted mt-1">
+          Indicadores de producción, estadísticas consolidadas y exportación.
+        </p>
+      </div>
+      <button className="btn btn-outline btn-sm" onClick={()=>void load()} type="button">
+        <span className="inline-flex items-center justify-center gap-2 leading-none">
+          <IconRefreshCw size={14} />
+          <span>Actualizar datos</span>
+        </span>
+      </button>
+    </div>
  {error&&<div className="alert alert-danger" role="alert">{error}</div>}{notice&&<div className="alert alert-success" role="status">{notice}</div>}
  <div className="filter-row"><button className={`btn ${section==='panel'?'btn-primary':'btn-secondary'}`} onClick={()=>setSection('panel')}>Panel</button><button className={`btn ${section==='crear'?'btn-primary':'btn-secondary'}`} onClick={()=>setSection('crear')}>Crear informe</button><button className={`btn ${section==='guardados'?'btn-primary':'btn-secondary'}`} onClick={()=>setSection('guardados')}>Mis informes ({saved.length})</button></div>
  {section==='panel'&&<><section className="card"><div className="filter-row"><label>Desde<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label>Hasta<input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label><button className="btn btn-primary" onClick={()=>void load()}>Actualizar periodo</button></div><p className="text-muted">Datos al {dashboard?.asOf??'—'} · Periodo {from||'inicio'} a {to||'hoy'} · Galpones: {dashboard?.barnsIncluded??'—'} · Moneda financiera: PEN (S/).</p></section>

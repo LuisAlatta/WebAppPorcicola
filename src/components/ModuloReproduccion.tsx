@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { IconCalendar, IconCheck, IconPig, IconPlus, IconRefreshCw } from './icons';
+import { IconCalendar, IconCheck, IconHeart, IconPig, IconPlus, IconRefreshCw } from './icons';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
 import type { Perfil } from '../types';
 
@@ -224,9 +224,24 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
   };
 
   return <section className="reproduction-page">
-    <header className="reproduction-header"><div><h1 className="font-bold text-xl inline-flex items-center gap-2"><IconPig size={22} />Reproducción</h1>
-      <p className="text-sm text-muted">Ciclos, servicios, palpaciones y fechas probables. El cálculo usa la duración vigente de la etapa Gestación.</p></div>
-      <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => void load()}><IconRefreshCw size={14} /> Actualizar</button></header>
+    <div className="module-heading">
+      <div>
+        <div className="eyebrow">Gestión reproductiva</div>
+        <h1 className="title-module">
+          <IconHeart size={22} className="text-primary" />
+          <span>Reproducción</span>
+        </h1>
+        <p className="text-xs text-muted mt-1">
+          Ciclos reproductivos, servicios, palpaciones y fechas probables de parto.
+        </p>
+      </div>
+      <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => void load()}>
+        <span className="inline-flex items-center justify-center gap-2 leading-none">
+          <IconRefreshCw size={14} />
+          <span>Actualizar</span>
+        </span>
+      </button>
+    </div>
     {error && <div className="alert alert-error" role="alert">{error}</div>}{notice && <div className="alert alert-success" role="status">{notice}</div>}
     {!soloLectura && <div className="card mb-4"><div className="card-header-clean mb-3"><span className="section-title">{isAntecedent ? 'Ingreso gestante / antecedente' : 'Registrar servicio'}</span>
       <button type="button" className="btn btn-outline btn-sm" onClick={() => { setIsAntecedent(!isAntecedent); setForm(initialForm()); }}><IconPlus size={14} />{isAntecedent ? 'Registrar servicio' : 'Registrar antecedente'}</button></div>

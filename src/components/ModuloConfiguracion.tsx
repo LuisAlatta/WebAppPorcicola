@@ -549,14 +549,15 @@ export function ModuloConfiguracion() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+      <div className="module-heading mb-4">
         <div>
-          <h3 className="font-bold text-lg inline-flex items-center justify-center gap-2 leading-none">
-            <IconSettings size={20} className="text-primary" />
-            <span>Configuración Versionada de la Granja</span>
-          </h3>
+          <div className="eyebrow">Parámetros del sistema</div>
+          <h1 className="title-module">
+            <IconSettings size={22} className="text-primary" />
+            <span>Configuración</span>
+          </h1>
           <p className="text-xs text-muted mt-1">
-            Catálogos, etapas, parámetros, ubicaciones y lotes con fecha de vigencia explícita (CFG-01 a CFG-05).
+            Catálogos, etapas productivas, parámetros operativos y ubicaciones.
           </p>
         </div>
         <div className="inline-flex items-center gap-2 flex-wrap">
@@ -566,7 +567,7 @@ export function ModuloConfiguracion() {
           </label>
           <input
             type="date"
-            className="form-input"
+            className="form-input form-select-sm"
             style={{ maxWidth: '160px' }}
             value={asOf}
             onChange={(e) => setAsOf(e.target.value)}
@@ -955,7 +956,7 @@ export function ModuloConfiguracion() {
             <div className="card p-4">
               <h4 className="font-bold mb-2">Ubicaciones físicas y lotes de manejo</h4>
               <p className="text-xs text-muted mb-4">
-                La ubicación física (galpón, corral o área) se mantiene separada del lote de manejo y de la etapa productiva (CFG-04).
+                La ubicación física (galpón, corral o área) se mantiene separada del lote de manejo y de la etapa productiva.
               </p>
 
               <h5 className="font-bold mb-2">Ubicaciones físicas</h5>

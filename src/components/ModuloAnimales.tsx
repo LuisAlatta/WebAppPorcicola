@@ -759,14 +759,15 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+      <div className="module-heading mb-4">
         <div>
-          <h3 className="font-bold text-lg inline-flex items-center justify-center gap-2 leading-none">
-            <IconPig size={20} className="text-primary" />
+          <div className="eyebrow">Padrón individual</div>
+          <h1 className="title-module">
+            <IconPig size={22} className="text-primary" />
             <span>Animales</span>
-          </h3>
+          </h1>
           <p className="text-xs text-muted mt-1">
-            Padrón individual con identificación permanente, aretes históricos, genealogía, pesos y cronología (ANI-01 a ANI-08).
+            Identificación permanente, genealogía, pesos y cronología de cada animal.
           </p>
         </div>
         <div className="inline-flex items-center gap-2 flex-wrap">
@@ -1793,7 +1794,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <div className="card-header-clean mb-2">
                   <span className="section-title">Disponibilidad de la ficha</span>
                   <span className="text-xs text-muted">
-                    No registra venta ni muerte; solo la retira de selecciones nuevas (ANI-08)
+                    No registra venta ni muerte; solo la retira de selecciones nuevas.
                   </span>
                 </div>
                 <div className="form-stack">

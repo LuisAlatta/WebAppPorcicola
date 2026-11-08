@@ -548,14 +548,15 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
   return (
     <div className="admin-container">
       {/* Encabezado */}
-      <div className="section-header mb-4">
+      <div className="module-heading mb-4">
         <div>
-          <div className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconShield size={24} className="text-primary" />
-            <h1 className="text-2xl font-bold">Módulo de Administración</h1>
-          </div>
-          <p className="text-sm text-muted mt-1">
-            Gestión de cuentas, asignación de galpones y conformación del equipo operativo (Granja San Luis).
+          <div className="eyebrow">Gestión de acceso</div>
+          <h1 className="title-module">
+            <IconShield size={22} className="text-primary" />
+            <span>Administración</span>
+          </h1>
+          <p className="text-xs text-muted mt-1">
+            Cuentas de usuario, asignación de galpones y equipo operativo.
           </p>
         </div>
         <div className="inline-flex items-center justify-center gap-2 leading-none">
@@ -566,7 +567,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
             title="Actualizar datos"
           >
             <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconRefreshCw size={16} />
+              <IconRefreshCw size={14} />
               <span>Actualizar</span>
             </span>
           </button>
@@ -844,7 +845,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
         <div className="card p-4">
           <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
             <div>
-              <h3 className="font-bold text-lg">Galpones e Instalaciones (CFG-06)</h3>
+              <h3 className="font-bold text-lg">Galpones e Instalaciones</h3>
               <p className="text-xs text-muted">Gestión de ubicaciones, capacidad y estado operativo.</p>
             </div>
             <button

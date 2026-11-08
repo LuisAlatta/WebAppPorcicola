@@ -1,4 +1,5 @@
 import React,{useCallback,useEffect,useState} from 'react';
+import { IconActivity, IconRefreshCw } from './icons';
 import {farmToday,newOperationKey,fetchOperation} from '../utils/operations';
 import type {Perfil} from '../types';
 import {ModuloVacunas} from './ModuloVacunas';
@@ -16,7 +17,25 @@ export function ModuloSanidad({perfil}:{perfil:Perfil}){
  useEffect(()=>{const timer=window.setTimeout(()=>{void load().catch(err=>setError(err instanceof Error?err.message:'Error cargando sanidad'));},0);return()=>window.clearTimeout(timer);},[load]);
  const update=(key:string,value:string)=>setForm(old=>({...old,[key]:value}));
  const submit=async(event:React.FormEvent)=>{event.preventDefault();setBusy(true);setError('');setNotice('');try{const res=await fetchOperation('/api/health/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,dosage:Number(form.dosage),animalCodes:selected,operationKey:newOperationKey('sanidad')})});const body=await res.json() as {error?:string};if(!res.ok)throw new Error(body.error||'No se pudo guardar el evento');setNotice('Evento sanitario e historial de los animales guardados.');setForm(old=>({...old,product:'',productLot:'',dosage:'',observations:'',reason:''}));setSelected([]);await load();}catch(err){setError(err instanceof Error?err.message:'No se pudo guardar')}finally{setBusy(false)}};
- return <main className="module-container"><div className="module-heading"><div><p className="eyebrow">Salud porcina</p><h1>Sanidad y tratamientos</h1><p className="text-muted">Historial clínico por animal y composición conservada para aplicaciones grupales.</p></div><button type="button" className="btn btn-secondary" onClick={()=>void load()}>Actualizar</button></div>
+  return <main className="module-container">
+    <div className="module-heading">
+      <div>
+        <div className="eyebrow">Salud porcina</div>
+        <h1 className="title-module">
+          <IconActivity size={22} className="text-primary" />
+          <span>Sanidad y tratamientos</span>
+        </h1>
+        <p className="text-xs text-muted mt-1">
+          Historial clínico, registro de actuaciones y periodos de retiro vigentes.
+        </p>
+      </div>
+      <button type="button" className="btn btn-outline btn-sm" onClick={()=>void load()}>
+        <span className="inline-flex items-center justify-center gap-2 leading-none">
+          <IconRefreshCw size={14} />
+          <span>Actualizar</span>
+        </span>
+      </button>
+    </div>
  <ModuloVacunas perfil={perfil}/>
  {error&&<div className="alert alert-danger" role="alert">{error}</div>}{notice&&<div className="alert alert-success" role="status">{notice}</div>}
  <section className="card"><div className="card-header"><div><h2>Periodo de retiro vigente</h2><p className="text-muted">Los animales listados no pueden registrarse como vendidos hasta la fecha indicada.</p></div></div><div className="table-responsive"><table className="data-table"><thead><tr><th>Animal</th><th>Producto</th><th>Galpón</th><th>Evento</th><th>Retiro hasta</th></tr></thead><tbody>{alerts.map((row,index)=><tr key={`${row.animalCode}-${row.eventDate}-${index}`}><td>{row.animalCode}</td><td>{row.product}</td><td>{row.barnName}</td><td>{row.eventDate}</td><td><span className="badge-status badge-warning">{row.withdrawalUntil}</span></td></tr>)}{!alerts.length&&<tr><td colSpan={5}>No hay retiros vigentes a la fecha.</td></tr>}</tbody></table></div></section>

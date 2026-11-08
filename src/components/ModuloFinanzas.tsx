@@ -1,4 +1,5 @@
 import React,{useCallback,useEffect,useMemo,useState} from 'react';
+import { IconCoins, IconRefreshCw } from './icons';
 import {farmToday,newOperationKey,fetchOperation} from '../utils/operations';
 import type {Perfil} from '../types';
 import { generarReportePdf } from '../utils/exportPdf';
@@ -23,7 +24,25 @@ export function ModuloFinanzas({perfil}:{perfil:Perfil}){
  const reverse=async(entry:Entry)=>{const reason=window.prompt(`Motivo para anular la operación #${entry.id}`);if(!reason?.trim())return;setError('');setNotice('');setBusy(true);try{const response=await fetchOperation(`/api/finance/entries/${entry.id}/reverse`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({effectiveDate:farmToday(),reason,operationKey:newOperationKey('finance-reversal')})});const data=await response.json() as {error?:string};if(!response.ok)throw new Error(data.error||'No se pudo anular la operación');setNotice(`Operación #${entry.id} anulada con un asiento compensatorio auditable.`);await load();}catch(err){setError(err instanceof Error?err.message:'Error anulando operación');}finally{setBusy(false);}};
  const settle=async(event:React.FormEvent)=>{event.preventDefault();if(!settlementTarget)return;setError('');setNotice('');setBusy(true);try{const response=await fetchOperation(`/api/finance/entries/${settlementTarget.id}/settlements`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({settlementDate:settlementForm.date,amount:settlementForm.amount,paymentMethod:settlementForm.method,reference:settlementForm.reference||undefined,reason:settlementForm.reason,operationKey:newOperationKey('finance-settlement'),allocations:[{allocationId:settlementTarget.allocationId,amount:settlementForm.amount}]})});const data=await response.json() as {error?:string};if(!response.ok)throw new Error(data.error||'No se pudo registrar el abono');setSettlementTarget(null);setSettlementForm({amount:'',date:farmToday(),method:'transferencia',reference:'',reason:''});setNotice('Cobro o pago registrado con su fecha efectiva.');await load();}catch(err){setError(err instanceof Error?err.message:'Error registrando abono');}finally{setBusy(false);}};
  const saveOpening=async(event:React.FormEvent)=>{event.preventDefault();setError('');setNotice('');setBusy(true);try{const response=await fetchOperation('/api/finance/cash/opening',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({effectiveDate:openingForm.date,currencyCode:openingForm.currencyCode,amount:openingForm.amount,reason:openingForm.reason,operationKey:newOperationKey('finance-opening')})});const data=await response.json() as {error?:string};if(!response.ok)throw new Error(data.error||'No se pudo fijar el saldo inicial');setNotice('Saldo inicial de caja guardado con auditoría.');setOpeningForm(old=>({...old,amount:'',reason:''}));await load();}catch(err){setError(err instanceof Error?err.message:'Error guardando saldo inicial');}finally{setBusy(false);}};
- return <main className="module-container"><div className="module-heading"><div><p className="eyebrow">Control económico</p><h1>Finanzas</h1><p className="text-muted">Libro de ingresos y egresos en monedas separadas. Los importes usan dos decimales y se guardan en unidades menores.</p></div><button type="button" className="btn btn-secondary" onClick={()=>void load().catch(err=>setError(err instanceof Error?err.message:'No se pudo actualizar finanzas'))}>Actualizar</button></div>
+ return <main className="module-container">
+    <div className="module-heading">
+      <div>
+        <div className="eyebrow">Control económico</div>
+        <h1 className="title-module">
+          <IconCoins size={22} className="text-primary" />
+          <span>Finanzas</span>
+        </h1>
+        <p className="text-xs text-muted mt-1">
+          Libro de ingresos, egresos y flujo de caja con distribución por galpón.
+        </p>
+      </div>
+      <button type="button" className="btn btn-outline btn-sm" onClick={()=>void load().catch(err=>setError(err instanceof Error?err.message:'No se pudo actualizar finanzas'))}>
+        <span className="inline-flex items-center justify-center gap-2 leading-none">
+          <IconRefreshCw size={14} />
+          <span>Actualizar</span>
+        </span>
+      </button>
+    </div>
  {error&&<div className="alert alert-danger" role="alert">{error}</div>}{notice&&<div className="alert alert-success" role="status">{notice}</div>}
  {canWrite&&<section className="card"><div className="card-header"><div><h2>Registrar operación</h2><p className="text-muted">La suma distribuida debe coincidir con el importe total.</p></div></div><form className="form-grid" onSubmit={submit}>
   <label>Movimiento<select value={form.direction} onChange={e=>setForm({...form,direction:e.target.value})}><option value="expense">Egreso</option><option value="income">Ingreso</option></select></label><label>Categoría<input required maxLength={80} value={form.category} onChange={e=>setForm({...form,category:e.target.value})}/></label><label className="form-span-2">Concepto<input required maxLength={240} value={form.concept} onChange={e=>setForm({...form,concept:e.target.value})}/></label><label>Fecha de operación<input required type="date" max={farmToday()} value={form.operationDate} onChange={e=>setForm({...form,operationDate:e.target.value})}/></label><label>Importe total<input required inputMode="decimal" placeholder="0.00" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})}/></label><label>Moneda<select value={form.currencyCode} onChange={e=>setForm({...form,currencyCode:e.target.value})}><option value="PEN">PEN · Sol peruano</option><option value="USD">USD · Dólar estadounidense</option><option value="EUR">EUR · Euro</option></select></label><label>Contraparte (opcional)<input maxLength={160} value={form.counterparty} onChange={e=>setForm({...form,counterparty:e.target.value})}/></label><label>Referencia (opcional)<input maxLength={100} value={form.reference} onChange={e=>setForm({...form,reference:e.target.value})}/></label><label>Motivo para auditoría<input required maxLength={500} value={form.reason} onChange={e=>setForm({...form,reason:e.target.value})}/></label>

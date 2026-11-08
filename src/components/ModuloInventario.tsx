@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   IconAlertCircle,
+  IconBox,
   IconBuilding,
   IconCalendar,
   IconCheck,
@@ -445,20 +446,21 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+      <div className="module-heading mb-4">
         <div>
-          <h3 className="font-bold text-lg inline-flex items-center justify-center gap-2 leading-none">
-            <IconPig size={20} className="text-primary" />
+          <div className="eyebrow">Control de existencias</div>
+          <h1 className="title-module">
+            <IconBox size={22} className="text-primary" />
             <span>Inventario de Animales</span>
-          </h3>
+          </h1>
           <p className="text-xs text-muted mt-1">
-            Existencias por fecha de corte, entradas, salidas, muertes y saldo reconstruible (INV-01 a INV-03).
+            Existencias por fecha de corte, entradas, salidas, bajas y saldos por galpón.
           </p>
         </div>
         <div className="inline-flex items-center gap-2 flex-wrap">
           <label className="text-xs text-muted inline-flex items-center gap-1">
             <IconCalendar size={14} />
-            <span>Fecha de corte:</span>
+            <span>Corte:</span>
           </label>
           <input
             type="date"
