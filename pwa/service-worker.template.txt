@@ -1,0 +1,54 @@
+const CACHE_NAME = 'porcicola-static-__VERSION__';
+const STATIC_PATHS = __ASSETS__;
+const allowedPaths = new Set(STATIC_PATHS);
+async function findStatic(request) {
+  const current = await caches.open(CACHE_NAME);
+  const cached = await current.match(request);
+  if (cached) return cached;
+  const names = await caches.keys();
+  for (const name of names.filter(name => name.startsWith('porcicola-static-') && name !== CACHE_NAME)) {
+    const older = await (await caches.open(name)).match(request);
+    if (older) return older;
+  }
+}
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_PATHS)));
+});
+self.addEventListener('message', event => {
+  if (event.data?.type === 'ACTIVATE_UPDATE') self.skipWaiting();
+});
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    // Old hashed chunks remain available while a previous page may still use them.
+    const pages = await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    if (pages.length === 0) {
+      const names = await caches.keys();
+      await Promise.all(names.filter(name => name.startsWith('porcicola-static-') && name !== CACHE_NAME).map(name => caches.delete(name)));
+    }
+  })());
+});
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  const url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  if (request.mode === 'navigate') {
+    event.respondWith(fetch(request).catch(async () => {
+      const offline = await (await caches.open(CACHE_NAME)).match('/offline.html');
+      // Static hosting can redirect .html URLs. Navigation fallbacks must not retain that redirect flag.
+      return offline ? new Response(offline.body, {status:200,headers:offline.headers}) : new Response('Sin conexión', {status:503});
+    }));
+    return;
+  }
+  const previousChunk = /^\/assets\/[^/]+\.(js|css)$/.test(url.pathname);
+  if ((!allowedPaths.has(url.pathname) && !previousChunk) || url.search) return;
+  event.respondWith((async () => {
+    const cached = await findStatic(request);
+    if (cached) return cached;
+    const response = await fetch(request);
+    if (allowedPaths.has(url.pathname) && response.ok && response.type === 'basic') {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(request, response.clone());
+    }
+    return response;
+  })());
+});

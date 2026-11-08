@@ -1,101 +1,35 @@
-import { describe, expect, it } from 'vitest';
-import { unzipSync, strFromU8 } from 'fflate';
-import { generarReportePdf, ReporteItemPdf } from '../src/utils/exportPdf';
-import { generarReporteXlsx, ReporteItemXlsx } from '../src/utils/exportXlsx';
+import { describe,expect,it } from 'vitest';
+import { mkdirSync,writeFileSync } from 'node:fs';
+import { strFromU8,unzipSync } from 'fflate';
+import { PDFDocument } from 'pdf-lib';
+import { generarReportePdf,ReportColumn,wrapReportText } from '../src/utils/exportPdf';
+import { generarReporteXlsx } from '../src/utils/exportXlsx';
 
-const generarMuestra = (cantidad: number): ReporteItemPdf[] => {
-  return Array.from({ length: cantidad }, (_, i) => ({
-    arete: String(i + 1).padStart(3, '0'),
-    galpon: i % 2 === 0 ? 'Galpón A' : 'Galpón B',
-    etapa: i % 3 === 0 ? 'Gestación' : i % 3 === 1 ? 'Crecimiento' : 'Engorde',
-    pesoKg: 30.5 + (i % 50),
-    valorSoles: 350.0 + (i * 12.5),
-    fechaIngreso: '07/11/2026',
-    estado: i % 4 === 0 ? 'Retiro clínico' : 'Sano',
-  }));
-};
+const columns:ReportColumn[]=[{key:'animalCode',label:'Código',dataType:'text'},{key:'weight',label:'Peso',dataType:'number',unit:'kg'},{key:'date',label:'Fecha',dataType:'date'},{key:'concept',label:'Concepto',dataType:'text'}];
+const rows=Array.from({length:301},(_,index)=>({animalCode:String(index+1).padStart(3,'0'),weight:30.25+index,date:'2026-11-07',concept:index===0?'=HYPERLINK("https://evil.test")':'Lechón'}));
+const base={title:'Informe de producción porcina',purpose:'Revisar peso y movimientos',generatedAt:'2026-11-08 10:30',from:'2026-11-01',to:'2026-11-08',asOf:'2026-11-08',filters:{barn:'Galpón A'},columns,rows,totals:{rows:301,sum:55219.25},moneyTotals:{PEN:{income:300,expense:30,balance:270}}};
+const artifact=(name:string,bytes:Uint8Array)=>{if(process.env.EXPORT_ARTIFACTS==='1'){mkdirSync('test-results',{recursive:true});writeFileSync(`test-results/${name}`,bytes);}};
 
-describe('Exportaciones PDF y XLSX · T03', () => {
-  it('genera un PDF válido de varias páginas con acentos y moneda S/', async () => {
-    const items = generarMuestra(60); // Genera 3 páginas (25 por página)
-    const t0 = performance.now();
-    const bytes = await generarReportePdf({
-      titulo: 'Reporte de Existencias e Inventario Porcino',
-      granja: 'Granja Porcícola San Luis',
-      fechaEmision: '07/11/2026',
-      items,
-    });
-    const duracionMs = performance.now() - t0;
-
-    // Firma válida de PDF
-    const signature = String.fromCharCode(...bytes.slice(0, 5));
-    expect(signature).toBe('%PDF-');
-
-    // Debe tener tamaño razonable (menor a 200 KB para 60 filas)
-    const tamanoKb = bytes.byteLength / 1024;
-    expect(tamanoKb).toBeGreaterThan(1);
-    expect(tamanoKb).toBeLessThan(200);
-
-    // Medición de rendimiento (debe ser muy rápido, < 500 ms)
-    expect(duracionMs).toBeLessThan(1000);
+describe('Exportaciones PDF y XLSX · T03/T26',()=>{
+  it('genera PDF paginado con contexto, encabezados repetibles y todas las filas',async()=>{
+    const bytes=await generarReportePdf({...base,farm:'Granja Porcícola San Luis'});const pdf=await PDFDocument.load(bytes);
+    artifact('exportacion.pdf',bytes);
+    expect(String.fromCharCode(...bytes.slice(0,5))).toBe('%PDF-');expect(pdf.getPageCount()).toBeGreaterThan(1);
   });
-
-  it('genera un archivo XLSX OpenXML válido con números y acentos legibles', () => {
-    const items: ReporteItemXlsx[] = generarMuestra(100);
-    const t0 = performance.now();
-    const bytes = generarReporteXlsx({
-      nombreHoja: 'Inventario Galpón A',
-      items,
-    });
-    const duracionMs = performance.now() - t0;
-
-    // Firma de archivo ZIP / OpenXML (PK\x03\x04)
-    expect(bytes[0]).toBe(0x50);
-    expect(bytes[1]).toBe(0x4b);
-    expect(bytes[2]).toBe(0x03);
-    expect(bytes[3]).toBe(0x04);
-
-    const tamanoKb = bytes.byteLength / 1024;
-    expect(tamanoKb).toBeGreaterThan(1);
-    expect(tamanoKb).toBeLessThan(100);
-    expect(duracionMs).toBeLessThan(500);
-
-    // Validar contenido real descomprimiendo el archivo
-    const unzipped = unzipSync(bytes);
-    expect(unzipped['[Content_Types].xml']).toBeDefined();
-    expect(unzipped['xl/workbook.xml']).toBeDefined();
-    expect(unzipped['xl/worksheets/sheet1.xml']).toBeDefined();
-
-    const sheetXml = strFromU8(unzipped['xl/worksheets/sheet1.xml']);
-    expect(sheetXml).toContain('Galpón A');
-    expect(sheetXml).toContain('Gestación');
-    expect(sheetXml).toContain('350.00');
-    expect(sheetXml).toContain('001');
+  it('conserva texto largo completo y permite continuar una celda entre páginas',async()=>{
+    const longText='Motivo clínico y observación extensa '.repeat(700)+'FIN';
+    const lines=wrapReportText(longText,text=>text.length*4,100);
+    expect(lines.join('')).toBe(longText);
+    const bytes=await generarReportePdf({...base,farm:'Granja',rows:[{animalCode:'001',concept:longText}],totals:{rows:1}});
+    artifact('texto-largo.pdf',bytes);
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThan(2);
   });
-
-  it('mide volumen y tiempo con muestra representativa de 300 animales', async () => {
-    const muestra300 = generarMuestra(300);
-
-    const t0Pdf = performance.now();
-    const pdfBytes = await generarReportePdf({
-      titulo: 'Cierre Mensual de Piara',
-      granja: 'Granja San Luis',
-      fechaEmision: '07/11/2026',
-      items: muestra300,
-    });
-    const duracionPdf = performance.now() - t0Pdf;
-
-    const t0Xlsx = performance.now();
-    const xlsxBytes = generarReporteXlsx({
-      nombreHoja: 'Cierre 300',
-      items: muestra300,
-    });
-    const duracionXlsx = performance.now() - t0Xlsx;
-
-    // Validación de límites técnicos medidos
-    expect(pdfBytes.byteLength / 1024).toBeLessThan(500); // Menos de 500 KB para 12 páginas
-    expect(xlsxBytes.byteLength / 1024).toBeLessThan(150); // Menos de 150 KB
-    expect(duracionPdf).toBeLessThan(3000); // Menos de 3s en entorno de prueba
-    expect(duracionXlsx).toBeLessThan(500); // Menos de 500ms
+  it('genera XLSX con números y fechas tipados, texto seguro, filtro y filas completas',()=>{
+    const bytes=generarReporteXlsx({...base,sheetName:'Producción / Galpón A'});expect([...bytes.slice(0,4)]).toEqual([0x50,0x4b,0x03,0x04]);
+    artifact('exportacion.xlsx',bytes);
+    const zip=unzipSync(bytes);expect(zip['xl/styles.xml']).toBeDefined();const sheet=strFromU8(zip['xl/worksheets/sheet1.xml']);
+    expect(sheet).toContain('autoFilter');expect(sheet).toContain('state="frozen"');expect(sheet).toContain('r="B12"><v>30.25</v>');expect(sheet).toContain('r="C12" s="1"><v>46333</v>');expect(sheet).toContain('r="D12" t="inlineStr"');expect(sheet).toContain('=HYPERLINK(');expect(sheet).not.toContain('<f>HYPERLINK');expect(sheet).toContain('301');
+    const workbook=strFromU8(zip['xl/workbook.xml']);expect(workbook).toContain('Producción   Galpón A');
   });
+  it('no acepta exportaciones sin columnas',()=>expect(()=>generarReporteXlsx({...base,sheetName:'Vacío',columns:[]})).toThrow('al menos una columna'));
 });

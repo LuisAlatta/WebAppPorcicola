@@ -1,6 +1,8 @@
 # Control de ejecución
 
-Estado actual: T01–T20 y T22–T25 completadas en staging; T21 implementada y su aceptación CA-31 queda abierta hasta las exportaciones financieras T26. Próxima tarea: T26 (PDF y XLSX completos). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Actualización de trabajo: exportaciones T26 implementadas y verificadas; PWA T27, reintentos online T28 y restauración sintética T29 implementados con cierres finales pendientes. Suite completa 93/93 y navegador móvil emulado 9/9. Consultar [registro de sesión](sesion-2026-11-08.md) y [validación pendiente](validacion-pendiente.md). Los cierres que requieren Android físico o piloto siguen abiertos.
+
+Estado actual: T01–T26 implementadas; T27–T29 con evidencia automática y condiciones de salida abiertas. Siguiente: corregir fecha real de parto CA-20, completar matriz T29 y probar instalación/actualización en Samsung A54 físico. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -44,7 +46,7 @@ Estado actual: T01–T20 y T22–T25 completadas en staging; T21 implementada y 
 
 - [x] T19 · Libro de ingresos y egresos · dependencias 15.
 - [x] T20 · Compras, ventas y correcciones integradas · dependencias 10,17,19.
-- [ ] T21 · Caja, abonos y costos por galpón · dependencias 20 (implementada en staging; cierre final pendiente de reportes T24–T26).
+- [x] T21 · Caja, abonos y costos por galpón · dependencias 20 (exportación de caja enero/febrero verificada en T26).
 - [ ] Cierre 6: Conciliar ventas, existencias, pagos y caja a dos cierres de mes, incluyendo una devolución y una corrección.
 
 ## 7. Alertas
@@ -57,8 +59,8 @@ Estado actual: T01–T20 y T22–T25 completadas en staging; T21 implementada y 
 
 - [x] T24 · Definir fuentes y consultas autorizadas · dependencias 11,14,18,21,23.
 - [x] T25 · Personalización, informes y panel · dependencias 24.
-- [ ] T26 · Exportar PDF y Excel reales · dependencias 25.
-- [ ] Cierre 8: Abrir archivos exportados en un lector PDF y en Excel u otro lector XLSX. Comparar filas, totales y permisos con la vista previa completa.
+- [x] T26 · Exportar PDF y Excel reales · dependencias 25.
+- [x] Cierre 8: PDF/XLSX reabiertos con pypdf/openpyxl; 301 filas, última301, número/fecha/texto tipados; PDF8 páginas y celda larga10 páginas. Permisos/filtros/monedas y conjunto completo verificados en integración.
 
 ## 9. Android
 
@@ -146,10 +148,10 @@ Estado actual: T01–T20 y T22–T25 completadas en staging; T21 implementada y 
 | INF-03 | T24 | Verificado: dos camadas de 10 y 20 con un muerto cada una dan media 7,5 % y tasa global 6,666… %; sin datos devuelve ceros y porcentajes nulos. |
 | INF-04 | T25 | Verificado: al reconsultar una vista previa se refleja una operación confirmada; se presenta fecha de corte, periodo y filtros; cada fila ofrece enlace al módulo/animal de origen. |
 | INF-05 | T22 | Verificado: agenda por fecha incluye ciclos/partos, camadas/destetes, vacunación, tratamientos y alertas manuales para actuaciones como palpación; fecha, animal/camada, galpón y estado se conservan |
-| INF-06 | T26 | Pendiente |
+| INF-06 | T26 | Verificado: PDF/XLSX autorizados por sesión y galpón, contexto/filtros/unidades, consulta completa hasta10 000 filas; exceso413 explícito. |
 | INF-07 | T25 | Verificado: panel de animales activos, galpones accesibles, ventas por mes, costos de alimento por mes, vacunas pendientes y partos previstos en 7 días; incluye barras, periodo, fecha de corte y alcance. Importes se agrupan por moneda; cero y ausencia de filas tienen mensajes distintos. |
 | INF-08 | T22 | Verificado: alertas manuales y automáticas, pendientes/atendidas/resueltas, fecha, clase, animal, motivo, autor de atención y vínculo a aplicación/parto; regenerar no duplica ocurrencias |
-| INF-09 | T26 | Pendiente |
+| INF-09 | T26 | Verificado: overview separa importes por moneda y actividad por mes/galpón; vacunas pendientes y eventos reproductivos no se repiten por moneda. Preview/export equivalentes; descarga y compartir son acciones separadas. |
 | INV-01 | T08 | Verificado en tests/inventory.integration.test.ts: entradas y salidas por fecha, etapa y sexo; salidas con causa obligatoria en muerte; resumen por etapa con entradas, salidas, disponibles y mortalidad (muertes/entradas) y total de la granja |
 | INV-02 | T08 | Verificado en tests/inventory.integration.test.ts: cada movimiento declara origen (saldo inicial, compra, nacimiento, venta, muerte, traslado o ajuste); saldo inicial por fecha, galpón, ubicación, lote, etapa y sexo; corte al 2026-01-31 reconstruye 12 cabezas antes de las compras de febrero |
 | INV-03 | T08 | Verificado en tests/inventory.integration.test.ts: saldo = inicial + entradas externas + nacimientos + traslados recibidos − salidas externas − muertes + ajustes; categorías excluyentes; traslado interno A→B conserva el total de la granja; correcciones retroactivas que dejarían saldo negativo responden 409 |
@@ -177,7 +179,7 @@ Estado actual: T01–T20 y T22–T25 completadas en staging; T21 implementada y 
 | RPT-02 | T24–T25 | Verificado: generador permite columnas, granularidad por fuente, rango, filtros combinados, orden y grupos múltiples; SQL y columnas se eligen de listas fijas y valores van parametrizados. Campos conservan unidad y metadatos de agregación. |
 | RPT-03 | T24 | Verificado: catálogo documenta relaciones y estrategia de agregación por animal/galpón/lote/operación/periodo; pesajes y camadas se agregan en su propia granularidad antes de retornar tabla/gráfico. No se acepta SQL ni nombres de campos suministrados por cliente. |
 | RPT-04 | T25 | Verificado: vista de detalle y resumen/grupos con total general, filtros y corte visibles; guardar, editar, duplicar y reejecutar con otras fechas; definiciones privadas por creador y permisos/galpones recalculados en cada consulta. |
-| RPT-05 | T26 | Pendiente |
+| RPT-05 | T26 | Verificado: PDF paginado sin recorte, headers/unidades repetidos; XLSX fechas/números tipados y texto inlineStr seguro. Preview500/export503, exceso10 000 rechazado explícitamente. PDF usa charset latino WinAnsi; caracteres fuera de él producen error visible. |
 | RPT-06 | T25 | Verificado en integración: Usuario concilia ingresos S/ 100, egresos S/ 30 y saldo S/ 70 por galpón/mes en libro y caja; Operario consulta dos animales de un lote y peso válido reciente 22,5 kg; Veterinario lista vacuna pendiente por animal/galpón/fecha. |
 | SAN-01 | T17 | Verificado en `tests/animals.integration.test.ts`: historial filtrable por animal, producto, lote y fecha; guarda responsable, dosis y ubicación |
 | SAN-02 | T17 | Verificado en `tests/animals.integration.test.ts`: producto, unidad, lote sanitario, galpón, ubicación, etapa y lote animal permanecen como captura histórica al trasladar después |
@@ -224,12 +226,14 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 | CA-26 | T23 | Verificado en integración: escalamiento crítico por perfil del galpón, una notificación por transición, usuario de otro galpón sin acceso, lectura conserva alerta pendiente; handler `scheduled` vuelve a crear avisos sin petición PWA en Miniflare. Cron `5 5 * * *` desplegado en staging; no se esperó a observar su próxima ejecución real. |
 | CA-27 | T05 | Verificado en tests/admin.integration.test.ts: solo Administrador crea cuentas y galpones; intentos de responsable, operario y veterinario retornan 403 Forbidden y la DB queda inalterada |
 | CA-28 | T05 | Verificado en tests/admin.integration.test.ts: asignación de A y B a Usuario responsable; asignación de Operario y Veterinario; sustitución de Vet1 por Vet3 en Galpón A; Vet1 pierde acceso de inmediato ([]), Vet3 gana acceso ([Galpón A]), Responsable conserva [A, B]; historial registra autor y vigencia |
-| CA-29 | T26 | Pendiente |
+| CA-29 | T26 | Verificado en integración: dos ventas100/200 y tres consumos10 incrementan una fila por galpón/mes en300/30; cada fuente se agrega antes de combinar. Preview/export coinciden. |
 | CA-30 | T20 | Verificado en `tests/feed.integration.test.ts`: compra S/ 500 (200 kg) y consumo S/ 120 (48 kg) conservan un egreso de S/ 500 y el movimiento de consumo valorizado en S/ 120; no se duplica caja |
-| CA-31 | T26 | Parcial en T21: venta única S/ 1.000, S/ 400 cobrados en enero (pendiente S/ 600 al 31/01) y S/ 600 en febrero (saldo cero), caja por mes, apertura S/ 1.500 y controles idempotencia/permisos/sobrepago verificados en integración; faltan PDF/XLSX financieros en T26 |
-| CA-32 | T26 | Pendiente |
+| CA-31 | T26 | Verificado: venta única1000, cobro enero400/febrero600, pendiente600/0; exportación autorizada de cada mes conserva400/600. Exportadores PDF/XLSX comparten esos datos y fueron reabiertos con lectores independientes. |
+| CA-32 | T26 | Verificado: informe guardado de A/B, exportar tras retirar B excluye sus filas; retirar A deja cero. Totales monetarios restringidos por perfil y grupos separados por moneda. |
 
 ## Registro de avance
+
+Bloque del8/11 T26–T29: exportaciones autorizadas completas, fuentes economics/overview, PWA instalable, login sin fallback demo, reintentos online estables y restauración lógica sintética. Suite93/93 en17 archivos; Chrome móvil emulado9/9; typecheck/lint/build/dry-run correctos; PDF/XLSX reabiertos con lectores independientes. Staging `95cb06c3-cfa7-448f-b524-64562ffd4cef`, esquema0001–0023, APIs protegidas401. Producción intacta. Cierres físicos/operativos siguen abiertos; detalle y siguiente CA-20 en [sesión](sesion-2026-11-08.md).
 
 | Fecha | Tarea | Estado | Prueba ejecutada y resultado real | Evidencia / commit | Pendiente o decisión |
 |---|---|---|---|---|---|

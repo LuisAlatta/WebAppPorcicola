@@ -1,0 +1,1 @@
+.pwa-controls{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;padding:.75rem 1rem;background:#edf5ed;border-bottom:1px solid #c7d8cb;color:#183b30}.pwa-controls p{margin:0}.pwa-controls .btn{min-height:44px}.session-check{max-width:34rem;margin:3rem auto;padding:1.5rem}@media(max-width:640px){.pwa-controls{font-size:.9rem}.pwa-controls .btn{width:100%}}

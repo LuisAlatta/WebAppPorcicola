@@ -76,7 +76,7 @@ import { createHealthEvent, listHealthEvents, listUpcomingHealthEvents, listWith
 import { applyVaccineOccurrence, createManualVaccineSchedule, deactivateVaccineRule, generateAnimalVaccineSchedules, generateVaccineSchedules, listVaccineRules, listVaccineSchedules, saveVaccineRule, updateVaccineOccurrence } from './vaccines';
 import { createFinancialEntry, createFinancialOpeningBalance, createFinancialSettlement, listFinancialCashflow, listFinancialEntries, reverseFinancialEntry } from './finance';
 import { attendAlert, createManualAlert, listAlertNotificationHistory, listAlerts, listEscalationRules, listNotifications, markNotificationRead, reconcileAlerts, saveEscalationRule } from './alerts';
-import { duplicateReportDefinition, getReportDefinition, listReportCatalog, listReportDefinitions, previewCustomReport, reportBirths, reportDashboard, reportWeights, saveReportDefinition, validateReportParams } from './reports';
+import { duplicateReportDefinition, exportCustomReport, getReportDefinition, listReportCatalog, listReportDefinitions, previewCustomReport, reportBirths, reportDashboard, reportWeights, saveReportDefinition, validateReportParams } from './reports';
 
 export interface Env {
   DB: D1Database;
@@ -440,7 +440,7 @@ const worker = {
     }
 
     // 7.5 Reportes · T24. Catálogo permitido y consultas agregadas.
-    if(path==='/api/reports/catalog'||path==='/api/reports/weights'||path==='/api/reports/births'||path.startsWith('/api/reports/definitions')||path==='/api/reports/preview'||path==='/api/reports/dashboard'){
+    if(path==='/api/reports/catalog'||path==='/api/reports/weights'||path==='/api/reports/births'||path.startsWith('/api/reports/definitions')||path==='/api/reports/preview'||path==='/api/reports/export'||path==='/api/reports/dashboard'){
       const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
       try{
         const role=session.user.role as Parameters<typeof listReportCatalog>[0];
@@ -449,6 +449,7 @@ const worker = {
         if(path==='/api/reports/births'&&request.method==='GET'){validateReportParams(url.searchParams,['from','to','barnId','locationCode','lotCode','motherCode']);return Response.json({ok:true,...await reportBirths(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),barnId:url.searchParams.get('barnId'),locationCode:url.searchParams.get('locationCode'),lotCode:url.searchParams.get('lotCode'),motherCode:url.searchParams.get('motherCode')},scope)});}
         if(path==='/api/reports/dashboard'&&request.method==='GET'){validateReportParams(url.searchParams,['from','to']);return Response.json({ok:true,...await reportDashboard(env.DB,url.searchParams.get('from'),url.searchParams.get('to'),scope)});}
         if(path==='/api/reports/preview'&&request.method==='POST'){const body=await request.json();return Response.json({ok:true,...await previewCustomReport(env.DB,body,role,scope)});}
+        if(path==='/api/reports/export'&&request.method==='POST'){const body=await request.json() as Record<string,unknown>;let definition=body.definition;if(typeof body.definitionId==='string'){const saved=await getReportDefinition(env.DB,session.user.id,body.definitionId);definition={...(saved.definition as Record<string,unknown>),...(body.overrides&&typeof body.overrides==='object'?body.overrides as Record<string,unknown>:{}),source:(saved.definition as Record<string,unknown>).source,name:saved.name,purpose:saved.purpose};}const report=await exportCustomReport(env.DB,definition,role,scope);const farmName=await env.DB.prepare("SELECT value FROM farm_setting_versions WHERE setting_key='farm_name' AND effective_from<=? ORDER BY effective_from DESC LIMIT 1").bind(report.asOf).first<{value:string}>();return Response.json({ok:true,...report,farmName:farmName?.value??'Granja'});}
         if(path==='/api/reports/definitions'&&request.method==='GET')return Response.json({ok:true,definitions:await listReportDefinitions(env.DB,session.user.id)});
         if(path==='/api/reports/definitions'&&request.method==='POST'){const body=await request.json() as Record<string,unknown>;const result=await saveReportDefinition(env.DB,session.user.id,role,body);return Response.json({ok:true,...result},{status:201});}
         const duplicate=path.match(/^\/api\/reports\/definitions\/([^/]+)\/duplicate$/);if(duplicate&&request.method==='POST')return Response.json({ok:true,...await duplicateReportDefinition(env.DB,session.user.id,role,decodeURIComponent(duplicate[1]))},{status:201});

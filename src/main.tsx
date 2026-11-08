@@ -1,11 +1,10 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Perfil, Vista, EstadoUI } from './types';
+import { Perfil, Vista } from './types';
 import { Navbar } from './components/Navbar';
+import { PwaControls } from './components/PwaControls';
+import {clearOperationAttempts} from './utils/operations';
 import { BocetoLogin } from './components/BocetoLogin';
-import { BocetoDashboard } from './components/BocetoDashboard';
-import { BocetoListado } from './components/BocetoListado';
-import { BocetoFormulario } from './components/BocetoFormulario';
 import { ModuloAdministracion } from './components/ModuloAdministracion';
 import { ModuloConfiguracion } from './components/ModuloConfiguracion';
 import { ModuloInventario } from './components/ModuloInventario';
@@ -17,6 +16,7 @@ const ModuloFinanzas = lazy(() => import('./components/ModuloFinanzas').then(mod
 const ModuloAnimales = lazy(() => import('./components/ModuloAnimales').then(module => ({default:module.ModuloAnimales})));
 const ModuloReportes = lazy(() => import('./components/ModuloReportes').then(module => ({default:module.ModuloReportes})));
 import './style.css';
+import './pwa.css';
 
 function getInitialView(): Vista {
   if (typeof window !== 'undefined') {
@@ -43,18 +43,19 @@ function getInitialView(): Vista {
 function App() {
   const [vistaActual, setVistaActual] = useState<Vista>(getInitialView);
   const [perfilActual, setPerfilActual] = useState<Perfil>('responsable');
-  const [estadoUI, setEstadoUI] = useState<EstadoUI>('normal');
   const [selectedAnimalId, setSelectedAnimalId] = useState<string>(() => {
     const match = typeof window !== 'undefined' ? window.location.pathname.match(/^\/animal\/(.+)$/) : null;
-    if (!match) return '002';
+    if (!match) return '';
     try {
       return decodeURIComponent(match[1]);
     } catch {
-      return '002';
+      return '';
     }
   });
-  const [estaAutenticado, setEstaAutenticado] = useState<boolean>(true);
-  const [usuarioActual, setUsuarioActual] = useState<string>('encargado@granja.pe');
+  const [estaAutenticado, setEstaAutenticado] = useState<boolean>(false);
+  const [estadoSesion,setEstadoSesion]=useState<'cargando'|'lista'|'error'>('cargando');
+  const [usuarioActual, setUsuarioActual] = useState<string>('');
+  const [logoutError,setLogoutError]=useState('');
 
   useEffect(() => {
     // Verificar si hay sesión activa en el servidor
@@ -66,15 +67,24 @@ function App() {
           setPerfilActual(data.user.role);
           setUsuarioActual(data.user.username);
           setEstaAutenticado(true);
+          setEstadoSesion('lista');
+        } else if(res.status===401){
+          setEstaAutenticado(false);
+          setEstadoSesion('lista');
+        } else {
+          setEstadoSesion('error');
         }
       } catch {
-        // En entorno local desconectado se mantiene el estado interactivo
+        setEstaAutenticado(false);
+        setEstadoSesion('error');
       }
     };
     verificarSesion();
 
     const handlePopState = () => {
       setVistaActual(getInitialView());
+      const match=window.location.pathname.match(/^\/animal\/(.+)$/);
+      if(match){try{setSelectedAnimalId(decodeURIComponent(match[1]));}catch{setSelectedAnimalId('');}}
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -104,56 +114,45 @@ function App() {
   };
 
   const handleLogin = (perfil: Perfil, username?: string) => {
+    clearOperationAttempts();
     setPerfilActual(perfil);
     if (username) setUsuarioActual(username);
     setEstaAutenticado(true);
-    handleNavigate('inicio');
+    if(vistaActual==='login')handleNavigate('inicio');
   };
 
   const handleLogout = async () => {
+    setLogoutError('');
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      const response=await fetch('/api/auth/logout', { method: 'POST' });
+      if(!response.ok)throw new Error('No se pudo cerrar la sesión. Vuelve a intentar.');
     } catch {
-      // Ignorar fallo de red
+      setLogoutError('No se pudo cerrar la sesión en el servidor. Comprueba la conexión y vuelve a intentar.');
+      return;
     }
+    clearOperationAttempts();
     setEstaAutenticado(false);
     handleNavigate('login');
   };
 
   const renderVista = () => {
+    if(estadoSesion==='cargando')return <div className="session-check" role="status">Comprobando sesión…</div>;
+    if(estadoSesion==='error')return <div className="session-check" role="alert"><h1>No se pudo comprobar la sesión</h1><p>Comprueba la conexión y vuelve a intentar para acceder a los datos de la granja.</p><button className="btn btn-primary" type="button" onClick={()=>window.location.reload()}>Volver a intentar</button></div>;
     if (!estaAutenticado || vistaActual === 'login') {
       return (
         <BocetoLogin
           onLogin={handleLogin}
-          isErrorMode={estadoUI === 'rechazo'}
         />
       );
     }
 
+    if((vistaActual==='configuracion'||vistaActual==='administracion')&&perfilActual!=='administrador')return <div className="session-check" role="alert"><h1>Acceso restringido</h1><p>Este módulo solo está disponible para el administrador.</p></div>;
     switch (vistaActual) {
       case 'inicio':
-        return (
-          <BocetoDashboard
-            perfil={perfilActual}
-            onNavigate={handleNavigate}
-            onSelectAnimal={(id) => setSelectedAnimalId(id)}
-          />
-        );
+        return <ModuloInventario perfil={perfilActual} />;
       case 'listado':
-        return (
-          <BocetoListado
-            onNavigate={handleNavigate}
-            onSelectAnimal={(id) => setSelectedAnimalId(id)}
-            estadoUI={estadoUI}
-          />
-        );
       case 'formulario':
-        return (
-          <BocetoFormulario
-            onNavigate={handleNavigate}
-            estadoUI={estadoUI}
-          />
-        );
+        return <Suspense fallback={<div className="module-container">Cargando animales…</div>}><ModuloAnimales perfil={perfilActual} /></Suspense>;
       case 'detalle':
         return <Suspense fallback={<div className="module-container">Cargando ficha…</div>}><ModuloAnimales perfil={perfilActual} initialAnimalKey={selectedAnimalId} /></Suspense>;
       case 'inventario':
@@ -186,15 +185,14 @@ function App() {
 
   return (
     <div className="app-shell">
+      <PwaControls />
+      {logoutError&&<div className="alert alert-danger" role="alert">{logoutError}</div>}
       {estaAutenticado && vistaActual !== 'login' && (
         <Navbar
           vistaActual={vistaActual}
           perfilActual={perfilActual}
-          estadoUI={estadoUI}
           usuario={usuarioActual}
           onNavigate={handleNavigate}
-          onChangePerfil={(p) => setPerfilActual(p)}
-          onChangeEstadoUI={(e) => setEstadoUI(e)}
           onLogout={handleLogout}
         />
       )}
@@ -206,10 +204,10 @@ function App() {
       <footer className="main-footer">
         <div className="footer-content">
           <p className="footer-text">
-            Web Porcícola · Sistema de gestión integral · T02 Boceto navegable interactivo
+            Web Porcícola · Sistema de gestión integral
           </p>
           <p className="text-xs text-muted">
-            Los datos mostrados corresponden a valores sintéticos de prueba según la especificación técnica.
+            Acceso según perfil y galpones asignados.
           </p>
         </div>
       </footer>

@@ -1,108 +1,75 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
-export interface ReporteItemPdf {
-  arete: string;
-  galpon: string;
-  etapa: string;
-  pesoKg: number;
-  valorSoles: number;
-  fechaIngreso: string;
-  estado: string;
+export interface ReportColumn { key: string; label: string; dataType: 'text'|'date'|'number'|'money'|'percent'; unit?: string }
+export interface ReportFileOptions {
+  title: string;
+  purpose: string;
+  farm: string;
+  generatedAt: string;
+  from?: string;
+  to?: string;
+  asOf: string;
+  filters: Record<string,string>;
+  columns: ReportColumn[];
+  rows: Record<string,unknown>[];
+  totals?: Record<string,number|null>;
+  moneyTotals?: Record<string,{income:number;expense:number;balance:number}>;
 }
 
-export interface ReportePdfOpciones {
-  titulo: string;
-  granja: string;
-  fechaEmision: string;
-  items: ReporteItemPdf[];
-}
+const display = (value: unknown) => value === null || value === undefined ? '—' : value instanceof Date ? value.toLocaleDateString('es-PE') : String(value);
 
-export async function generarReportePdf(opciones: ReportePdfOpciones): Promise<Uint8Array> {
-  const pdfDoc = await PDFDocument.create();
-  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-  const itemsPorPagina = 25;
-  const totalPaginas = Math.ceil(opciones.items.length / itemsPorPagina) || 1;
-
-  for (let pag = 0; pag < totalPaginas; pag++) {
-    const page = pdfDoc.addPage([595.28, 841.89]); // A4
-    const { width, height } = page.getSize();
-    let currentY = height - 40;
-
-    // Encabezado
-    page.drawText(opciones.granja, {
-      x: 40,
-      y: currentY,
-      size: 10,
-      font: fontRegular,
-      color: rgb(0.3, 0.4, 0.3),
-    });
-
-    page.drawText(`Fecha: ${opciones.fechaEmision}`, {
-      x: width - 150,
-      y: currentY,
-      size: 9,
-      font: fontRegular,
-      color: rgb(0.4, 0.4, 0.4),
-    });
-
-    currentY -= 22;
-    page.drawText(opciones.titulo, {
-      x: 40,
-      y: currentY,
-      size: 16,
-      font: fontBold,
-      color: rgb(0.1, 0.2, 0.1),
-    });
-
-    currentY -= 25;
-
-    // Cabecera de tabla
-    page.drawRectangle({
-      x: 40,
-      y: currentY - 5,
-      width: width - 80,
-      height: 20,
-      color: rgb(0.92, 0.95, 0.92),
-    });
-
-    page.drawText('Arete', { x: 45, y: currentY, size: 9, font: fontBold });
-    page.drawText('Galpón', { x: 95, y: currentY, size: 9, font: fontBold });
-    page.drawText('Etapa', { x: 170, y: currentY, size: 9, font: fontBold });
-    page.drawText('Peso (kg)', { x: 250, y: currentY, size: 9, font: fontBold });
-    page.drawText('Valor (S/)', { x: 325, y: currentY, size: 9, font: fontBold });
-    page.drawText('Fecha', { x: 400, y: currentY, size: 9, font: fontBold });
-    page.drawText('Estado', { x: 470, y: currentY, size: 9, font: fontBold });
-
-    currentY -= 18;
-
-    // Filas
-    const inicio = pag * itemsPorPagina;
-    const fin = Math.min(inicio + itemsPorPagina, opciones.items.length);
-    const itemsPagina = opciones.items.slice(inicio, fin);
-
-    for (const item of itemsPagina) {
-      page.drawText(item.arete, { x: 45, y: currentY, size: 8.5, font: fontRegular });
-      page.drawText(item.galpon, { x: 95, y: currentY, size: 8.5, font: fontRegular });
-      page.drawText(item.etapa, { x: 170, y: currentY, size: 8.5, font: fontRegular });
-      page.drawText(`${item.pesoKg.toFixed(1)} kg`, { x: 250, y: currentY, size: 8.5, font: fontRegular });
-      page.drawText(`S/ ${item.valorSoles.toFixed(2)}`, { x: 325, y: currentY, size: 8.5, font: fontRegular });
-      page.drawText(item.fechaIngreso, { x: 400, y: currentY, size: 8.5, font: fontRegular });
-      page.drawText(item.estado, { x: 470, y: currentY, size: 8.5, font: fontRegular });
-
-      currentY -= 16;
-    }
-
-    // Pie de página con numeración
-    page.drawText(`Página ${pag + 1} de ${totalPaginas}`, {
-      x: width / 2 - 25,
-      y: 25,
-      size: 8,
-      font: fontRegular,
-      color: rgb(0.5, 0.5, 0.5),
-    });
+export function wrapReportText(text:string,measure:(text:string)=>number,width:number):string[]{
+  const lines:string[]=[];let line='';
+  for(const character of text.replace(/\r/g,'')){
+    if(character==='\n'){lines.push(line);line='';continue;}
+    if(line&&measure(line+character)>width){lines.push(line);line='';}
+    line+=character;
   }
+  lines.push(line);return lines;
+}
 
-  return await pdfDoc.save();
+export async function generarReportePdf(options: ReportFileOptions): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const regular = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const landscape = options.columns.length > 5;
+  const pageSize: [number,number] = landscape ? [841.89,595.28] : [595.28,841.89];
+  const margin = 32;
+  if(!options.columns.length)throw new Error('El informe requiere al menos una columna');
+  const width=pageSize[0]-2*margin;const columnWidth=width/options.columns.length;
+  let page=doc.addPage(pageSize);let y=pageSize[1]-margin;
+  const newPage=()=>{page=doc.addPage(pageSize);y=pageSize[1]-margin;};
+  const paragraph=(text:string,size=8,font=regular)=>{
+    for(const line of wrapReportText(text,value=>font.widthOfTextAtSize(value,size),width)){
+      if(y<margin+15)newPage();page.drawText(line,{x:margin,y,size,font});y-=size+4;
+    }
+    y-=4;
+  };
+  paragraph(options.farm,9);paragraph(options.title,15,bold);
+  paragraph(`Finalidad: ${options.purpose}`);
+  paragraph(`Periodo: ${options.from||'inicio'} a ${options.to||'hoy'} · Corte: ${options.asOf} · Generado: ${options.generatedAt}`);
+  paragraph(`Filtros: ${Object.entries(options.filters).map(([key,value])=>`${key}: ${value}`).join(' · ')||'ninguno'}`);
+  paragraph(`Filas: ${options.rows.length}`);
+  for(const [key,value] of Object.entries(options.totals??{}))if(typeof value==='number')paragraph(`${key}: ${value.toFixed(2)}`);
+  for(const [currency,value] of Object.entries(options.moneyTotals??{}))paragraph(`${currency}: ingresos ${value.income.toFixed(2)} · egresos ${value.expense.toFixed(2)} · saldo ${value.balance.toFixed(2)}`);
+  const headerLines=options.columns.map(column=>wrapReportText(column.unit?`${column.label} (${column.unit})`:column.label,value=>bold.widthOfTextAtSize(value,7.5),columnWidth-8));
+  const headerHeight=Math.max(...headerLines.map(lines=>lines.length))*11+8;
+  const header=()=>{
+    if(y<headerHeight+margin+20)newPage();
+    page.drawRectangle({x:margin,y:y-headerHeight+8,width,height:headerHeight,color:rgb(.91,.94,.91)});
+    headerLines.forEach((lines,index)=>lines.forEach((line,n)=>page.drawText(line,{x:margin+index*columnWidth+4,y:y-n*11,size:7.5,font:bold})));y-=headerHeight;
+  };
+  header();
+  for(const row of options.rows){
+    const cells=options.columns.map(column=>wrapReportText(display(row[column.key]).replace(/\t/g,' '),value=>regular.widthOfTextAtSize(value,7),columnWidth-8));
+    const lineCount=Math.max(...cells.map(lines=>lines.length));
+    for(let lineIndex=0;lineIndex<lineCount;lineIndex++){
+      if(y<margin+12){newPage();header();}
+      cells.forEach((lines,index)=>{if(lines[lineIndex]!==undefined)page.drawText(lines[lineIndex],{x:margin+index*columnWidth+4,y,size:7,font:regular});});y-=11;
+    }
+    y-=7;
+  }
+  const pages=doc.getPages();pages.forEach((item,index)=>item.drawText(`Página ${index+1} de ${pages.length}`,{x:pageSize[0]/2-28,y:14,size:8,font:regular}));
+  doc.setTitle(options.title);doc.setSubject(options.purpose);doc.setProducer('Web Porcícola');
+  return doc.save();
 }
