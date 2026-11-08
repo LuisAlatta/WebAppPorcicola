@@ -25,7 +25,7 @@ Estado actual: T01–T26 implementadas; T27–T29 con evidencia automática y co
 - [x] T09 · Dar de alta y consultar animales · dependencias 08.
 - [x] T10 · Transferir, dar de baja, conciliar y corregir · dependencias 09.
 - [x] T11 · Registrar producción y pesajes · dependencias 09,10.
-- [ ] Cierre 3: Reconstruir el saldo a dos fechas desde el historial. Comparar la suma de grupos e identificados con la ocupación. Probar dos escritores y un reintento.
+- [x] Cierre 3: `tests/cierre3.integration.test.ts` verificó dos cortes: A10=2 identificados+8 sin identificar y B4=1+3; después A3=2+1 y B6=1+5. Reintento200 sin duplicar; retiros simultáneos7/10 responden201/409; el primer corte se reconstruye igual.
 
 ## 4. Reproducción
 
