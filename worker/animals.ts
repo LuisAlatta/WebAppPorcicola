@@ -789,6 +789,7 @@ export interface CreateAnimalInput {
   observations?: string | null;
   reason?: string;
   operationKey?: string;
+  litterId?: string | null;
 }
 
 interface ParentInput {
@@ -954,6 +955,7 @@ export async function createAnimal(
   const fatherExternal = optionalText(input.fatherExternal, 60);
   const motherId = optionalId(input.motherId, 'ID de madre');
   const fatherId = optionalId(input.fatherId, 'ID de padre');
+  const litterId = input.litterId ? requireText(input.litterId, 'Camada', 80) : null;
 
   if (motherId !== null && motherExternal !== null) {
     throw new ApiError(400, 'Indique la madre interna o externa, no ambas');
@@ -986,6 +988,7 @@ export async function createAnimal(
     barnId,
     locationCode,
     lotCode,
+    litterId,
     observations,
   };
 
@@ -1037,6 +1040,24 @@ export async function createAnimal(
     }
   }
 
+  let litterMotherId: number | null = null;
+  if (litterId) {
+    if (originType !== 'interna') throw new ApiError(400, 'Vincular una camada consume una cabeza existente; la procedencia debe ser interna');
+    const litter = await db.prepare('SELECT * FROM litters WHERE id=?').bind(litterId).first<Row>();
+    if (!litter || Number(litter.historical_only) === 1) throw new ApiError(404, 'Camada actual no encontrada');
+    if (Number(litter.barn_id) !== barnId || litter.location_code !== locationCode || litter.lot_code !== lotCode || entryDate < String(litter.farrowing_date)) {
+      throw new ApiError(400, 'La ficha debe conservar el galpón, ubicación, lote y fecha de la camada');
+    }
+    if (!['macho','hembra','pendiente'].includes(sex)) throw new ApiError(400, 'Sexo de ficha no coincide con una categoría de la camada');
+    const countColumn = sex === 'macho' ? 'male_alive' : sex === 'hembra' ? 'female_alive' : 'unsexed_alive';
+    const availableInLitter = Number(litter[countColumn]);
+    const identified = await db.prepare('SELECT COUNT(*) AS n FROM animals WHERE litter_id=? AND sex=? AND status="activo"').bind(litterId, sex).first<{n:number}>();
+    if (Number(identified?.n ?? 0) >= availableInLitter) throw new ApiError(409, 'No quedan cabezas de ese sexo sin identificar en la camada');
+    litterMotherId = Number(litter.female_animal_id);
+    if (mother.id !== null && mother.id !== litterMotherId) throw new ApiError(400, 'La madre no coincide con la camada de origen');
+    if (mother.id === null && mother.external !== null) throw new ApiError(400, 'La camada de origen requiere la madre registrada');
+  }
+
   const idRow = await db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM animals')
     .first<{ next_id: number }>();
   const animalId = Number(idRow?.next_id ?? 1);
@@ -1049,14 +1070,14 @@ export async function createAnimal(
         weaning_date, weaning_weight_kg, status, aptitude, mother_id, father_id,
         mother_external, father_external, origin_type, origin_detail, entry_date,
         entry_stage_code, current_stage_code, barn_id, location_code, lot_code,
-        observations, is_active, created_by_user_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+        observations, is_active, created_by_user_id, created_at, updated_at, litter_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
     `).bind(
       animalId, code, alias, animalType, sex, breed, birthDate, birthWeightKg,
-      weaningDate, weaningWeightKg, aptitude, mother.id, father.id,
+      weaningDate, weaningWeightKg, aptitude, mother.id ?? litterMotherId, father.id,
       mother.external, father.external, originType, originDetail, entryDate,
       stageCode, stageCode, barnId, locationCode, lotCode,
-      observations, actorUserId, createdAt, createdAt,
+      observations, actorUserId, createdAt, createdAt, litterId,
     ),
     db.prepare(`
       INSERT INTO animal_tags (animal_id, tag, valid_from, valid_to, is_current, created_by_user_id, created_at)
@@ -1151,6 +1172,14 @@ export async function createAnimal(
       effectiveDate: entryDate,
       recordedAt: claim.recordedAt,
     });
+  }
+
+  if (litterId) {
+    const litterCountColumn = sex === 'macho' ? 'male_alive' : sex === 'hembra' ? 'female_alive' : 'unsexed_alive';
+    statements.unshift(db.prepare(`INSERT INTO litter_identification_guard (guard_id)
+      SELECT CASE WHEN COUNT(*) < (SELECT ${litterCountColumn} FROM litters WHERE id=?) THEN 0 ELSE -1 END
+      FROM animals WHERE litter_id=? AND sex=? AND status='activo'`).bind(litterId, litterId, sex));
+    statements.push(db.prepare('DELETE FROM litter_identification_guard'));
   }
 
   await commitOperation(db, claim, statements, audits);

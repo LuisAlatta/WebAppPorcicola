@@ -129,6 +129,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0008_animal_location_history.sql',
       '0009_weight_measurement_order.sql',
       '0010_reproduction_cycles.sql',
+      '0011_litters_and_farrowing.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -798,6 +799,89 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const antecCycle = (await antecList.json() as { cycles: { femaleCode: string; antecedent: boolean; serviceAnchorDate: string | null; services: unknown[] }[] }).cycles[0];
     expect(antecCycle).toMatchObject({ femaleCode: 'T12-ANTEC', antecedent: true, serviceAnchorDate: null, services: [] });
   }, 15000);
+
+  it('registra parto en una sola operación, suma solo vivos e individualiza cabezas de la camada', async () => {
+    const sowRes = await create({ code: 'T13-MADRE', animalType: 'cerda', sex: 'hembra', birthDate: '2024-01-01',
+      entryDate: '2026-01-01', entryStageCode: 'gestacion', originType: 'compra', operationKey: 'ani-t13-sow' });
+    expect(sowRes.status).toBe(201);
+    const sow = (await sowRes.json() as { animal: { id: number } }).animal;
+    const cycleRes = await api('/api/reproduction/cycles', { method: 'POST', body: JSON.stringify({ femaleCode: 'T13-MADRE',
+      serviceDate: '2026-05-25', serviceType: 'inseminacion_artificial', materialSource: 'external', externalSource: 'Genética T13', operationKey: 'rep-t13-cycle' }) });
+    expect(cycleRes.status).toBe(201);
+    const cycleId = (await cycleRes.json() as { createdCycleId: string }).createdCycleId;
+    const before = (await inventoryTotals('2026-09-16')).summary.total.available;
+    const farrowingBody = { farrowingDate: '2026-09-16', maleAlive: 5, femaleAlive: 3, unsexedAlive: 0,
+      maleStillborn: 1, femaleStillborn: 0, unsexedStillborn: 0, averageWeightKg: 1.4, reason: 'Parto supervisado', operationKey: 'rep-t13-farrow' };
+    const farrowRes = await api(`/api/reproduction/cycles/${cycleId}/farrowing`, { method: 'POST', body: JSON.stringify(farrowingBody) });
+    expect(farrowRes.status, await farrowRes.clone().text()).toBe(201);
+    const farrow = await farrowRes.json() as { litterId: string; liveCount: number; stillbornCount: number; totalBorn: number; mortalityPercent: number; expectedWeaningDate: string };
+    expect(farrow).toMatchObject({ liveCount: 8, stillbornCount: 1, totalBorn: 9, mortalityPercent: expect.closeTo(11.111, 2), expectedWeaningDate: '2026-10-07' });
+    const retry = await api(`/api/reproduction/cycles/${cycleId}/farrowing`, { method: 'POST', body: JSON.stringify(farrowingBody) });
+    expect(retry.status, await retry.clone().text()).toBe(200);
+    expect((await inventoryTotals('2026-09-16')).summary.total.available).toBe(before + 8);
+    expect(await db.prepare('SELECT cycle_status FROM reproduction_cycles WHERE id=?').bind(cycleId).first()).toMatchObject({ cycle_status: 'farrowed' });
+    for (const [code, sex] of [['T13-LECHON-H', 'hembra'], ['T13-LECHON-M', 'macho']] as const) {
+      const response = await create({ code, animalType: 'lechon', sex, birthDate: '2026-09-16', entryDate: '2026-09-16',
+        entryStageCode: 'preinicio', barnId: 1, locationCode: 'galpon_a', originType: 'interna', motherId: sow.id, litterId: farrow.litterId, operationKey: `${code}-alta` });
+      expect(response.status, await response.clone().text()).toBe(201);
+    }
+    const litter = await db.prepare('SELECT COUNT(*) AS identified FROM animals WHERE litter_id=?').bind(farrow.litterId).first<{ identified: number }>();
+    expect(litter?.identified).toBe(2);
+    const balance = await inventoryTotals('2026-09-16');
+    expect(balance.summary.total.available).toBe(before + 8);
+    expect(balance.balances.reduce((sum, row) => sum + row.unidentified, 0)).toBeGreaterThanOrEqual(6);
+    const extraFemale = await create({ code: 'T13-LECHON-H-EXTRA', animalType: 'lechon', sex: 'hembra', birthDate: '2026-09-16', entryDate: '2026-09-16',
+      entryStageCode: 'preinicio', barnId: 1, locationCode: 'galpon_a', originType: 'interna', motherId: sow.id, litterId: farrow.litterId, operationKey: 'T13-LECHON-H-EXTRA-alta' });
+    expect(extraFemale.status).toBe(201);
+    const extraFemaleTwo = await create({ code: 'T13-LECHON-H-EXTRA-2', animalType: 'lechon', sex: 'hembra', birthDate: '2026-09-16', entryDate: '2026-09-16',
+      entryStageCode: 'preinicio', barnId: 1, locationCode: 'galpon_a', originType: 'interna', motherId: sow.id, litterId: farrow.litterId, operationKey: 'T13-LECHON-H-EXTRA-2-alta' });
+    expect(extraFemaleTwo.status).toBe(201);
+    for (let index = 0; index < 4; index += 1) {
+      const response = await create({ code: `T13-LECHON-M-EXTRA-${index}`, animalType: 'lechon', sex: 'macho', birthDate: '2026-09-16', entryDate: '2026-09-16',
+        entryStageCode: 'preinicio', barnId: 1, locationCode: 'galpon_a', originType: 'interna', motherId: sow.id, litterId: farrow.litterId, operationKey: `T13-LECHON-M-EXTRA-${index}-alta` });
+      expect(response.status).toBe(201);
+    }
+    const correction = await api(`/api/reproduction/litters/${farrow.litterId}/correction`, { method: 'POST', body: JSON.stringify({
+      maleAlive: 4, femaleAlive: 3, unsexedAlive: 0, maleStillborn: 1, femaleStillborn: 0, unsexedStillborn: 0,
+      reason: 'Conteo corregido luego de distribuir', operationKey: 'rep-t13-correction-down',
+    }) });
+    expect(correction.status, await correction.clone().text()).toBe(409);
+    const overFemale = await create({ code: 'T13-LECHON-H-OVER', animalType: 'lechon', sex: 'hembra', birthDate: '2026-09-16', entryDate: '2026-09-16',
+      entryStageCode: 'preinicio', barnId: 1, locationCode: 'galpon_a', originType: 'interna', motherId: sow.id, litterId: farrow.litterId, operationKey: 'T13-LECHON-H-OVER-alta' });
+    expect(overFemale.status).toBe(409);
+
+    const historicalSow = await create({ code: 'T13-ANT-HIST', animalType: 'cerda', sex: 'hembra', birthDate: '2024-01-01',
+      entryDate: '2026-01-01', entryStageCode: 'gestacion', originType: 'compra', operationKey: 'ani-t13-hist-sow' });
+    expect(historicalSow.status).toBe(201);
+    const antecedentRes = await api('/api/reproduction/antecedents', { method: 'POST', body: JSON.stringify({ femaleCode: 'T13-ANT-HIST',
+      serviceDate: '2026-10-01', dueDate: '2026-11-20', operationKey: 'rep-t13-hist-antecedent' }) });
+    expect(antecedentRes.status).toBe(201);
+    const antecedentCycle = (await antecedentRes.json() as { createdCycleId: string }).createdCycleId;
+    const historicalBefore = (await inventoryTotals('2026-11-07')).summary.total.available;
+    const historicalFarrow = await api(`/api/reproduction/cycles/${antecedentCycle}/farrowing`, { method: 'POST', body: JSON.stringify({
+      farrowingDate: '2025-01-01', maleAlive: 2, femaleAlive: 1, maleStillborn: 1, reason: 'Antecedente histórico recibido', operationKey: 'rep-t13-hist-farrow',
+    }) });
+    expect(historicalFarrow.status, await historicalFarrow.clone().text()).toBe(201);
+    expect((await historicalFarrow.json() as { historicalOnly: boolean })).toMatchObject({ historicalOnly: true });
+    expect((await inventoryTotals('2026-11-07')).summary.total.available).toBe(historicalBefore);
+
+    const correctionSow = await create({ code: 'T13-CORR-SOW', animalType: 'cerda', sex: 'hembra', birthDate: '2024-01-01',
+      entryDate: '2026-01-01', entryStageCode: 'gestacion', originType: 'compra', operationKey: 'ani-t13-corr-sow' });
+    expect(correctionSow.status).toBe(201);
+    const correctionCycleRes = await api('/api/reproduction/cycles', { method: 'POST', body: JSON.stringify({ femaleCode: 'T13-CORR-SOW',
+      serviceDate: '2026-09-01', serviceType: 'inseminacion_artificial', materialSource: 'external', externalSource: 'Prueba', operationKey: 'rep-t13-corr-cycle' }) });
+    const correctionCycle = (await correctionCycleRes.json() as { createdCycleId: string }).createdCycleId;
+    const correctionFarrowRes = await api(`/api/reproduction/cycles/${correctionCycle}/farrowing`, { method: 'POST', body: JSON.stringify({
+      farrowingDate: '2026-10-10', maleAlive: 2, reason: 'Registro inicial para corregir', operationKey: 'rep-t13-corr-farrow',
+    }) });
+    const correctionLitter = (await correctionFarrowRes.json() as { litterId: string }).litterId;
+    const correctionBefore = (await inventoryTotals('2026-11-08')).summary.total.available;
+    const allowedCorrection = await api(`/api/reproduction/litters/${correctionLitter}/correction`, { method: 'POST', body: JSON.stringify({
+      maleAlive: 1, reason: 'Conteo confirmado por supervisor', operationKey: 'rep-t13-corr-adjust',
+    }) });
+    expect(allowedCorrection.status, await allowedCorrection.clone().text()).toBe(201);
+    expect((await inventoryTotals('2026-11-08')).summary.total.available).toBe(correctionBefore - 1);
+  });
 
   it('registra pesajes fuera de orden cronológico, calcula ganancias, conserva ubicación y corrige sin borrar el original', async () => {
     const created = await create({ code: 'T11-PESO', entryDate: '2026-06-01', operationKey: 'ani-t11-alta-peso' });

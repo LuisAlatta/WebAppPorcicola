@@ -68,6 +68,7 @@ import {
   listReproductionCycles, createReproductionCycle, addReproductionService,
   recordReproductionEvent, updateReproductionCycle, createPregnantAntecedent,
 } from './reproduction';
+import { correctLitter, recordFarrowing } from './litters';
 
 export interface Env {
   DB: D1Database;
@@ -548,6 +549,16 @@ const worker = {
         }
         const parts = path.split('/').filter(Boolean);
         const cycleId = parts[3] ? decodeURIComponent(parts[3]) : '';
+        if (parts[2] === 'litters' && cycleId && parts.length === 5 && parts[4] === 'correction' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof correctLitter>[3];
+          const result = await correctLitter(env.DB, session.user.id, cycleId, body, scope);
+          return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
+        }
+        if (cycleId && parts.length === 5 && parts[4] === 'farrowing' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof recordFarrowing>[3];
+          const result = await recordFarrowing(env.DB, session.user.id, cycleId, body, scope);
+          return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
+        }
         if (cycleId && parts.length === 4 && request.method === 'PUT') {
           const body = await request.json() as Parameters<typeof updateReproductionCycle>[3];
           const result = await updateReproductionCycle(env.DB, session.user.id, cycleId, body, scope);

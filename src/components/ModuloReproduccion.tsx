@@ -38,6 +38,8 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
   const [eventKeys, setEventKeys] = useState<Record<string, string>>({});
   const [manualKeys, setManualKeys] = useState<Record<string, string>>({});
   const [closureForm, setClosureForm] = useState<{ cycleId: string; eventType: 'abortion' | 'closed'; reason: string } | null>(null);
+  const [farrowingCycle, setFarrowingCycle] = useState<string | null>(null);
+  const [farrowingKeys, setFarrowingKeys] = useState<Record<string, string>>({});
 
   const fetchData = useCallback(async () => {
     const params = new URLSearchParams(); if (from) params.set('from', from); if (to) params.set('to', to); if (status !== 'all') params.set('status', status);
@@ -135,6 +137,25 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     finally { setBusy(false); }
   };
 
+  const saveFarrowing = async (event: React.FormEvent, cycle: Cycle) => {
+    event.preventDefault(); setBusy(true); setError(null);
+    const data = new FormData(event.currentTarget as HTMLFormElement);
+    const operationKey = farrowingKeys[cycle.id] ?? newOperationKey('rep-parto');
+    setFarrowingKeys((previous) => ({ ...previous, [cycle.id]: operationKey }));
+    try {
+      const response = await fetch(`/api/reproduction/cycles/${encodeURIComponent(cycle.id)}/farrowing`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ farrowingDate: data.get('farrowingDate'), parityNumber: data.get('parityNumber') || undefined,
+          maleAlive: data.get('maleAlive'), femaleAlive: data.get('femaleAlive'), unsexedAlive: data.get('unsexedAlive'),
+          maleStillborn: data.get('maleStillborn'), femaleStillborn: data.get('femaleStillborn'), unsexedStillborn: data.get('unsexedStillborn'),
+          averageWeightKg: data.get('averageWeightKg') || undefined, observations: data.get('observations'), reason: data.get('reason'), operationKey }) });
+      const body = await response.json() as { error?: string; liveCount?: number; expectedWeaningDate?: string; historicalOnly?: boolean };
+      if (!response.ok) { setError(body.error ?? 'No se pudo registrar el parto.'); return; }
+      setFarrowingKeys((previous) => ({ ...previous, [cycle.id]: newOperationKey('rep-parto') }));
+      setFarrowingCycle(null); setNotice(`${body.liveCount ?? 0} nacidos vivos registrados${body.historicalOnly ? ' como antecedente histórico' : ' en inventario'}${body.expectedWeaningDate ? ` · destete previsto ${body.expectedWeaningDate}` : ''}.`); await load();
+    } catch { setError('No se pudo confirmar el parto. Reintente con la misma operación.'); }
+    finally { setBusy(false); }
+  };
+
   return <section className="reproduction-page">
     <header className="reproduction-header"><div><h1 className="font-bold text-xl inline-flex items-center gap-2"><IconPig size={22} />Reproducción</h1>
       <p className="text-sm text-muted">Ciclos, servicios, palpaciones y fechas probables. El cálculo usa la duración vigente de la etapa Gestación.</p></div>
@@ -172,7 +193,17 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
           <button type="button" className="btn btn-outline btn-sm" onClick={() => setManualCycle(manualCycle === cycle.id ? null : cycle.id)}><IconCalendar size={14} /> Fecha probable manual</button>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => setClosureForm({ cycleId: cycle.id, eventType: 'abortion', reason: '' })}>Registrar aborto</button>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => setClosureForm({ cycleId: cycle.id, eventType: 'closed', reason: '' })}>Cerrar ciclo</button>
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => setFarrowingCycle(farrowingCycle === cycle.id ? null : cycle.id)}>Registrar parto y camada</button>
         </div>}
+        {farrowingCycle === cycle.id && <form className="form-stack mt-3" onSubmit={(event) => void saveFarrowing(event, cycle)}>
+          <div className="grid-3"><div className="form-group"><label className="form-label">Fecha del parto</label><input name="farrowingDate" type="date" max={farmToday()} className="form-input" defaultValue={cycle.probableFarrowingDate} required /></div>
+            <div className="form-group"><label className="form-label">Número de parto (opcional)</label><input name="parityNumber" type="number" min="1" step="1" className="form-input" /></div>
+            <div className="form-group"><label className="form-label">Peso promedio vivo (kg)</label><input name="averageWeightKg" type="number" min="0.01" max="10" step="0.01" className="form-input" /></div></div>
+          <div className="grid-3">{[['maleAlive','Machos vivos'],['femaleAlive','Hembras vivas'],['unsexedAlive','Vivos sin sexar'],['maleStillborn','Machos nacidos muertos'],['femaleStillborn','Hembras nacidas muertas'],['unsexedStillborn','Muertos sin sexar']].map(([name,label]) => <div className="form-group" key={name}><label className="form-label">{label}</label><input name={name} type="number" min="0" step="1" defaultValue="0" className="form-input" required /></div>)}</div>
+          <div className="grid-2"><div className="form-group"><label className="form-label">Motivo / referencia</label><input name="reason" className="form-input" required minLength={5} maxLength={300} /></div><div className="form-group"><label className="form-label">Observaciones</label><input name="observations" className="form-input" maxLength={1000} /></div></div>
+          <div className="text-xs text-muted">Solo los nacidos vivos ingresan al inventario. El destete previsto usa la duración vigente de Lactancia.</div>
+          <div className="form-actions"><button className="btn btn-primary btn-sm" disabled={busy}>Guardar parto y cerrar ciclo</button><button type="button" className="btn btn-outline btn-sm" onClick={() => setFarrowingCycle(null)}>Cancelar</button></div>
+        </form>}
         {closureForm?.cycleId === cycle.id && <form className="form-stack mt-3" onSubmit={(event) => { event.preventDefault(); void recordEvent(cycle, closureForm.eventType, undefined, closureForm.reason); }}><div className="form-group"><label className="form-label">{closureForm.eventType === 'abortion' ? 'Motivo del aborto' : 'Motivo del cierre'}</label><input className="form-input" required minLength={5} maxLength={300} value={closureForm.reason} onChange={(event) => setClosureForm((previous) => previous ? { ...previous, reason: event.target.value } : previous)} /></div><div className="form-actions"><button className="btn btn-primary btn-sm" disabled={busy}>{closureForm.eventType === 'abortion' ? 'Guardar aborto y cerrar ciclo' : 'Guardar cierre'}</button><button type="button" className="btn btn-outline btn-sm" onClick={() => setClosureForm(null)}>Cancelar</button></div></form>}
         {repeatCycle === cycle.id && <form className="form-stack mt-3" onSubmit={(e) => void addRepeatService(e, cycle)}><div className="grid-3"><div className="form-group"><label className="form-label">Fecha</label><input name="serviceDate" type="date" className="form-input" min={cycle.serviceAnchorDate ?? undefined} max={farmToday()} required /></div><div className="form-group"><label className="form-label">Tipo</label><select name="serviceType" className="form-select"><option value="inseminacion_artificial">Inseminación artificial</option><option value="monta_natural">Monta natural</option><option value="transferencia_embriones">Transferencia de embriones</option></select></div><div className="form-group"><label className="form-label">Origen</label><select name="materialSource" className="form-select"><option value="internal">Verraco interno</option><option value="external">Material externo</option></select></div></div><div className="grid-3"><div className="form-group"><label className="form-label">Código del verraco</label><select name="sireCode" className="form-select"><option value="">Seleccione si aplica</option>{sires.map((item) => <option key={item.code} value={item.code}>{item.code}</option>)}</select></div><div className="form-group"><label className="form-label">Material externo</label><input name="externalSource" className="form-input" /></div><div className="form-group"><label className="form-label">Observaciones</label><input name="observations" className="form-input" /></div></div><button className="btn btn-primary btn-sm" disabled={busy}>Guardar nuevo servicio</button></form>}
         {manualCycle === cycle.id && <form className="form-stack mt-3" onSubmit={(e) => void saveManualDue(e, cycle)}><div className="form-grid"><div className="form-group"><label className="form-label">Fecha probable</label><input name="dueDate" type="date" min={cycle.serviceAnchorDate ?? undefined} className="form-input" defaultValue={cycle.probableFarrowingDate} required /></div><div className="form-group"><label className="form-label">Motivo</label><input name="dueDateReason" className="form-input" required minLength={5} /></div></div><button className="btn btn-primary btn-sm" disabled={busy}>Guardar fecha manual</button></form>}
