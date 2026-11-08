@@ -8,6 +8,8 @@ Usar exclusivamente un entorno aislado con datos ficticios. Propuesta: dos galpo
 
 Para apertura real reunir CSV revisados de: usuarios/perfiles, galpones/equipos, animales identificados, grupos sin identificar, almacenes/lotes de alimento y costo, caja/cuentas pendientes, ciclos reproductivos vigentes y plan sanitario validado por veterinario. Conservar versión original y resultado de validación en seco. Identificados y no identificados deben conciliar con el conteo físico; compras no duplican caja ni consumo.
 
+Los encabezados CSV y sus reglas de revisión están en [plantillas de apertura](plantillas/README.md). No existe importación automática por el solo hecho de disponer de estos archivos.
+
 ## Jornada de aceptación
 
 1. Administrador asigna equipos y verifica acceso exclusivo de cada galpón.

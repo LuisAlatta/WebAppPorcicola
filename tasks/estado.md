@@ -14,6 +14,8 @@ Código del último bloque: `5a9c232` — «se agregaron exportaciones e instala
 
 ## Estado real
 
+Ensayo remoto adicional del8/11: copia staging restaurada en D1 aislada,52tablas/96filas/FK0, Worker autenticado y Time Travel comprobados. Destino de ensayo eliminado al terminar. Detalle en [recuperación remota](recuperacion-remota.md). CA-20 y consistencia de filtros/libro financiero están en revisión; no extender pruebas anteriores a esos cambios hasta validación final.
+
 **Última validación del 8/11:** suite93/93 (17 archivos), Chrome móvil emulado9/9, typecheck/lint/build correctos. T26 revisada y desplegada; T27/PWA y T28/online implementadas con cierre físico pendiente. T29 tiene restauración lógica local verificada, pero falta la matriz integral y CA-20. Ver [registro de sesión](sesion-2026-11-08.md), [validación pendiente](validacion-pendiente.md) y [piloto](piloto.md). Staging Worker `95cb06c3-cfa7-448f-b524-64562ffd4cef`, migraciones0001–0023. Producción no se modificó.
 
 - **T01–T26 implementadas en staging. Próximo trabajo: CA-20, completar validación T27–T29 y piloto T30. T27/T28 conservan cierre físico pendiente en Samsung Galaxy A54 con Chrome. No desplegar producción antes de T31.**
