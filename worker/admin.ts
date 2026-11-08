@@ -313,6 +313,12 @@ export async function updateUser(
     }
   }
 
+  // Revocación inmediata: al desactivar la cuenta se invalidan todas sus sesiones.
+  // Reactivar la cuenta no revive tokens emitidos antes de la desactivación.
+  if (targetActive === 0 && existing.is_active === 1) {
+    stmts.push(db.prepare('UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL').bind(now, userId));
+  }
+
   await db.batch(stmts);
 
   const updatedUser = await db.prepare('SELECT id, username, name, role, is_active, created_at, updated_at FROM users WHERE id = ?')

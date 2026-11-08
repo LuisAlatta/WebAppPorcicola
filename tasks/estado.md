@@ -12,7 +12,7 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
 
 ## Estado real
 
-- **T01, T02, T03, T04, T05, T06 y T07 completadas. Falta Cierre 2 (verificación cruzada de sesiones y matriz de permisos).**
+- **Fase 2 completa: T01 a T07 y Cierre 2 terminados. Siguiente: T08 (Abrir inventario individual y colectivo).**
 - Se implementó el módulo exclusivo de administración (`worker/admin.ts`, `migrations/0002_administration_schema.sql` y `src/components/ModuloAdministracion.tsx`):
   - Exclusividad en servidor: rutas bajo `/api/admin/*` protegidas con 401 si no hay sesión y 403 Forbidden si el perfil no es `administrador` (CA-27).
   - Gestión integral de usuarios para los 4 perfiles (`administrador`, `responsable`, `operario`, `veterinario`) con hashing PBKDF2 y preservación de autoría histórica.
@@ -33,6 +33,11 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
   - Versionado por fecha efectiva con cierre de la versión anterior, consulta histórica por `asOf`, retiro de valores sin borrar su historial y auditoría reutilizando la convención de T06 (clave de reintento, autor, motivo y datos previos/nuevos).
   - Rutas `/api/config` (lectura autenticada) y escrituras solo para administrador; interfaz `ModuloConfiguracion` con pestañas de Parámetros, Catálogos, Etapas y Raciones, y Ubicaciones y Lotes.
 - Se cuenta con 42 pruebas automatizadas pasando en Vitest (aislamiento Cloudflare, bocetos, Worker 404, rutas E2E, exportaciones PDF/XLSX, D1 Miniflare, autenticación, integración administrativa, eventos idempotentes y configuración versionada). En local pasaron las 42 pruebas, TypeScript (`tsc --noEmit`), ESLint (`eslint .`) y la compilación (`vite build`).
+- Cierre 2 completado con `tests/cierre2.integration.test.ts`:
+  - Dos sesiones de administrador comparten los cambios de inmediato.
+  - Matriz de acceso directo: responsable, operario y veterinario reciben 403 en listar/crear cuentas, listar/eliminar galpones, consultar auditoría y escribir configuración, sin efectos secundarios.
+  - Revocación inmediata: desactivar una cuenta revoca sus sesiones, invalida `/api/auth/me` y `/api/data/resumen`, y reactivarla no revive el token anterior. El cambio de rol se refleja en la sesión existente y el logout revoca el token en el acto.
+  - Total final: 47 pruebas en 11 archivos, todas pasando, con typecheck, lint y build correctos.
 - Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`).
 - El commit previo verificado en GitHub Actions con éxito es `75c2c9f` (ejecución 42425588778).
 
@@ -59,9 +64,9 @@ Todavía faltan definir y configurar los secretos separados, migraciones, domini
 
 ## Pasos concretos para continuar
 
-1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 42 pruebas deben pasar.
-2. **Cerrar la Fase 2 con el Cierre 2.** Desde dos sesiones distintas verificar que solo el administrador gestione usuarios y que la revocación sea inmediata; revisar la matriz de permisos con ejemplos de acceso directo. Después continuar con T08 (inventario individual y colectivo).
+1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 47 pruebas deben pasar.
+2. **Continuar con T08 (Abrir inventario individual y colectivo).** Movimientos de cabezas por fecha, ubicación, lote, etapa, sexo (incluido pendiente de sexado) y causa; saldo inicial, grupos sin arete y desglose individual desde la configuración versionada de T07.
 
 ## Instrucción para continuar
 
-Lee esta carpeta, revisa el estado del repositorio y retoma el Cierre 2. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.
+Lee esta carpeta, revisa el estado del repositorio y retoma T08. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.
