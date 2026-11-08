@@ -29,48 +29,48 @@ export function BottomNav({ vistaActual, onNavigate }: BottomNavProps) {
       id: 'menu',
       view: 'inicio',
       label: 'Menú',
-      icon: <IconGrid size={20} />,
+      icon: <IconGrid size={22} />,
       isActive: (current) => current === 'inicio',
     },
     {
       id: 'animales',
       view: 'animales',
       label: 'Animales',
-      icon: <IconPig size={20} />,
+      icon: <IconPig size={22} />,
       isActive: (current) => ['animales', 'formulario', 'detalle', 'listado'].includes(current),
     },
     {
       id: 'reproduccion',
       view: 'reproduccion',
       label: 'Reproducción',
-      icon: <IconHeart size={20} />,
+      icon: <IconHeart size={22} />,
       isActive: (current) => current === 'reproduccion',
     },
     {
       id: 'inventario',
       view: 'inventario',
       label: 'Inventario',
-      icon: <IconBox size={20} />,
+      icon: <IconBox size={22} />,
       isActive: (current) => current === 'inventario',
     },
     {
       id: 'finanzas',
       view: 'finanzas',
       label: 'Finanzas',
-      icon: <IconCoins size={20} />,
+      icon: <IconCoins size={22} />,
       isActive: (current) => current === 'finanzas',
     },
     {
       id: 'alertas',
       view: 'alertas',
       label: 'Alertas',
-      icon: <IconBell size={20} />,
+      icon: <IconBell size={22} />,
       isActive: (current) => current === 'alertas',
     },
   ];
 
   return (
-    <div className="bottom-nav-container" role="toolbar" aria-label="Navegación rápida inferior">
+    <nav className="bottom-nav-container" aria-label="Navegación principal">
       <div className="bottom-nav-wrapper">
         {navItems.map((item) => {
           const active = item.isActive(vistaActual);
@@ -90,6 +90,6 @@ export function BottomNav({ vistaActual, onNavigate }: BottomNavProps) {
           );
         })}
       </div>
-    </div>
+    </nav>
   );
 }

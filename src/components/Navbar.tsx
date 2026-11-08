@@ -1,12 +1,76 @@
-import {useEffect,useState} from 'react';
-import type {Perfil,Vista} from '../types';
-import {IconPig,IconLogOut,IconWifiOff} from './icons';
+import { useEffect, useState } from 'react';
+import type { Perfil, Vista } from '../types';
+import { IconPig, IconLogOut, IconWifiOff } from './icons';
 
-interface NavbarProps {vistaActual:Vista;perfilActual:Perfil;usuario?:string;onNavigate:(vista:Vista)=>void;onLogout:()=>void}
-const profileNames:Record<Perfil,string>={administrador:'Administrador',responsable:'Usuario responsable',operario:'Operario',veterinario:'Médico veterinario'};
-const tabs:{view:Vista;label:string;admin?:boolean}[]=[{view:'inicio',label:'Inicio'},{view:'animales',label:'Animales'},{view:'inventario',label:'Inventario'},{view:'reproduccion',label:'Reproducción'},{view:'alimentacion',label:'Alimentación'},{view:'sanidad',label:'Sanidad'},{view:'alertas',label:'Alertas'},{view:'finanzas',label:'Finanzas'},{view:'reportes',label:'Reportes'},{view:'configuracion',label:'Configuración',admin:true},{view:'administracion',label:'Administración',admin:true}];
-export function Navbar({vistaActual,perfilActual,usuario,onNavigate,onLogout}:NavbarProps){
- const [online,setOnline]=useState(()=>navigator.onLine);
- useEffect(()=>{const connected=()=>setOnline(true);const disconnected=()=>setOnline(false);window.addEventListener('online',connected);window.addEventListener('offline',disconnected);return()=>{window.removeEventListener('online',connected);window.removeEventListener('offline',disconnected);};},[]);
- return <header className="navbar-wrapper"><div className="navbar-top"><div className="navbar-brand"><div className="inline-flex items-center justify-center gap-2 leading-none brand-link"><IconPig size={22} className="brand-icon"/><span className="brand-text">Web Porcícola</span></div><span className="badge-env">{profileNames[perfilActual]}</span>{usuario&&<span className="text-xs text-muted user-badge-navbar">{usuario}</span>}</div><div className="navbar-controls"><button type="button" className="btn btn-ghost btn-sm" onClick={onLogout} title="Cerrar sesión"><span className="inline-flex items-center justify-center gap-2 leading-none"><IconLogOut size={16}/><span>Salir</span></span></button></div></div><nav className="navbar-nav" aria-label="Módulos de la granja">{tabs.filter(tab=>!tab.admin||perfilActual==='administrador').map(tab=><button type="button" key={tab.view} className={`nav-tab ${vistaActual===tab.view?'nav-tab-active':''}`} aria-current={vistaActual===tab.view?'page':undefined} onClick={()=>onNavigate(tab.view)}>{tab.label}</button>)}</nav>{!online&&<div className="status-strip strip-offline" role="status"><span className="inline-flex items-center justify-center gap-2 leading-none"><IconWifiOff size={16}/><span>Sin conexión. Conserva este formulario abierto. No hay guardado local ni confirmación de operaciones; al recuperar la red, comprueba el registro antes de reenviarlo.</span></span></div>}</header>;
+interface NavbarProps {
+  vistaActual: Vista;
+  perfilActual: Perfil;
+  usuario?: string;
+  onNavigate: (vista: Vista) => void;
+  onLogout: () => void;
+}
+
+const profileNames: Record<Perfil, string> = {
+  administrador: 'Administrador',
+  responsable: 'Responsable',
+  operario: 'Operario',
+  veterinario: 'Veterinario',
+};
+
+export function Navbar({ perfilActual, usuario, onNavigate, onLogout }: NavbarProps) {
+  const [online, setOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+
+  useEffect(() => {
+    const connected = () => setOnline(true);
+    const disconnected = () => setOnline(false);
+    window.addEventListener('online', connected);
+    window.addEventListener('offline', disconnected);
+    return () => {
+      window.removeEventListener('online', connected);
+      window.removeEventListener('offline', disconnected);
+    };
+  }, []);
+
+  return (
+    <header className="navbar-wrapper">
+      <div className="navbar-top">
+        <div className="navbar-brand">
+          <button
+            type="button"
+            className="brand-link-btn"
+            onClick={() => onNavigate('inicio')}
+            title="Ir al Menú Principal"
+          >
+            <span className="inline-flex items-center justify-center gap-2 leading-none brand-link">
+              <IconPig size={22} className="brand-icon" />
+              <span className="brand-text">Web Porcícola</span>
+            </span>
+          </button>
+          <span className="badge-env">{profileNames[perfilActual]}</span>
+          {usuario && <span className="text-xs text-muted user-badge-navbar">{usuario}</span>}
+        </div>
+        <div className="navbar-controls">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={onLogout}
+            title="Cerrar sesión"
+          >
+            <span className="inline-flex items-center justify-center gap-2 leading-none">
+              <IconLogOut size={16} />
+              <span>Salir</span>
+            </span>
+          </button>
+        </div>
+      </div>
+      {!online && (
+        <div className="status-strip strip-offline" role="status">
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconWifiOff size={16} />
+            <span>Sin conexión. Al recuperar la red, comprueba el registro antes de reenviarlo.</span>
+          </span>
+        </div>
+      )}
+    </header>
+  );
 }

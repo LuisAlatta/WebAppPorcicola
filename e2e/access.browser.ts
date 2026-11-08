@@ -27,7 +27,7 @@ test('manifest instalable y service worker solo conservan estáticos',async({pag
 for(const role of ['administrador','responsable','operario','veterinario'])test(`menú usa permisos del servidor para ${role}`,async({page})=>{
  await page.route('**/api/**',route=>route.fulfill({status:403,json:{error:'Consulta no disponible en esta prueba'}}));
  await page.route('**/api/auth/me',route=>route.fulfill({status:200,json:{ok:true,user:{role,username:`${role}@prueba.pe`}}}));
- await page.goto('/administracion');await expect(page.getByRole('navigation')).toBeVisible();await expect(page.getByRole('button',{name:'Administración',exact:true})).toHaveCount(role==='administrador'?1:0);await expect(page.getByRole('button',{name:'Configuración',exact:true})).toHaveCount(role==='administrador'?1:0);await expect(page.locator('#select-perfil')).toHaveCount(0);
+ await page.goto('/inicio');await expect(page.getByRole('navigation')).toBeVisible();await expect(page.getByRole('button',{name:'Administración',exact:true})).toHaveCount(role==='administrador'?1:0);await expect(page.getByRole('button',{name:'Configuración',exact:true})).toHaveCount(role==='administrador'?1:0);await expect(page.locator('#select-perfil')).toHaveCount(0);
 });
 test('una versión nueva espera y cancelar actualización conserva el formulario',async({page})=>{
  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{error:'Sin sesión'}}));await page.goto('/login');await page.evaluate(()=>navigator.serviceWorker.ready);await page.reload();await page.getByLabel('Usuario',{exact:true}).fill('borrador@prueba.pe');

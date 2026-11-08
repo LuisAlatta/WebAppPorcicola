@@ -209,17 +209,6 @@ function App() {
         {renderVista()}
       </main>
 
-      <footer className="main-footer">
-        <div className="footer-content">
-          <p className="footer-text">
-            Web Porcícola · Sistema de gestión integral
-          </p>
-          <p className="text-xs text-muted">
-            Acceso según perfil y galpones asignados.
-          </p>
-        </div>
-      </footer>
-
       {estaAutenticado && vistaActual !== 'login' && (
         <BottomNav
           vistaActual={vistaActual}
