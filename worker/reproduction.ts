@@ -102,12 +102,23 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
     .bind(...params).all<Row>();
   const today = currentFarmDate();
   const cycles = await Promise.all((result.results ?? []).map(async (row) => {
-    const [serviceRows, eventRows] = await Promise.all([
+    const [serviceRows, eventRows, planRow, litterRow] = await Promise.all([
       db.prepare('SELECT * FROM reproduction_services WHERE cycle_id = ? ORDER BY service_date, service_number').bind(row.id).all<Row>(),
       db.prepare('SELECT * FROM reproduction_events WHERE cycle_id = ? ORDER BY event_date, id').bind(row.id).all<Row>(),
+      db.prepare('SELECT * FROM reproduction_weaning_plans WHERE cycle_id=?').bind(row.id).first<Row>(),
+      db.prepare('SELECT * FROM litters WHERE cycle_id=?').bind(row.id).first<Row>(),
     ]);
     const remainingDays = diffDays(String(row.probable_farrowing_date), today);
     const reproductiveStatus = String(row.reproductive_status);
+    let litter = null;
+    if (litterRow) {
+      const litterEvents = await db.prepare('SELECT event_type,sex,quantity FROM litter_events WHERE litter_id=?').bind(litterRow.id).all<{event_type:string;sex:string;quantity:number}>();
+      const counts = { macho:Number(litterRow.male_alive), hembra:Number(litterRow.female_alive), pendiente:Number(litterRow.unsexed_alive) };
+      for (const item of litterEvents.results ?? []) counts[item.sex as keyof typeof counts] += item.event_type === 'adoption_in' ? Number(item.quantity) : -Number(item.quantity);
+      litter = { id:String(litterRow.id), liveCount:Number(litterRow.live_count), maleAlive:counts.macho, femaleAlive:counts.hembra, unsexedAlive:counts.pendiente,
+        stillbornCount:Number(litterRow.stillborn_count), averageWeightKg:litterRow.average_weight_kg===null?null:Number(litterRow.average_weight_kg), expectedWeaningDate:litterRow.expected_weaning_date===null?null:String(litterRow.expected_weaning_date),
+        actualWeaningDate:litterRow.actual_weaning_date===null?null:String(litterRow.actual_weaning_date) };
+    }
     return { id: String(row.id), femaleAnimalId: Number(row.female_animal_id), femaleCode: String(row.female_code), femaleAlias: row.female_alias === null ? null : String(row.female_alias),
       cycleNumber: Number(row.cycle_number), cycleStatus: String(row.cycle_status), reproductiveStatus,
       serviceAnchorDate: row.service_anchor_date === null ? null : String(row.service_anchor_date), gestationDays: Number(row.gestation_days),
@@ -116,6 +127,12 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
       barnId: Number(row.barn_id), barnName: String(row.barn_name), locationCode: row.location_code === null ? null : String(row.location_code), lotCode: row.lot_code === null ? null : String(row.lot_code),
       femaleBreed: row.female_breed_snapshot === null ? null : String(row.female_breed_snapshot), aptitude: row.aptitude === null ? null : String(row.aptitude),
       lastFarrowingDate: row.last_farrowing_date === null ? null : String(row.last_farrowing_date), observations: row.observations === null ? null : String(row.observations), antecedent: Number(row.antecedent) === 1,
+      weaningPlan: planRow ? { referenceWeaningDate:String(planRow.reference_weaning_date), heatIntervalDays:Number(planRow.heat_interval_days),
+        firstRepeatIntervalDays:Number(planRow.first_repeat_interval_days), secondRepeatIntervalDays:Number(planRow.second_repeat_interval_days),
+        expectedHeatDate:String(planRow.expected_heat_date), expectedFirstRepeatDate:String(planRow.expected_first_repeat_date), expectedSecondRepeatDate:String(planRow.expected_second_repeat_date),
+        actualHeatDate:planRow.actual_heat_date===null?null:String(planRow.actual_heat_date), actualFirstRepeatDate:planRow.actual_first_repeat_date===null?null:String(planRow.actual_first_repeat_date),
+        actualSecondRepeatDate:planRow.actual_second_repeat_date===null?null:String(planRow.actual_second_repeat_date) } : null,
+      litter,
       services: (serviceRows.results ?? []).map(mapService), events: (eventRows.results ?? []).map(mapEvent) };
   }));
   return { cycles, dateCriterion: 'Fecha del último servicio; antecedente usa fecha probable', asOf: today };
@@ -334,4 +351,43 @@ export async function createPregnantAntecedent(db: D1Database, actorUserId: numb
   [{ entityType: 'reproduction_cycle', entityId: Number(context.female.id), action: 'create', actorUserId, barnId: context.barnId, reason: 'Ingreso de antecedente gestante',
     previousData: null, newData: { ...payload, cycleId: id }, effectiveDate: recordedDate, recordedAt: claim.recordedAt }]);
   return { ...(await listReproductionCycles(db, {}, scope)), createdCycleId: id, replayed: false };
+}
+
+export async function saveWeaningPlan(db:D1Database,actorUserId:number,cycleId:string,input:{referenceWeaningDate?:unknown;heatIntervalDays?:unknown;firstRepeatIntervalDays?:unknown;secondRepeatIntervalDays?:unknown;actualHeatDate?:unknown;actualFirstRepeatDate?:unknown;actualSecondRepeatDate?:unknown;reason?:unknown;operationKey?:string},scope:ReproductionScope={}) {
+  const cycle=await db.prepare('SELECT * FROM reproduction_cycles WHERE id=?').bind(cycleId).first<Row>();
+  if(!cycle) throw new ApiError(404,'Ciclo reproductivo no encontrado');
+  const barn=await db.prepare('SELECT name FROM barns WHERE id=?').bind(cycle.barn_id).first<{name:string}>();
+  if(scope.allowedBarnNames&&(!barn||!scope.allowedBarnNames.includes(barn.name))) throw new ApiError(404,'Ciclo reproductivo no encontrado');
+  const referenceWeaningDate=date(input.referenceWeaningDate,'Fecha real del destete anterior');
+  const serviceDate=String(cycle.service_anchor_date??cycle.cycle_opened_on);
+  if(referenceWeaningDate>serviceDate) throw new ApiError(400,'El destete de referencia debe ser anterior o igual al servicio');
+  const interval=(raw:unknown,label:string)=>{const n=Number(raw);if(!Number.isInteger(n)||n<1||n>120)throw new ApiError(400,`${label} debe ser un entero entre 1 y 120 días`);return n;};
+  const heatIntervalDays=interval(input.heatIntervalDays,'Intervalo a celo');
+  const firstRepeatIntervalDays=interval(input.firstRepeatIntervalDays,'Intervalo a primera repetición');
+  const secondRepeatIntervalDays=interval(input.secondRepeatIntervalDays,'Intervalo a segunda repetición');
+  const expectedHeatDate=addDays(referenceWeaningDate,heatIntervalDays);
+  const expectedFirstRepeatDate=addDays(expectedHeatDate,firstRepeatIntervalDays);
+  const expectedSecondRepeatDate=addDays(expectedFirstRepeatDate,secondRepeatIntervalDays);
+  const actualHeatDate=input.actualHeatDate?date(input.actualHeatDate,'Fecha observada de celo'):null;
+  const actualFirstRepeatDate=input.actualFirstRepeatDate?date(input.actualFirstRepeatDate,'Fecha observada de primera repetición'):null;
+  const actualSecondRepeatDate=input.actualSecondRepeatDate?date(input.actualSecondRepeatDate,'Fecha observada de segunda repetición'):null;
+  for(const observed of [actualHeatDate,actualFirstRepeatDate,actualSecondRepeatDate]) if(observed&&observed<referenceWeaningDate) throw new ApiError(400,'Las fechas observadas no pueden preceder al destete de referencia');
+  const reason=optionalText(input.reason,'Motivo',300);
+  if(!reason||reason.length<5) throw new ApiError(400,'Indique el motivo del plan');
+  const payload={cycleId,referenceWeaningDate,heatIntervalDays,firstRepeatIntervalDays,secondRepeatIntervalDays,expectedHeatDate,expectedFirstRepeatDate,expectedSecondRepeatDate,actualHeatDate,actualFirstRepeatDate,actualSecondRepeatDate,reason};
+  const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);
+  if(replay) return {replayed:true,cycles:await listReproductionCycles(db,{},scope)};
+  const previous=await db.prepare('SELECT * FROM reproduction_weaning_plans WHERE cycle_id=?').bind(cycleId).first<Row>();
+  const claim=await createOperationClaim({operationKey:input.operationKey,operationType:'reproduction.weaning_plan.save',authorUserId:actorUserId,entityType:'reproduction_cycle',entityId:Number(cycle.female_animal_id),barnId:Number(cycle.barn_id),effectiveDate:referenceWeaningDate,payload,result:payload});
+  await commitOperation(db,claim,[db.prepare(`INSERT INTO reproduction_weaning_plans
+    (cycle_id,reference_weaning_date,heat_interval_days,first_repeat_interval_days,second_repeat_interval_days,expected_heat_date,expected_first_repeat_date,expected_second_repeat_date,actual_heat_date,actual_first_repeat_date,actual_second_repeat_date,created_by_user_id,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(cycle_id) DO UPDATE SET reference_weaning_date=excluded.reference_weaning_date,heat_interval_days=excluded.heat_interval_days,
+    first_repeat_interval_days=excluded.first_repeat_interval_days,second_repeat_interval_days=excluded.second_repeat_interval_days,expected_heat_date=excluded.expected_heat_date,
+    expected_first_repeat_date=excluded.expected_first_repeat_date,expected_second_repeat_date=excluded.expected_second_repeat_date,actual_heat_date=excluded.actual_heat_date,
+    actual_first_repeat_date=excluded.actual_first_repeat_date,actual_second_repeat_date=excluded.actual_second_repeat_date,updated_at=excluded.updated_at`)
+      .bind(cycleId,referenceWeaningDate,heatIntervalDays,firstRepeatIntervalDays,secondRepeatIntervalDays,expectedHeatDate,expectedFirstRepeatDate,expectedSecondRepeatDate,actualHeatDate,actualFirstRepeatDate,actualSecondRepeatDate,actorUserId,claim.recordedAt)],
+    [{entityType:'reproduction_cycle',entityId:Number(cycle.female_animal_id),action:previous?'update':'create',actorUserId,barnId:Number(cycle.barn_id),reason,
+      previousData:previous?{referenceWeaningDate:previous.reference_weaning_date,heatIntervalDays:previous.heat_interval_days,firstRepeatIntervalDays:previous.first_repeat_interval_days,secondRepeatIntervalDays:previous.second_repeat_interval_days}:null,
+      newData:payload,effectiveDate:referenceWeaningDate,recordedAt:claim.recordedAt}]);
+  return {replayed:false,cycles:await listReproductionCycles(db,{},scope)};
 }

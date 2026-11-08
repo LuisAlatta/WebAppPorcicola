@@ -1,6 +1,6 @@
 # Estado y guía para retomar el desarrollo
 
-Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesario para continuar.
+Actualizado el 8 de noviembre de 2026. Esta carpeta contiene el contexto necesario para continuar.
 
 ## Orden de lectura
 
@@ -12,7 +12,7 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
 
 ## Estado real
 
-- **Fase 2 completa (T01–T07 y Cierre 2); Fase 3 completa (T08–T11); T12–T13 de Fase 4 completadas. Siguiente: T14 (destete y repeticiones).**
+- **Fase 2 completa (T01–T07 y Cierre 2); Fase 3 completa (T08–T11); T12–T14 de Fase 4 completadas. Siguiente: T15 (almacenes y suministros).**
 - T10 completo: traslado colectivo con coordenadas distintas en origen/destino, dos movimientos del mismo grupo, autorización de ambos galpones, reintento idempotente y aviso de exceso de capacidad sin bloquear; traslado individual actualiza ficha, movimientos, galpón y ubicación histórica en un lote; venta/muerte individual actualiza salida, causa y saldo en el mismo lote; conteo físico conserva esperado, contado, diferencia, autor, motivo y ajuste enlazado; corrección grupal conserva original y enlaza reversión/cantidad corregida, previsualiza movimientos posteriores incompatibles y rechaza una segunda corrección; cierre de galpón con saldo ocupado se bloquea; revalidación atómica impide saldos negativos concurrentes y conserva el saldo ante fallo forzado entre origen/destino. Las transferencias internas no aumentan entradas/salidas ni el denominador de mortalidad.
 - Verificación T10: 31/31 pruebas de inventario, animales y administración; suite completa 72/72; E2E 2/2; typecheck, lint y build correctos. Cuenta Cloudflare confirmada como `newluisalattago@gmail.com` / `0acfa25b5f619f94d581b8cf882e2eec`. Migraciones 0007 y 0008 aplicadas solo en D1 staging; Worker staging versión `58d55da3-b1dd-497a-83a1-bdedf74956b3`; rutas `/inventario` y `/animales` 200, detalle `/animal/T10-MOVE-01` 200, `/api/inventory` y `/api/animals` 401 sin sesión. D1 staging no contiene animales de prueba. Producción no fue modificada.
 - Se implementó T08 (`worker/inventory.ts`, `migrations/0005_inventory_schema.sql` y `src/components/ModuloInventario.tsx`):
@@ -84,6 +84,13 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
   - Interfaz de Reproducción incluye registro de parto y camada con fecha, paridad, vivos/muertos por sexo, peso promedio, motivo y observaciones.
   - Evidencia: `npm test -- --maxWorkers=1` 75/75; typecheck, lint y build correctos. Prueba: 8 vivos + 1 muerto = 9 nacidos, 11,11 %; 21 días desde 16/09/2026 = 07/10/2026; reintento no duplica; dos fichas dejan inventario en 8 (6 sin identificar); cuatro fichas femeninas frente a tres nacidas se rechaza; corrección a 7 con ocho fichas recibe 409; corrección previa ajusta saldo una cabeza; antecedente anterior al ingreso no altera existencias.
   - Staging: migración 0011 aplicada y tablas verificadas. `/reproduccion` 200, API de ciclos sin sesión 401. Worker `web-porcicola-staging` versión `584009d9-2501-4576-b67a-ee50018f334f`. No se usaron datos de prueba remotos ni se modificó producción.
+- **T14 · Destetes y repeticiones completada.** Requisitos CAM-06/CAM-08 y REP-07/REP-08; casos CA-09/CA-14:
+  - Migración `0012_weaning_events_and_cycles.sql` crea eventos inmutables de camada y planes postdestete por ciclo, con fecha de referencia, intervalos configurados, fechas previstas y fechas observadas separadas.
+  - `recordLitterEvent` registra bajas con causa, adopciones entre camadas enlazando origen/destino y destetes parciales por sexo con peso, etapa y galpón destino. Calcula saldo vivo por sexo y bloquea cantidad superior; reintentos no repiten eventos. Guard de D1 evita que operaciones concurrentes superen el saldo.
+  - Las bajas crean un movimiento de muerte. El destete mueve la cantidad de preinicio a la etapa y galpón destino con ajustes opuestos, conservando el total de la granja. Adopciones actualizan saldos de ambas camadas sin inventar cabezas.
+  - El plan postdestete guarda referencia y tres intervalos por ciclo, calcula celo y dos repeticiones; se puede recalcular y conservar fechas observadas separadas. La tarjeta muestra los mismos valores guardados tras reabrir.
+  - Evidencia: suite 76/76, typecheck, lint y build correctos. CA-09: 8 vivos - 1 muerte - 6 destetados = 1 pendiente; 6 en destino; total 7. Adopción entre dos camadas conserva stock. Reintento de muerte da 200 sin segunda baja. CA-14: destete 20/05 + 5/10/20 días = 25/05, 04/06, 24/06 y los mismos valores tras volver a consultar.
+  - Staging: migración 0012 aplicada; `litter_events`, `reproduction_weaning_plans` y `litter_event_guard` verificadas. `/reproduccion` 200 y API sin sesión 401. Worker `web-porcicola-staging` versión `eb7769ac-8efb-40e4-84dc-54b4297b9e57`. Sin datos de prueba remotos ni cambios a producción.
 - **Despliegue de producción activo:** https://web-porcicola-produccion.luisalatta.workers.dev (versión `77c622ca-fa59-454a-820b-802d92799d78`). Migraciones 0001–0005 aplicadas en remoto a staging y producción; administrador inicial creado directamente en D1 con el bootstrap ya cerrado. Verificado en vivo: `/` 200 HTML, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie, `/api/config` 200 autenticado y `/api/inventory` 401 sin sesión y 200 autenticado con 2 galpones y 8 etapas. Las rutas `/inventario` y `/configuracion` devuelven 200. La versión T09 no se desplegó en producción.
 - **Despliegue de staging activo:** https://web-porcicola-staging.luisalatta.workers.dev (versión actual `65138982-20a1-4e0f-a4df-ce82c9333ed1`), con su administrador inicial y galpones base. Migraciones 0001–0010 aplicadas; `/reproduccion` devuelve 200 HTML, `/api/reproduction/cycles` 401 sin sesión y tablas de T12 presentes en D1.
 - Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`).
@@ -108,13 +115,13 @@ Las configuraciones están en `wrangler.jsonc`:
 
 Ambas bases fueron creadas por separado. La de producción estaba vacía al crearla. La configuración por defecto no declara un binding D1. El plugin de Vite selecciona un entorno nombrado con `CLOUDFLARE_ENV=staging` o `CLOUDFLARE_ENV=production`; los datos locales y remotos son independientes. En PowerShell, para compilar staging, ejecutar `$env:CLOUDFLARE_ENV='staging'; npm run build`. Confirmar que los bindings generados corresponden al entorno deseado antes de operar.
 
-Todavía faltan definir y configurar los secretos separados, dominio propio y cron. Los Workers de producción y staging están desplegados y verificados en `https://web-porcicola-produccion.luisalatta.workers.dev` y `https://web-porcicola-staging.luisalatta.workers.dev`; staging tiene las migraciones 0001–0011 y producción 0001–0005. El administrador inicial de cada entorno se insertó directo en su D1 para que `/api/auth/bootstrap` quedara cerrado antes de publicar. Cambiar la contraseña inicial débil desde el módulo de administración. No usar datos reales para pruebas ni escribir en la base de producción para comprobar una función. No poner secretos en archivos rastreados ni en el registro de avance.
+Todavía faltan definir y configurar los secretos separados, dominio propio y cron. Los Workers de producción y staging están desplegados y verificados en `https://web-porcicola-produccion.luisalatta.workers.dev` y `https://web-porcicola-staging.luisalatta.workers.dev`; staging tiene las migraciones 0001–0012 y producción 0001–0005. El administrador inicial de cada entorno se insertó directo en su D1 para que `/api/auth/bootstrap` quedara cerrado antes de publicar. Cambiar la contraseña inicial débil desde el módulo de administración. No usar datos reales para pruebas ni escribir en la base de producción para comprobar una función. No poner secretos en archivos rastreados ni en el registro de avance.
 
 ## Pasos concretos para continuar
 
-1. **Reproducir el estado.** Última evidencia: `npm test -- --maxWorkers=1` 75/75; `npm run typecheck`, `npm run lint` y `npm run build` correctos. Las pruebas de T11–T13 incluyen migraciones 0009–0011.
-2. **Continuar con T14 (destete y repeticiones).** Revisar `plan.md`, requisitos CAM-06/CAM-08 y REP-07/REP-08, y casos CA-09/CA-14. Registrar movimientos parciales por sexo sin aumentar inventario, vincular adopciones entre camadas y derivar fechas de celo/repetición del destete previo.
+1. **Reproducir el estado.** Última evidencia: `npm test -- --maxWorkers=1` 76/76; `npm run typecheck`, `npm run lint` y `npm run build` correctos. Pruebas T11–T14 incluyen migraciones 0009–0012.
+2. **Continuar con T15 (almacenes y suministros).** Revisar `plan.md`, requisitos ALI-01/05/07 y diseñar movimientos de almacén con saldo histórico, guardia ante concurrencia y una única imputación de consumo/costo.
 
 ## Instrucción para continuar
 
-Lee esta carpeta, revisa el estado del repositorio y retoma T14. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. No despliegues en producción hasta T31. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.
+Lee esta carpeta, revisa el estado del repositorio y retoma T15. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. No despliegues en producción hasta T31. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.

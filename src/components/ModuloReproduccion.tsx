@@ -6,10 +6,13 @@ import type { Perfil } from '../types';
 interface AnimalOption { code: string; alias: string | null; barnName: string; breed: string | null }
 interface Service { id: number; serviceNumber: number; serviceDate: string; serviceType: string; sireCode: string | null; sireBreed: string | null; materialSource: string; externalSource: string | null; observations: string | null }
 interface ReproductionEvent { id: number; eventType: string; eventDate: string; physiologicalStatus: string | null; reason: string | null; observations: string | null }
+interface WeaningPlan { referenceWeaningDate: string; heatIntervalDays: number; firstRepeatIntervalDays: number; secondRepeatIntervalDays: number;
+  expectedHeatDate: string; expectedFirstRepeatDate: string; expectedSecondRepeatDate: string; actualHeatDate: string | null; actualFirstRepeatDate: string | null; actualSecondRepeatDate: string | null }
+interface Litter { id: string; liveCount: number; maleAlive: number; femaleAlive: number; unsexedAlive: number; stillbornCount: number; averageWeightKg: number | null; expectedWeaningDate: string | null; actualWeaningDate: string | null }
 interface Cycle { id: string; femaleCode: string; femaleAlias: string | null; cycleNumber: number; cycleStatus: string; reproductiveStatus: string;
   serviceAnchorDate: string | null; gestationDays: number; probableFarrowingDate: string; dueDateSource: string; dueDateReason: string | null;
   daysRemaining: number; dueLabel: string; barnId: number; barnName: string; locationCode: string | null; lotCode: string | null; femaleBreed: string | null; aptitude: string | null;
-  lastFarrowingDate: string | null; observations: string | null; antecedent: boolean; services: Service[]; events: ReproductionEvent[] }
+  lastFarrowingDate: string | null; observations: string | null; antecedent: boolean; services: Service[]; events: ReproductionEvent[]; litter: Litter | null; weaningPlan: WeaningPlan | null }
 interface FormState { femaleCode: string; serviceDate: string; serviceType: string; sireCode: string; sireBreed: string; materialSource: 'internal' | 'external'; externalSource: string;
   dueDate: string; dueDateReason: string; lastFarrowingDate: string; aptitude: string; observations: string }
 
@@ -40,6 +43,10 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
   const [closureForm, setClosureForm] = useState<{ cycleId: string; eventType: 'abortion' | 'closed'; reason: string } | null>(null);
   const [farrowingCycle, setFarrowingCycle] = useState<string | null>(null);
   const [farrowingKeys, setFarrowingKeys] = useState<Record<string, string>>({});
+  const [postweaningCycle, setPostweaningCycle] = useState<string | null>(null);
+  const [postweaningKeys, setPostweaningKeys] = useState<Record<string,string>>({});
+  const [litterEventCycle, setLitterEventCycle] = useState<string | null>(null);
+  const [litterEventKeys, setLitterEventKeys] = useState<Record<string,string>>({});
 
   const fetchData = useCallback(async () => {
     const params = new URLSearchParams(); if (from) params.set('from', from); if (to) params.set('to', to); if (status !== 'all') params.set('status', status);
@@ -156,6 +163,44 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     finally { setBusy(false); }
   };
 
+  const savePostweaningPlan = async (event: React.FormEvent, cycle: Cycle) => {
+    event.preventDefault(); setBusy(true); setError(null);
+    const data = new FormData(event.currentTarget as HTMLFormElement);
+    const operationKey = postweaningKeys[cycle.id] ?? newOperationKey('rep-postdestete');
+    setPostweaningKeys((previous) => ({ ...previous, [cycle.id]: operationKey }));
+    try {
+      const response = await fetch(`/api/reproduction/cycles/${encodeURIComponent(cycle.id)}/postweaning`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referenceWeaningDate:data.get('referenceWeaningDate'), heatIntervalDays:data.get('heatIntervalDays'), firstRepeatIntervalDays:data.get('firstRepeatIntervalDays'),
+          secondRepeatIntervalDays:data.get('secondRepeatIntervalDays'), actualHeatDate:data.get('actualHeatDate') || undefined, actualFirstRepeatDate:data.get('actualFirstRepeatDate') || undefined,
+          actualSecondRepeatDate:data.get('actualSecondRepeatDate') || undefined, reason:'Plan postdestete confirmado', operationKey }) });
+      const body = await response.json() as { error?:string };
+      if (!response.ok) { setError(body.error ?? 'No se pudo guardar el plan de celo.'); return; }
+      setPostweaningKeys((previous)=>({...previous,[cycle.id]:newOperationKey('rep-postdestete')})); setPostweaningCycle(null);
+      setNotice('Intervalos y fechas de celo/repetición guardados en este ciclo.'); await load();
+    } catch { setError('No se pudo confirmar el plan postdestete.'); }
+    finally { setBusy(false); }
+  };
+
+  const saveLitterEvent = async (event: React.FormEvent, cycle: Cycle) => {
+    event.preventDefault(); setBusy(true); setError(null);
+    const data = new FormData(event.currentTarget as HTMLFormElement);
+    const eventType = String(data.get('eventType'));
+    const keyId = `${cycle.litter?.id}:${eventType}`;
+    const operationKey = litterEventKeys[keyId] ?? newOperationKey('camada-evento');
+    setLitterEventKeys((previous)=>({...previous,[keyId]:operationKey}));
+    try {
+      const response = await fetch(`/api/reproduction/litters/${encodeURIComponent(cycle.litter!.id)}/events`, { method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({eventType,effectiveDate:data.get('effectiveDate'),sex:data.get('sex'),quantity:data.get('quantity'),destinationLitterId:data.get('destinationLitterId') || undefined,
+          destinationStageCode:data.get('destinationStageCode') || undefined,destinationBarnId:data.get('destinationBarnId') || undefined,weightKg:data.get('weightKg') || undefined,
+          cause:data.get('cause') || undefined,reason:data.get('reason'),operationKey}) });
+      const body=await response.json() as {error?:string};
+      if(!response.ok){setError(body.error??'No se pudo guardar el evento de camada.');return;}
+      setLitterEventKeys((previous)=>({...previous,[keyId]:newOperationKey('camada-evento')})); setLitterEventCycle(null);
+      setNotice(eventType==='weaning'?'Destete parcial registrado sin aumentar el total de cabezas.':eventType==='death'?'Baja durante lactancia registrada.':'Adopción registrada entre camadas.'); await load();
+    } catch {setError('No se pudo confirmar el evento de camada.');}
+    finally {setBusy(false);}
+  };
+
   return <section className="reproduction-page">
     <header className="reproduction-header"><div><h1 className="font-bold text-xl inline-flex items-center gap-2"><IconPig size={22} />Reproducción</h1>
       <p className="text-sm text-muted">Ciclos, servicios, palpaciones y fechas probables. El cálculo usa la duración vigente de la etapa Gestación.</p></div>
@@ -186,6 +231,27 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         {cycle.services.map((service) => <div key={service.id} className="text-xs text-muted mt-1">{service.serviceDate} · #{service.serviceNumber} {serviceLabels[service.serviceType] ?? service.serviceType} · Padre/material {service.sireCode ?? service.externalSource ?? '—'}{service.sireBreed ? ` (${service.sireBreed})` : ''}</div>)}
         {cycle.events.map((entry) => <div key={entry.id} className="text-xs text-muted mt-1">{entry.eventDate} · {entry.eventType}{entry.physiologicalStatus ? ` · ${statusLabels[entry.physiologicalStatus] ?? entry.physiologicalStatus}` : ''}{entry.reason ? ` · ${entry.reason}` : ''}</div>)}
         {cycle.observations && <p className="text-sm mt-2">{cycle.observations}</p>}
+        {cycle.litter && <div className="card mt-3"><strong>Camada · {cycle.litter.id.slice(0,8)}</strong><p className="text-sm">Pendientes: {cycle.litter.femaleAlive} hembras · {cycle.litter.maleAlive} machos · {cycle.litter.unsexedAlive} sin sexar · {cycle.litter.femaleAlive+cycle.litter.maleAlive+cycle.litter.unsexedAlive} total. Destete previsto: {cycle.litter.expectedWeaningDate ?? 'sin parámetro'}{cycle.litter.actualWeaningDate ? ` · destete real: ${cycle.litter.actualWeaningDate}` : ''}.</p>
+          {!soloLectura && <div className="form-actions"><button type="button" className="btn btn-outline btn-sm" onClick={()=>setLitterEventCycle(litterEventCycle===cycle.id?null:cycle.id)}>Registrar baja, adopción o destete</button></div>}
+          {cycle.weaningPlan && <p className="text-sm mt-2">Destete anterior {cycle.weaningPlan.referenceWeaningDate} · +{cycle.weaningPlan.heatIntervalDays} días: celo {cycle.weaningPlan.expectedHeatDate} · +{cycle.weaningPlan.firstRepeatIntervalDays}: repetición {cycle.weaningPlan.expectedFirstRepeatDate} · +{cycle.weaningPlan.secondRepeatIntervalDays}: segunda {cycle.weaningPlan.expectedSecondRepeatDate}</p>}
+        </div>}
+        {!soloLectura && <div className="mt-2"><button type="button" className="btn btn-outline btn-sm" onClick={()=>setPostweaningCycle(postweaningCycle===cycle.id?null:cycle.id)}>{cycle.weaningPlan?'Editar plan postdestete':'Configurar celo y repeticiones'}</button></div>}
+        {postweaningCycle===cycle.id && <form className="form-stack mt-3" onSubmit={(event)=>void savePostweaningPlan(event,cycle)}>
+          <div className="grid-2"><div className="form-group"><label className="form-label">Fecha real del destete anterior</label><input name="referenceWeaningDate" type="date" max={cycle.serviceAnchorDate ?? farmToday()} defaultValue={cycle.weaningPlan?.referenceWeaningDate ?? ''} className="form-input" required /></div>
+            <div className="form-group"><label className="form-label">Intervalo a celo (días)</label><input name="heatIntervalDays" type="number" min="1" max="120" defaultValue={cycle.weaningPlan?.heatIntervalDays ?? 5} className="form-input" required /></div></div>
+          <div className="grid-3">{[['firstRepeatIntervalDays','Intervalo primera repetición',cycle.weaningPlan?.firstRepeatIntervalDays ?? 10],['secondRepeatIntervalDays','Intervalo segunda repetición',cycle.weaningPlan?.secondRepeatIntervalDays ?? 20]].map(([name,label,value])=><div className="form-group" key={String(name)}><label className="form-label">{String(label)}</label><input name={String(name)} type="number" min="1" max="120" defaultValue={Number(value)} className="form-input" required /></div>)}</div>
+          <div className="grid-3">{[['actualHeatDate','Celo observado',cycle.weaningPlan?.actualHeatDate],['actualFirstRepeatDate','Primera repetición observada',cycle.weaningPlan?.actualFirstRepeatDate],['actualSecondRepeatDate','Segunda repetición observada',cycle.weaningPlan?.actualSecondRepeatDate]].map(([name,label,value])=><div className="form-group" key={String(name)}><label className="form-label">{String(label)}</label><input name={String(name)} type="date" defaultValue={String(value ?? '')} className="form-input" /></div>)}</div>
+          <div className="form-actions"><button className="btn btn-primary btn-sm" disabled={busy}>Recalcular y guardar fechas</button></div>
+        </form>}
+        {litterEventCycle===cycle.id && cycle.litter && <form className="form-stack mt-3" onSubmit={(event)=>void saveLitterEvent(event,cycle)}>
+          <div className="grid-3"><div className="form-group"><label className="form-label">Evento</label><select name="eventType" className="form-select"><option value="weaning">Destete parcial</option><option value="death">Baja en lactancia</option><option value="adoption">Adopción hacia otra camada</option></select></div>
+            <div className="form-group"><label className="form-label">Fecha</label><input name="effectiveDate" type="date" min={cycle.litter.expectedWeaningDate ? undefined : undefined} max={farmToday()} className="form-input" required /></div>
+            <div className="form-group"><label className="form-label">Sexo</label><select name="sex" className="form-select"><option value="hembra">Hembra · quedan {cycle.litter.femaleAlive}</option><option value="macho">Macho · quedan {cycle.litter.maleAlive}</option><option value="pendiente">Sin sexar · quedan {cycle.litter.unsexedAlive}</option></select></div></div>
+          <div className="grid-3"><div className="form-group"><label className="form-label">Cantidad</label><input name="quantity" type="number" min="1" step="1" className="form-input" required /></div><div className="form-group"><label className="form-label">Peso promedio al destete (kg)</label><input name="weightKg" type="number" min="0.01" step="0.01" className="form-input" /></div><div className="form-group"><label className="form-label">Causa de baja (si aplica)</label><input name="cause" className="form-input" /></div></div>
+          <div className="grid-3"><div className="form-group"><label className="form-label">Etapa destino (destete)</label><input name="destinationStageCode" className="form-input" defaultValue="inicio" /></div><div className="form-group"><label className="form-label">Galpón destino</label><input name="destinationBarnId" type="number" min="1" className="form-input" defaultValue={cycle.barnId} /></div><div className="form-group"><label className="form-label">Camada destino (adopción)</label><select name="destinationLitterId" className="form-select"><option value="">Seleccione</option>{cycles.filter((target)=>target.litter&&target.id!==cycle.id).map((target)=><option key={target.litter!.id} value={target.litter!.id}>{target.femaleCode} · {target.litter!.id.slice(0,8)}</option>)}</select></div></div>
+          <div className="form-group"><label className="form-label">Motivo</label><input name="reason" className="form-input" required minLength={5} /></div>
+          <div className="form-actions"><button className="btn btn-primary btn-sm" disabled={busy}>Guardar evento de camada</button><button type="button" className="btn btn-outline btn-sm" onClick={()=>setLitterEventCycle(null)}>Cancelar</button></div>
+        </form>}
         {!soloLectura && cycle.cycleStatus === 'open' && <div className="form-actions mt-3 flex-wrap">
           <label className="text-xs">Palpación <select className="form-select form-select-sm inline-block ml-1" defaultValue="" onChange={(e) => { if (e.target.value) void recordEvent(cycle, 'palpation', e.target.value); e.currentTarget.value = ''; }}><option value="">Registrar estado</option>{Object.entries(statusLabels).filter(([key]) => key !== 'abortion').map(([key,label]) => <option key={key} value={key}>{label}</option>)}</select></label>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => void recordEvent(cycle, 'pregnancy_confirmed', 'gestation')}>Confirmar gestación</button>

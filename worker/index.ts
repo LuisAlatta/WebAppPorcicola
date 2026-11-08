@@ -67,8 +67,9 @@ import {
 import {
   listReproductionCycles, createReproductionCycle, addReproductionService,
   recordReproductionEvent, updateReproductionCycle, createPregnantAntecedent,
+  saveWeaningPlan,
 } from './reproduction';
-import { correctLitter, recordFarrowing } from './litters';
+import { correctLitter, recordFarrowing, recordLitterEvent } from './litters';
 
 export interface Env {
   DB: D1Database;
@@ -554,6 +555,11 @@ const worker = {
           const result = await correctLitter(env.DB, session.user.id, cycleId, body, scope);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
+        if (parts[2] === 'litters' && cycleId && parts.length === 5 && parts[4] === 'events' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof recordLitterEvent>[3];
+          const result = await recordLitterEvent(env.DB, session.user.id, cycleId, body, scope);
+          return Response.json({ ok:true, ...result }, { status:result.replayed?200:201 });
+        }
         if (cycleId && parts.length === 5 && parts[4] === 'farrowing' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof recordFarrowing>[3];
           const result = await recordFarrowing(env.DB, session.user.id, cycleId, body, scope);
@@ -563,6 +569,11 @@ const worker = {
           const body = await request.json() as Parameters<typeof updateReproductionCycle>[3];
           const result = await updateReproductionCycle(env.DB, session.user.id, cycleId, body, scope);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 200 });
+        }
+        if (cycleId && parts.length === 5 && parts[4] === 'postweaning' && request.method === 'PUT') {
+          const body = await request.json() as Parameters<typeof saveWeaningPlan>[3];
+          const result = await saveWeaningPlan(env.DB,session.user.id,cycleId,body,scope);
+          return Response.json({ok:true,...result},{status:result.replayed?200:200});
         }
         if (cycleId && parts.length === 5 && parts[4] === 'services' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof addReproductionService>[3];
