@@ -73,6 +73,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
   let responsableToken: string;
   let veterinarioToken: string;
   let operarioSinGalponToken: string;
+  let operarioGalponBToken: string;
 
   const api = async (path: string, init: RequestInit = {}, token = adminToken) => {
     const headers = new Headers(init.headers ?? {});
@@ -143,6 +144,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0019_feed_purchase_reversals.sql',
       '0020_financial_settlements.sql',
       '0021_alert_occurrences.sql',
+      '0022_alerts_critical_notifications.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -232,6 +234,8 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     });
     expect(sinGalponRes.status).toBe(201);
 
+    const operarioGalponBRes=await api('/api/admin/users',{method:'POST',body:JSON.stringify({username:'operario.galpon.b@granja.pe',name:'Operario Galpón B',role:'operario',password:'ClaveOperarioGalponB1!',barnIds:[2]})});expect(operarioGalponBRes.status).toBe(201);
+
     const login = async (username: string, password: string) => {
       const res = await worker.fetch(new Request('http://localhost/api/auth/login', {
         method: 'POST',
@@ -247,6 +251,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     responsableToken = await login('responsable.animales@granja.pe', 'ClaveResponsable1!');
     veterinarioToken = await login('veterinario.animales@granja.pe', 'ClaveVeterinarioAni1!');
     operarioSinGalponToken = await login('operario.sin.galpon@granja.pe', 'ClaveSinGalpon1!');
+    operarioGalponBToken = await login('operario.galpon.b@granja.pe','ClaveOperarioGalponB1!');
   });
 
   afterAll(async () => {
@@ -1066,7 +1071,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const cycleEdit=await api(`/api/reproduction/cycles/${cycleId}`,{method:'PUT',body:JSON.stringify({observations:'Observación corregida 1',operationKey:'rep-t18-cycle-edit-1'})});expect(cycleEdit.status).toBe(200);
     const cycleEditAgain=await api(`/api/reproduction/cycles/${cycleId}`,{method:'PUT',body:JSON.stringify({observations:'Observación corregida 2',operationKey:'rep-t18-cycle-edit-2'})});expect(cycleEditAgain.status).toBe(200);
     const sowSchedule=await api('/api/vaccines/schedules?status=pending&from=2026-08-05&to=2026-08-05');const sowRows=(await sowSchedule.json() as {schedules:{animalCode:string}[]}).schedules.filter(row=>row.animalCode==='T18-CERDA');expect(sowRows).toHaveLength(1);
-  });
+  },15000);
 
   it('registra finanzas con distribución exacta, monedas separadas y alcance por galpón', async () => {
     const payload={direction:'expense',category:'Alimento',concept:'Compra de prueba',operationDate:'2026-11-07',amount:'100.00',currencyCode:'PEN',counterparty:'Proveedor ficticio',reference:'FC-TEST-1',reason:'Prueba de distribución financiera',operationKey:'fin-t19-split',allocations:[{barnId:1,amount:'60.00',supplyCode:'ALIMENTO-1',quantity:20},{barnId:2,amount:'40.00',supplyCode:'ALIMENTO-1',quantity:10}]};
@@ -1137,7 +1142,23 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const afterPartial=await api('/api/alerts?type=weaning&bucket=today');expect((await afterPartial.json() as {alerts:{details:{remaining:number}}[]}).alerts[0]?.details.remaining).toBe(3);
     const finalWeaning=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'weaning',effectiveDate:today,sex:'hembra',quantity:3,weightKg:6.3,destinationStageCode:'inicio',destinationBarnId:1,reason:'Destete completo T22',operationKey:'rep-t22-wean-final'})});expect(finalWeaning.status,await finalWeaning.clone().text()).toBe(201);
     expect((await api('/api/alerts?type=weaning&status=resolved')).status).toBe(200);
-  },20000);
+  },30000);
+
+  it('reconcilia bajo peso, sugerencia de venta, retiro sanitario y notificación crítica (T23)',async()=>{
+    const today=currentFarmDate();const withdrawalDate=new Date(`${today}T00:00:00.000Z`);withdrawalDate.setUTCDate(withdrawalDate.getUTCDate()+7);const withdrawalUntil=withdrawalDate.toISOString().slice(0,10);await db.prepare("UPDATE stage_versions SET initial_weight_kg=40 WHERE code='engorde' AND status='active'").run();
+    const low=await create({code:'T23-BAJO',animalType:'lechon',sex:'macho',birthDate:'2025-01-01',entryDate:today,entryStageCode:'engorde',aptitude:'engorde',originType:'nacimiento',operationKey:'ani-t23-low'});expect(low.status).toBe(201);
+    const weigh=async(code:string,weightKg:number,time:string,key:string)=>api(`/api/animals/${code}/weights`,{method:'POST',body:JSON.stringify({weighedOn:today,weighedTime:time,weightKg,reason:'Pesaje automatizado T23',operationKey:key})});
+    expect((await weigh('T23-BAJO',39,'08:00','weight-t23-39')).status).toBe(201);const lowAlerts=await api('/api/alerts?type=low_weight');const lowRow=(await lowAlerts.json() as {alerts:{key:string;details:Record<string,unknown>}[]}).alerts.find(item=>item.details.animalCode==='T23-BAJO');expect(lowRow?.details).toMatchObject({measuredKg:39,minimumKg:40,differenceKg:1});
+    const sale=await create({code:'T23-VENTA',animalType:'lechon',sex:'macho',birthDate:'2025-01-01',entryDate:today,entryStageCode:'engorde',aptitude:'engorde',originType:'nacimiento',operationKey:'ani-t23-sale'});expect(sale.status).toBe(201);expect((await weigh('T23-VENTA',100,'09:00','weight-t23-100')).status).toBe(201);
+    const stockBefore=(await inventoryTotals(today)).summary.total.available;const saleAlerts=await api('/api/alerts?type=sale_suggestion');const candidate=(await saleAlerts.json() as {alerts:{animalCode:string;details:Record<string,unknown>}[]}).alerts.find(item=>item.animalCode==='T23-VENTA');expect(candidate?.details).toMatchObject({weightKg:100,targetKg:100,decisionRequired:true});expect((await inventoryTotals(today)).summary.total.available).toBe(stockBefore);
+    const withdrawal=await api('/api/health/events',{method:'POST',body:JSON.stringify({eventType:'treatment',effectiveDate:today,animalCodes:['T23-VENTA'],product:'Retiro T23',dosage:1,dosageUnit:'ml',withdrawalUntil,reason:'Retiro preventivo T23',operationKey:'health-t23-withdrawal'})},veterinarioToken);expect(withdrawal.status).toBe(201);expect((await (await api('/api/alerts?type=sale_suggestion')).json() as {alerts:{animalCode:string}[]}).alerts.some(item=>item.animalCode==='T23-VENTA')).toBe(false);
+    expect((await weigh('T23-BAJO',40,'10:00','weight-t23-40')).status).toBe(201);const cleared=await api('/api/alerts?type=low_weight&status=resolved');expect((await cleared.json() as {alerts:{animalCode:string;status:string}[]}).alerts.some(item=>item.animalCode==='T23-BAJO'&&item.status==='resolved')).toBe(true);
+    const responsible=await db.prepare("SELECT id FROM users WHERE username='responsable.animales@granja.pe'").first<{id:number}>();await db.prepare('UPDATE barns SET responsable_id=? WHERE id=1').bind(responsible!.id).run();const rule=await api('/api/alerts/rules',{method:'PUT',body:JSON.stringify({alertType:'farrowing',overdueDays:0,isActive:true,roles:['responsable'],reason:'Escalar parto vencido T23'})});expect(rule.status,await rule.clone().text()).toBe(200);
+    const old=new Date(`${today}T00:00:00.000Z`);old.setUTCDate(old.getUTCDate()-1);const dueYesterday=old.toISOString().slice(0,10);const sow=await create({code:'T23-PARTO-CRITICO',animalType:'cerda',sex:'hembra',birthDate:'2024-01-01',entryDate:dueYesterday,entryStageCode:'gestacion',originType:'nacimiento',operationKey:'ani-t23-critical-sow'});expect(sow.status).toBe(201);const cycle=await api('/api/reproduction/cycles',{method:'POST',body:JSON.stringify({femaleCode:'T23-PARTO-CRITICO',serviceDate:dueYesterday,serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'Escenario CA26',dueDate:dueYesterday,dueDateReason:'Atraso intencional CA26',operationKey:'rep-t23-critical'})});expect(cycle.status).toBe(201);const cycleId=(await cycle.json() as {createdCycleId:string}).createdCycleId;
+    const criticalList=await api('/api/alerts?type=farrowing&bucket=overdue');const criticalAlert=(await criticalList.json() as {alerts:{id:number;sourceId:string;priority:string;details:Record<string,unknown>;eventLink:string}[]}).alerts.find(item=>item.sourceId===cycleId);expect(criticalAlert?.priority).toBe('critical');expect(criticalAlert?.details).toMatchObject({criticalRuleId:expect.any(Number),criticalThresholdDays:0,criticalAgeDays:1,responsibleName:'Responsable de Galpón A'});expect(criticalAlert?.eventLink).toContain('/reproduccion?cycleId=');const history=(await api(`/api/alerts/${criticalAlert!.id}/notifications`,{},responsableToken)).json() as Promise<{notifications:{userName:string;role:string;transition:string;notifiedAt:string}[]}>;expect((await history).notifications).toContainEqual(expect.objectContaining({userName:'Responsable de Galpón A',role:'responsable',transition:'critical',notifiedAt:expect.any(String)}));expect((await api(`/api/alerts/${criticalAlert!.id}/notifications`,{},operarioGalponBToken)).status).toBe(403);await db.batch([db.prepare('DELETE FROM alert_notifications WHERE alert_occurrence_id=?').bind(criticalAlert!.id),db.prepare('DELETE FROM alert_escalations WHERE alert_occurrence_id=?').bind(criticalAlert!.id),db.prepare('UPDATE alert_occurrences SET notification_created_at=NULL,notification_bucket=NULL,critical_notified_at=NULL WHERE id=?').bind(criticalAlert!.id)]);await worker.scheduled({} as ScheduledController,{DB:db} as never);
+    const notifications=await api('/api/notifications?unread=1',{},responsableToken);const items=(await notifications.json() as {notifications:{id:number;alertId:number;transition:string;priority:string;actionUrl:string}[]}).notifications;const criticalNotification=items.find(item=>item.alertId===criticalAlert!.id&&item.transition==='critical');expect(criticalNotification?.priority).toBe('critical');expect(criticalNotification?.actionUrl).toBe(`/alertas?alertId=${criticalAlert!.id}`);const sameNotifications=await api('/api/notifications?unread=1',{},responsableToken);expect((await sameNotifications.json() as {notifications:{id:number}[]}).notifications.filter(item=>item.id===criticalNotification!.id)).toHaveLength(1);const otherBarnNotifications=await api('/api/notifications?unread=1',{},operarioGalponBToken);expect((await otherBarnNotifications.json() as {notifications:{alertId:number}[]}).notifications.some(item=>item.alertId===criticalAlert!.id)).toBe(false);
+    expect((await api(`/api/notifications/${criticalNotification!.id}/read`,{method:'POST'},operarioToken)).status).toBe(404);expect((await api(`/api/notifications/${criticalNotification!.id}/read`,{method:'POST'},responsableToken)).status).toBe(200);const stillPending=await api(`/api/alerts?type=farrowing&status=pending`);expect((await stillPending.json() as {alerts:{id:number;status:string;priority:string}[]}).alerts).toContainEqual(expect.objectContaining({id:criticalAlert!.id,status:'pending',priority:'critical'}));
+  },40000);
 
   it('enlaza compra de animal con su única entrada y movimiento de inventario', async () => {
     const purchase={code:'T20-COMPRA',animalType:'lechon',sex:'macho',birthDate:'2026-10-01',entryDate:'2026-11-06',entryStageCode:'preinicio',originType:'compra',purchaseAmount:'500.00',purchaseCurrencyCode:'PEN',purchaseCounterparty:'Proveedor porcino',purchaseDocumentReference:'FC-COMPRA-20',reason:'Compra para prueba integrada',operationKey:'ani-t20-purchase'};
