@@ -210,7 +210,10 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>('');
   const [transferDestination, setTransferDestination] = useState<string>('');
+  const [transferCoordinates, setTransferCoordinates] = useState({ sourceLocationCode: '', sourceLotCode: '', destinationLocationCode: '', destinationLotCode: '' });
   const [inventoryOperationMode, setInventoryOperationMode] = useState<'transfer' | 'reconcile'>('transfer');
+  const [correctionForm, setCorrectionForm] = useState({ movementId: '', correctedQuantity: '', reason: '' });
+  const [correctionPreview, setCorrectionPreview] = useState<{ allowed: boolean; originalQuantity: number; correctedQuantity: number; incompatibleMovements: { id: number; date: string; type: string; quantity: number; balanceAfter: number }[] } | null>(null);
 
   const loadSnapshot = useCallback(async (date: string) => {
     setLoading(true);
@@ -293,11 +296,11 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
       const res = await fetch('/api/inventory/transfers', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sourceBarnId: Number(form.barnId), destinationBarnId: Number(transferDestination),
           effectiveDate: form.effectiveDate, stageCode: form.stageCode, sex: form.sex, quantity: Number(form.quantity),
-          locationCode: form.locationCode || null, lotCode: form.lotCode || null, reason: form.reason,
+          ...Object.fromEntries(Object.entries(transferCoordinates).map(([key, value]) => [key, value || null])), reason: form.reason,
           operationKey }) });
-      const body = await res.json() as { error?: string; replayed?: boolean };
+      const body = await res.json() as { error?: string; replayed?: boolean; warning?: string | null };
       if (!res.ok) { setFormError(body.error ?? 'No se pudo registrar el traslado.'); return; }
-      setSuccess(body.replayed ? 'Traslado confirmado sin duplicarlo.' : 'Traslado registrado: salida y recepción quedaron vinculadas.');
+      setSuccess([body.replayed ? 'Traslado confirmado sin duplicarlo.' : 'Traslado registrado: salida y recepción quedaron vinculadas.', body.warning].filter(Boolean).join(' '));
       setOperationKey(newOperationKey('traslado'));
       setForm((prev) => ({ ...prev, quantity: '', reason: '' }));
       await loadSnapshot(asOf);
@@ -324,6 +327,37 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
       setForm((prev) => ({ ...prev, quantity: '', reason: '' }));
       await loadSnapshot(asOf);
     } catch { setFormError('No se pudo confirmar la conciliación.'); }
+    finally { setSaving(false); }
+  };
+
+  const previewCorrection = async () => {
+    setFormError(null); setCorrectionPreview(null);
+    if (!correctionForm.movementId || !correctionForm.correctedQuantity) { setFormError('Indique el ID del movimiento y la cantidad corregida.'); return; }
+    setSaving(true);
+    try {
+      const query = new URLSearchParams({ movementId: correctionForm.movementId, correctedQuantity: correctionForm.correctedQuantity });
+      const res = await fetch(`/api/inventory/corrections/preview?${query}`);
+      const body = await res.json() as { error?: string; preview?: typeof correctionPreview };
+      if (!res.ok || !body.preview) { setFormError(body.error ?? 'No se pudo previsualizar la corrección.'); return; }
+      setCorrectionPreview(body.preview);
+    } catch { setFormError('No se pudo consultar el impacto de la corrección.'); }
+    finally { setSaving(false); }
+  };
+
+  const submitCorrection = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!correctionPreview?.allowed || !correctionForm.reason.trim()) { setFormError('Previsualice una corrección compatible y escriba el motivo.'); return; }
+    setSaving(true); setFormError(null);
+    try {
+      const res = await fetch('/api/inventory/corrections', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ movementId: Number(correctionForm.movementId), correctedQuantity: Number(correctionForm.correctedQuantity), reason: correctionForm.reason, operationKey }) });
+      const body = await res.json() as { error?: string; replayed?: boolean };
+      if (!res.ok) { setFormError(body.error ?? 'No se pudo corregir el movimiento.'); return; }
+      setSuccess(body.replayed ? 'Corrección confirmada sin duplicarla.' : 'Corrección guardada; el original permanece en el historial.');
+      setOperationKey(newOperationKey('inv-correction'));
+      setCorrectionForm({ movementId: '', correctedQuantity: '', reason: '' }); setCorrectionPreview(null);
+      await loadSnapshot(asOf);
+    } catch { setFormError('No se pudo confirmar la corrección. Reintente con la misma clave.'); }
     finally { setSaving(false); }
   };
 
@@ -960,14 +994,38 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                 <div className="form-group"><label className="form-label" htmlFor="t10-stage">Etapa</label><select id="t10-stage" className="form-select" value={form.stageCode} onChange={(event) => setField('stageCode', event.target.value)} required>{options?.stages.map((stage) => <option key={stage.code} value={stage.code}>{stage.name}</option>)}</select></div>
                 <div className="form-group"><label className="form-label" htmlFor="t10-sex">Sexo</label><select id="t10-sex" className="form-select" value={form.sex} onChange={(event) => setField('sex', event.target.value as Sex)}>{Object.entries(SEX_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></div>
                 <div className="form-group"><label className="form-label" htmlFor="t10-quantity">{inventoryOperationMode === 'transfer' ? 'Cabezas a trasladar' : 'Cabezas contadas'}</label><input id="t10-quantity" type="number" min={inventoryOperationMode === 'transfer' ? 1 : 0} step="1" className="form-input" value={form.quantity} onChange={(event) => setField('quantity', event.target.value)} required /></div>
-                <div className="form-group"><label className="form-label" htmlFor="t10-location">Ubicación</label><select id="t10-location" className="form-select" value={form.locationCode} onChange={(event) => setField('locationCode', event.target.value)}><option value="">Sin asignar</option>{options?.locations.map((location) => <option key={location.code} value={location.code}>{location.name}</option>)}</select></div>
-                <div className="form-group"><label className="form-label" htmlFor="t10-lot">Lote</label><select id="t10-lot" className="form-select" value={form.lotCode} onChange={(event) => setField('lotCode', event.target.value)}><option value="">Sin lote</option>{options?.lots.map((lot) => <option key={lot.code} value={lot.code}>{lot.name}</option>)}</select></div>
+                {inventoryOperationMode === 'transfer' ? <>
+                  <div className="form-group"><label className="form-label" htmlFor="t10-source-location">Ubicación de origen</label><select id="t10-source-location" className="form-select" value={transferCoordinates.sourceLocationCode} onChange={(event) => setTransferCoordinates((prev) => ({ ...prev, sourceLocationCode: event.target.value }))}><option value="">Sin asignar</option>{options?.locations.map((location) => <option key={location.code} value={location.code}>{location.name}</option>)}</select></div>
+                  <div className="form-group"><label className="form-label" htmlFor="t10-dest-location">Ubicación de destino</label><select id="t10-dest-location" className="form-select" value={transferCoordinates.destinationLocationCode} onChange={(event) => setTransferCoordinates((prev) => ({ ...prev, destinationLocationCode: event.target.value }))}><option value="">Sin asignar</option>{options?.locations.map((location) => <option key={location.code} value={location.code}>{location.name}</option>)}</select></div>
+                  <div className="form-group"><label className="form-label" htmlFor="t10-source-lot">Lote de origen</label><select id="t10-source-lot" className="form-select" value={transferCoordinates.sourceLotCode} onChange={(event) => setTransferCoordinates((prev) => ({ ...prev, sourceLotCode: event.target.value }))}><option value="">Sin lote</option>{options?.lots.map((lot) => <option key={lot.code} value={lot.code}>{lot.name}</option>)}</select></div>
+                  <div className="form-group"><label className="form-label" htmlFor="t10-dest-lot">Lote de destino</label><select id="t10-dest-lot" className="form-select" value={transferCoordinates.destinationLotCode} onChange={(event) => setTransferCoordinates((prev) => ({ ...prev, destinationLotCode: event.target.value }))}><option value="">Sin lote</option>{options?.lots.map((lot) => <option key={lot.code} value={lot.code}>{lot.name}</option>)}</select></div>
+                </> : <>
+                  <div className="form-group"><label className="form-label" htmlFor="t10-location">Ubicación</label><select id="t10-location" className="form-select" value={form.locationCode} onChange={(event) => setField('locationCode', event.target.value)}><option value="">Sin asignar</option>{options?.locations.map((location) => <option key={location.code} value={location.code}>{location.name}</option>)}</select></div>
+                  <div className="form-group"><label className="form-label" htmlFor="t10-lot">Lote</label><select id="t10-lot" className="form-select" value={form.lotCode} onChange={(event) => setField('lotCode', event.target.value)}><option value="">Sin lote</option>{options?.lots.map((lot) => <option key={lot.code} value={lot.code}>{lot.name}</option>)}</select></div>
+                </>}
                 <div className="form-group"><label className="form-label" htmlFor="t10-reason">Motivo y aprobación</label><input id="t10-reason" className="form-input" value={form.reason} onChange={(event) => setField('reason', event.target.value)} required maxLength={300} /></div>
               </div>
               <div className="form-actions"><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando…' : 'Registrar operación'}</button></div>
               {success && <div className="alert alert-success" role="status">{success}</div>}
             </form>
           )}
+          {!soloLectura && <div className="card mt-4">
+            <div className="card-header-clean mb-2"><span className="section-title">Corregir un movimiento</span><span className="text-xs text-muted">El original se conserva; revise los movimientos posteriores antes de confirmar.</span></div>
+            <form className="form-stack" onSubmit={(event) => void submitCorrection(event)}>
+              {formError && <div className="alert alert-error" role="alert">{formError}</div>}
+              <div className="form-grid">
+                <div className="form-group"><label className="form-label" htmlFor="t10-correction-id">ID del movimiento</label><input id="t10-correction-id" type="number" min="1" step="1" className="form-input" value={correctionForm.movementId} onChange={(event) => { setCorrectionForm((prev) => ({ ...prev, movementId: event.target.value })); setCorrectionPreview(null); }} required /></div>
+                <div className="form-group"><label className="form-label" htmlFor="t10-correction-quantity">Cantidad correcta</label><input id="t10-correction-quantity" type="number" step="1" className="form-input" value={correctionForm.correctedQuantity} onChange={(event) => { setCorrectionForm((prev) => ({ ...prev, correctedQuantity: event.target.value })); setCorrectionPreview(null); }} required /></div>
+                <div className="form-group"><label className="form-label" htmlFor="t10-correction-reason">Motivo</label><input id="t10-correction-reason" className="form-input" value={correctionForm.reason} onChange={(event) => setCorrectionForm((prev) => ({ ...prev, reason: event.target.value }))} required /></div>
+              </div>
+              <div className="form-actions"><button type="button" className="btn btn-outline btn-sm" onClick={() => void previewCorrection()} disabled={saving}>Previsualizar impacto</button></div>
+              {correctionPreview && <div className={correctionPreview.allowed ? 'alert alert-success' : 'alert alert-error'} role="status">
+                <p>{correctionPreview.allowed ? `Compatible: ${correctionPreview.originalQuantity} → ${correctionPreview.correctedQuantity}.` : 'No se puede aplicar: estos movimientos posteriores quedarían incompatibles.'}</p>
+                {correctionPreview.incompatibleMovements.map((item, index) => <p key={`${item.id}-${index}`}>#{item.id} · {item.type} · {item.date} · {item.quantity} cabezas · saldo resultante {item.balanceAfter}</p>)}
+              </div>}
+              <div className="form-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={saving || !correctionPreview?.allowed}>{saving ? 'Guardando…' : 'Confirmar corrección'}</button></div>
+            </form>
+          </div>}
         </div>
       )}
 

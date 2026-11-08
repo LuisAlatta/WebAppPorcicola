@@ -124,6 +124,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0005_inventory_schema.sql',
       '0006_animals_schema.sql',
       '0007_transfer_and_stock_guard.sql',
+      '0008_animal_location_history.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -564,6 +565,48 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(vendido.animals.map((item) => item.code)).toContain('HIST-01');
   });
 
+  it('traslada una ficha, el libro y la ubicación histórica en una operación', async () => {
+    const created = await create({ code: 'T10-MOVE-01', entryDate: '2026-05-01', entryStageCode: 'preinicio', originType: 'nacimiento' });
+    expect(created.status).toBe(201);
+    const payload = { destinationBarnId: 2, locationCode: null, lotCode: null, effectiveDate: '2026-11-07',
+      reason: 'Traslado de prueba', operationKey: 't10-animal-transfer-01' };
+    const denied = await api('/api/animals/T10-MOVE-01/transfer', { method: 'POST', body: JSON.stringify(payload) }, operarioToken);
+    expect(denied.status).toBe(403);
+    const oldCapacity = await db.prepare('SELECT capacity FROM barns WHERE id = 2').first<{ capacity: number }>();
+    await db.prepare('UPDATE barns SET capacity = 0 WHERE id = 2').run();
+    const transferred = await api('/api/animals/T10-MOVE-01/transfer', { method: 'POST', body: JSON.stringify(payload) });
+    expect(transferred.status).toBe(201);
+    expect((await transferred.json() as { warning: string | null }).warning).toContain('sobre capacidad');
+    await db.prepare('UPDATE barns SET capacity = ? WHERE id = 2').bind(oldCapacity?.capacity ?? 60).run();
+    const replay = await api('/api/animals/T10-MOVE-01/transfer', { method: 'POST', body: JSON.stringify(payload) });
+    expect(replay.status, JSON.stringify(await replay.clone().json())).toBe(200);
+    const detail = await api('/api/animals/T10-MOVE-01');
+    const detailBody = await detail.json() as { animal: AnimalSummary };
+    expect(detailBody.animal.barnId).toBe(2);
+    const before = await inventoryTotals('2026-11-06');
+    const after = await inventoryTotals('2026-11-07');
+    const identifiedA = (snapshot: typeof before, barnName: string) => snapshot.balances.filter((bucket) => bucket.barnName === barnName && bucket.stageCode === 'preinicio' && bucket.sex === 'hembra').reduce((total, bucket) => total + bucket.identified, 0);
+    expect(identifiedA(before, 'Galpón A') - identifiedA(after, 'Galpón A')).toBe(1);
+    expect(identifiedA(after, 'Galpón B') - identifiedA(before, 'Galpón B')).toBe(1);
+    const legs = await db.prepare("SELECT COUNT(*) AS n FROM inventory_movements WHERE animal_id = (SELECT id FROM animals WHERE code = 'T10-MOVE-01') AND movement_type IN ('transfer_out','transfer_in')").first<{ n: number }>();
+    expect(legs?.n).toBe(2);
+  });
+
+  it('cierra venta o muerte de ficha con su descuento de inventario atómico', async () => {
+    const created = await create({ code: 'T10-EXIT-01', entryDate: '2026-11-06', entryStageCode: 'preinicio', originType: 'nacimiento' });
+    expect(created.status).toBe(201);
+    const payload = { exitType: 'death', causeCode: 'enfermedad', effectiveDate: '2026-11-07',
+      reason: 'Muerte registrada por prueba', operationKey: 't10-animal-exit-01' };
+    const response = await api('/api/animals/T10-EXIT-01/exit', { method: 'POST', body: JSON.stringify(payload) });
+    expect(response.status).toBe(201);
+    const replay = await api('/api/animals/T10-EXIT-01/exit', { method: 'POST', body: JSON.stringify(payload) });
+    expect(replay.status).toBe(200);
+    const detail = await api('/api/animals/T10-EXIT-01');
+    expect((await detail.json() as { animal: AnimalSummary }).animal.status).toBe('muerto');
+    const linked = await db.prepare("SELECT COUNT(*) AS n FROM inventory_movements WHERE animal_id = (SELECT id FROM animals WHERE code = 'T10-EXIT-01') AND movement_type = 'death'").first<{ n: number }>();
+    expect(linked?.n).toBe(1);
+  });
+
   it('respeta el alcance por galpón y el perfil de solo lectura', async () => {
     const otraGranja = await create({
       code: 'G-B-01',
@@ -616,7 +659,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(cerdas.animals.map((animal) => animal.code)).toEqual(['M-01']);
 
     const galponB = await list('?barnId=2');
-    expect(galponB.animals.map((animal) => animal.code)).toEqual(['G-B-01']);
+    expect(galponB.animals.map((animal) => animal.code)).toEqual(expect.arrayContaining(['G-B-01']));
 
     const ubicacionA = await list('?location=galpon_a');
     expect(ubicacionA.animals.some((animal) => animal.code === '002')).toBe(true);

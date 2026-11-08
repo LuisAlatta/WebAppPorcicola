@@ -126,6 +126,8 @@ interface AnimalOptions {
   sexes: { code: string; name: string }[];
   statuses: { code: string; name: string }[];
   origins: { code: string; name: string }[];
+  deathCauses: { code: string; name: string }[];
+  saleCauses: { code: string; name: string }[];
 }
 
 interface ListPayload {
@@ -275,6 +277,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const [toggleReason, setToggleReason] = useState<string>('');
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
+  const [transferForm, setTransferForm] = useState({ destinationBarnId: '', locationCode: '', lotCode: '', effectiveDate: farmToday(), reason: '' });
+  const [exitForm, setExitForm] = useState({ exitType: 'sale' as 'sale' | 'death', causeCode: '', effectiveDate: farmToday(), reason: '' });
+  const [physicalActionError, setPhysicalActionError] = useState<string | null>(null);
+  const [transferOperationKey, setTransferOperationKey] = useState(() => newOperationKey('ani-transfer'));
+  const [exitOperationKey, setExitOperationKey] = useState(() => newOperationKey('ani-exit'));
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -584,7 +591,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
           operationKey: newOperationKey('ani-arete'),
         }),
       });
-      const body = await res.json() as { error?: string; animal?: AnimalDetail };
+      const body = await res.json() as { error?: string; animal?: AnimalDetail; warning?: string | null };
       if (!res.ok || !body.animal) {
         setTagError(body.error ?? 'No se pudo cambiar el arete.');
         return;
@@ -638,6 +645,47 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     } finally {
       setBusy(false);
     }
+  };
+
+  const handlePhysicalTransfer = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!detail || !transferForm.destinationBarnId || !transferForm.reason.trim()) {
+      setPhysicalActionError('Seleccione el galpón destino y escriba el motivo del traslado.');
+      return;
+    }
+    setBusy(true); setPhysicalActionError(null);
+    try {
+      const res = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...transferForm, destinationBarnId: Number(transferForm.destinationBarnId),
+          locationCode: transferForm.locationCode || null, lotCode: transferForm.lotCode || null, operationKey: transferOperationKey }) });
+      const body = await res.json() as { error?: string; animal?: AnimalDetail; warning?: string | null };
+      if (!res.ok || !body.animal) { setPhysicalActionError(body.error ?? 'No se pudo trasladar el animal.'); return; }
+      setDetail(body.animal); setTransferOperationKey(newOperationKey('ani-transfer'));
+      setTransferForm((prev) => ({ ...prev, destinationBarnId: '', reason: '' }));
+      setSuccess([`Animal ${body.animal.code} trasladado y su historial de galpón actualizado.`, body.warning].filter(Boolean).join(' '));
+      await loadList();
+    } catch { setPhysicalActionError('No se pudo confirmar el traslado. Reintente con el mismo formulario.'); }
+    finally { setBusy(false); }
+  };
+
+  const handlePhysicalExit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!detail || !exitForm.causeCode || !exitForm.reason.trim()) {
+      setPhysicalActionError('Seleccione la causa y escriba el motivo de la salida.');
+      return;
+    }
+    setBusy(true); setPhysicalActionError(null);
+    try {
+      const res = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/exit`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...exitForm, operationKey: exitOperationKey }) });
+      const body = await res.json() as { error?: string; animal?: AnimalDetail };
+      if (!res.ok || !body.animal) { setPhysicalActionError(body.error ?? 'No se pudo registrar la salida.'); return; }
+      setDetail(body.animal); setExitOperationKey(newOperationKey('ani-exit'));
+      setExitForm((prev) => ({ ...prev, causeCode: '', reason: '' }));
+      setSuccess(`La ficha ${body.animal.code} y el movimiento de ${exitForm.exitType === 'death' ? 'muerte' : 'venta'} quedaron registrados juntos.`);
+      await loadList();
+    } catch { setPhysicalActionError('No se pudo confirmar la salida. Reintente con el mismo formulario.'); }
+    finally { setBusy(false); }
   };
 
   const animals = data?.animals ?? [];
@@ -1710,6 +1758,37 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                   </div>
                 </div>
               </div>
+              {detail.exitDate === null && detail.isActive && !soloLectura && (
+                <>
+                  <div className="card">
+                    <div className="card-header-clean mb-2"><span className="section-title">Trasladar animal</span><span className="text-xs text-muted">Actualiza ficha, historial de ubicación y libro de inventario en una operación.</span></div>
+                    <form className="form-stack" onSubmit={(event) => void handlePhysicalTransfer(event)}>
+                      {physicalActionError && <div className="alert alert-error" role="alert">{physicalActionError}</div>}
+                      <div className="form-grid">
+                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-barn">Galpón destino</label><select id="ani-transfer-barn" className="form-select" value={transferForm.destinationBarnId} onChange={(event) => setTransferForm((prev) => ({ ...prev, destinationBarnId: event.target.value }))} required><option value="">Seleccione destino</option>{data?.options.barns.filter((barn) => barn.id !== detail.barnId).map((barn) => <option key={barn.id} value={barn.id}>{barn.name}</option>)}</select></div>
+                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-location">Ubicación</label><select id="ani-transfer-location" className="form-select" value={transferForm.locationCode} onChange={(event) => setTransferForm((prev) => ({ ...prev, locationCode: event.target.value }))}><option value="">Sin asignar</option>{data?.options.locations.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
+                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-lot">Lote</label><select id="ani-transfer-lot" className="form-select" value={transferForm.lotCode} onChange={(event) => setTransferForm((prev) => ({ ...prev, lotCode: event.target.value }))}><option value="">Sin lote</option>{data?.options.lots.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
+                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-date">Fecha efectiva</label><input id="ani-transfer-date" type="date" className="form-input" value={transferForm.effectiveDate} max={farmToday()} onChange={(event) => setTransferForm((prev) => ({ ...prev, effectiveDate: event.target.value }))} required /></div>
+                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-reason">Motivo</label><input id="ani-transfer-reason" className="form-input" value={transferForm.reason} onChange={(event) => setTransferForm((prev) => ({ ...prev, reason: event.target.value }))} required /></div>
+                      </div>
+                      <div className="form-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>{busy ? 'Guardando…' : 'Registrar traslado'}</button></div>
+                    </form>
+                  </div>
+                  <div className="card">
+                    <div className="card-header-clean mb-2"><span className="section-title">Registrar salida física</span><span className="text-xs text-muted">La venta o muerte actualiza la ficha y descuenta una cabeza del inventario.</span></div>
+                    <form className="form-stack" onSubmit={(event) => void handlePhysicalExit(event)}>
+                      {physicalActionError && <div className="alert alert-error" role="alert">{physicalActionError}</div>}
+                      <div className="form-grid">
+                        <div className="form-group"><label className="form-label" htmlFor="ani-exit-type">Tipo de salida</label><select id="ani-exit-type" className="form-select" value={exitForm.exitType} onChange={(event) => setExitForm((prev) => ({ ...prev, exitType: event.target.value as 'sale' | 'death', causeCode: '' }))}><option value="sale">Venta o descarte</option><option value="death">Muerte</option></select></div>
+                        <div className="form-group"><label className="form-label" htmlFor="ani-exit-cause">Causa</label><select id="ani-exit-cause" className="form-select" value={exitForm.causeCode} onChange={(event) => setExitForm((prev) => ({ ...prev, causeCode: event.target.value }))} required><option value="">Seleccione causa</option>{(exitForm.exitType === 'death' ? data?.options.deathCauses : data?.options.saleCauses)?.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
+                        <div className="form-group"><label className="form-label" htmlFor="ani-exit-date">Fecha efectiva</label><input id="ani-exit-date" type="date" className="form-input" value={exitForm.effectiveDate} max={farmToday()} onChange={(event) => setExitForm((prev) => ({ ...prev, effectiveDate: event.target.value }))} required /></div>
+                        <div className="form-group"><label className="form-label" htmlFor="ani-exit-reason">Motivo</label><input id="ani-exit-reason" className="form-input" value={exitForm.reason} onChange={(event) => setExitForm((prev) => ({ ...prev, reason: event.target.value }))} required /></div>
+                      </div>
+                      <div className="form-actions"><button type="submit" className="btn btn-danger btn-sm" disabled={busy}>{busy ? 'Guardando…' : 'Registrar salida'}</button></div>
+                    </form>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

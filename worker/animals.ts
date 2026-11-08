@@ -9,6 +9,7 @@ import {
   type AuditRecordInput,
 } from './events';
 import { getConfigSnapshot, type ConfigSnapshot } from './config';
+import { stockGuardStatement } from './inventory';
 
 /**
  * Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)
@@ -178,6 +179,8 @@ export interface AnimalOptions {
   sexes: { code: string; name: string }[];
   statuses: { code: string; name: string }[];
   origins: { code: string; name: string }[];
+  deathCauses: { code: string; name: string }[];
+  saleCauses: { code: string; name: string }[];
 }
 
 export interface AnimalListResult {
@@ -394,6 +397,8 @@ async function buildOptions(db: D1Database, config: ConfigSnapshot, barnIds: num
     sexes: SEXES.map((code) => ({ code, name: SEX_LABEL[code] })),
     statuses: ANIMAL_STATUSES.map((code) => ({ code, name: STATUS_LABEL[code] })),
     origins: ORIGIN_TYPES.map((code) => ({ code, name: ORIGIN_LABEL[code] })),
+    deathCauses: catalogItems(config, 'causa_muerte'),
+    saleCauses: catalogItems(config, 'causa_descarte'),
   };
 }
 
@@ -1090,6 +1095,11 @@ export async function createAnimal(
     recordedAt: claim.recordedAt,
   }];
 
+  statements.push(db.prepare(`INSERT INTO animal_location_history
+    (animal_id, barn_id, location_code, lot_code, stage_code, valid_from, valid_until, operation_log_id, created_by_user_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`)
+    .bind(animalId, barnId, locationCode, lotCode, stageCode, entryDate, claim.id, actorUserId, createdAt));
+
   if (movementId !== null) {
     audits.push({
       entityType: 'inventory_movement',
@@ -1456,6 +1466,158 @@ export async function changeTag(
     recordedAt: claim.recordedAt,
   }]);
 
+  return { animal: await getAnimal(db, key, scope), replayed: false };
+}
+
+export interface TransferAnimalInput {
+  destinationBarnId?: unknown;
+  locationCode?: unknown;
+  lotCode?: unknown;
+  effectiveDate?: string;
+  reason?: string;
+  operationKey?: string;
+}
+
+/** Traslada una ficha identificada, su saldo, su historia de ubicación y auditoría atómicamente. */
+export async function transferAnimal(
+  db: D1Database,
+  actorUserId: number,
+  key: string,
+  input: TransferAnimalInput,
+  scope: ScopeOptions = {},
+): Promise<{ animal: AnimalDetail; transferGroupId: string; replayed: boolean; warning: string | null }> {
+  const barnIds = await resolveBarnScope(db, scope);
+  if (barnIds !== null && barnIds.length === 0) throw new ApiError(404, 'Animal no encontrado');
+  const row = await fetchAnimalRow(db, key, barnIds);
+  if (!row) throw new ApiError(404, 'Animal no encontrado');
+  if (!exitedCheck(row)) throw new ApiError(409, 'No se puede trasladar una ficha con salida física registrada');
+  const sourceBarnId = Number(row.barn_id);
+  const destinationBarnId = Number(input.destinationBarnId);
+  if (!Number.isInteger(destinationBarnId) || destinationBarnId <= 0) throw new ApiError(400, 'Seleccione un galpón destino');
+  const effectiveDate = input.effectiveDate ? parseDate(input.effectiveDate, 'Fecha del traslado') : today();
+  if (effectiveDate > today() || effectiveDate < String(row.entry_date)) throw new ApiError(400, 'La fecha del traslado debe estar entre el ingreso y hoy');
+  const destination = await db.prepare('SELECT id, name, capacity FROM barns WHERE id = ?').bind(destinationBarnId).first<{ id: number; name: string; capacity: number | null }>();
+  if (!destination) throw new ApiError(404, 'El galpón destino no existe');
+  if (scope.allowedBarnNames && !scope.allowedBarnNames.includes(destination.name)) throw new ApiError(403, 'Debe tener acceso a ambos galpones para trasladar la ficha');
+  const locationCode = optionalCode(input.locationCode);
+  const lotCode = optionalCode(input.lotCode);
+  const stageCode = String(row.current_stage_code);
+  const sex = String(row.sex) as Sex;
+  const payload = { key, destinationBarnId, locationCode, lotCode, effectiveDate };
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) return { animal: await getAnimal(db, key, scope), ...(replay.result as { transferGroupId: string; warning: string | null }), replayed: true };
+  if (destinationBarnId === sourceBarnId) throw new ApiError(400, 'Seleccione un galpón destino diferente al actual');
+  const config = await getConfigSnapshot(db, effectiveDate);
+  if (locationCode && !config.locations.some((item) => item.code === locationCode)) throw new ApiError(400, 'La ubicación no está vigente en esa fecha');
+  if (lotCode && !config.lots.some((item) => item.code === lotCode)) throw new ApiError(400, 'El lote no está vigente en esa fecha');
+  const later = await db.prepare('SELECT id FROM animal_location_history WHERE animal_id = ? AND valid_from > ? LIMIT 1')
+    .bind(Number(row.id), effectiveDate).first();
+  if (later) throw new ApiError(409, 'El animal tiene movimientos posteriores; corrija primero la cronología para evitar reescribir historia');
+  const reason = normalizeReason(input.reason, { required: true, fallback: 'Traslado individual' });
+  let warning: string | null = null;
+  if (destination.capacity !== null && destination.capacity !== undefined) {
+    const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out')
+      THEN -quantity ELSE quantity END), 0) AS heads FROM inventory_movements WHERE barn_id = ? AND effective_date <= ?`)
+      .bind(destinationBarnId, effectiveDate).first<{ heads: number }>();
+    const projected = Number(occupied?.heads ?? 0) + 1;
+    if (projected > Number(destination.capacity)) warning = `El destino quedaría sobre capacidad: ${projected}/${destination.capacity} cabezas.`;
+  }
+  const transferGroupId = crypto.randomUUID();
+  const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'animal.transfer',
+    authorUserId: actorUserId, entityType: 'animal', entityId: Number(row.id), barnId: sourceBarnId,
+    effectiveDate, payload, result: { animalId: Number(row.id), transferGroupId, warning } });
+  const createdAt = claim.recordedAt;
+  const sourceLocation = row.location_code === null || row.location_code === undefined ? null : String(row.location_code);
+  const sourceLot = row.lot_code === null || row.lot_code === undefined ? null : String(row.lot_code);
+  const animalId = Number(row.id);
+  const insertLeg = (barnId: number, location: string | null, lot: string | null, movementType: 'transfer_out' | 'transfer_in') => db.prepare(`
+    INSERT INTO inventory_movements (operation_log_id, movement_type, effective_date, barn_id, location_code,
+      lot_code, stage_code, sex, quantity, transfer_group_id, notes, animal_id, created_by_user_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`)
+    .bind(claim.id, movementType, effectiveDate, barnId, location, lot, stageCode, sex, transferGroupId,
+      `Traslado de ficha ${String(row.code)}`, animalId, actorUserId, createdAt);
+  await commitOperation(db, claim, [
+    db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
+    db.prepare('UPDATE animal_location_history SET valid_until = ? WHERE animal_id = ? AND valid_until IS NULL')
+      .bind(effectiveDate, animalId),
+    db.prepare(`INSERT INTO animal_location_history
+      (animal_id, barn_id, location_code, lot_code, stage_code, valid_from, valid_until, operation_log_id, created_by_user_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`)
+      .bind(animalId, destinationBarnId, locationCode, lotCode, stageCode, effectiveDate, claim.id, actorUserId, createdAt),
+    db.prepare('UPDATE animals SET barn_id = ?, location_code = ?, lot_code = ?, updated_at = ? WHERE id = ?')
+      .bind(destinationBarnId, locationCode, lotCode, createdAt, animalId),
+    insertLeg(sourceBarnId, sourceLocation, sourceLot, 'transfer_out'),
+    insertLeg(destinationBarnId, locationCode, lotCode, 'transfer_in'),
+    stockGuardStatement(db, sourceBarnId, sourceLocation, sourceLot, stageCode, sex),
+    stockGuardStatement(db, destinationBarnId, locationCode, lotCode, stageCode, sex),
+    db.prepare('DELETE FROM inventory_write_guard'),
+  ], [{ entityType: 'animal', entityId: animalId, action: 'update', actorUserId, barnId: sourceBarnId, reason,
+    previousData: { barnId: sourceBarnId, locationCode: sourceLocation, lotCode: sourceLot },
+    newData: { barnId: destinationBarnId, locationCode, lotCode, transferGroupId }, effectiveDate, recordedAt: createdAt }]);
+  return { animal: await getAnimal(db, key, scope), transferGroupId, warning, replayed: false };
+}
+
+export interface AnimalExitInput {
+  exitType?: unknown;
+  causeCode?: unknown;
+  effectiveDate?: string;
+  reason?: string;
+  operationKey?: string;
+}
+
+/** Registra venta o muerte y cierra la ficha en el mismo lote que descuenta una cabeza. */
+export async function registerAnimalExit(
+  db: D1Database,
+  actorUserId: number,
+  key: string,
+  input: AnimalExitInput,
+  scope: ScopeOptions = {},
+): Promise<{ animal: AnimalDetail; replayed: boolean }> {
+  const barnIds = await resolveBarnScope(db, scope);
+  if (barnIds !== null && barnIds.length === 0) throw new ApiError(404, 'Animal no encontrado');
+  const row = await fetchAnimalRow(db, key, barnIds);
+  if (!row) throw new ApiError(404, 'Animal no encontrado');
+  const exitType = String(input.exitType ?? '') as 'sale' | 'death';
+  if (exitType !== 'sale' && exitType !== 'death') throw new ApiError(400, 'La salida debe ser venta o muerte');
+  const effectiveDate = input.effectiveDate ? parseDate(input.effectiveDate, 'Fecha de salida') : today();
+  if (effectiveDate > today() || effectiveDate < String(row.entry_date)) throw new ApiError(400, 'La fecha de salida debe estar entre el ingreso y hoy');
+  const causeCode = requireText(input.causeCode, exitType === 'death' ? 'Causa de muerte' : 'Causa de venta o descarte', 60);
+  const config = await getConfigSnapshot(db, effectiveDate);
+  const causeKey = exitType === 'death' ? 'causa_muerte' : 'causa_descarte';
+  if (!catalogItems(config, causeKey).some((item) => item.code === causeCode)) throw new ApiError(400, 'La causa no está vigente en la fecha de salida');
+  const animalId = Number(row.id);
+  const barnId = Number(row.barn_id);
+  const stageCode = String(row.current_stage_code);
+  const sex = String(row.sex) as Sex;
+  const locationCode = row.location_code === null || row.location_code === undefined ? null : String(row.location_code);
+  const lotCode = row.lot_code === null || row.lot_code === undefined ? null : String(row.lot_code);
+  const payload = { key, exitType, causeCode, effectiveDate };
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) return { animal: await getAnimal(db, key, scope), replayed: true };
+  if (!exitedCheck(row)) throw new ApiError(409, 'La ficha ya tiene una salida física');
+  const reason = normalizeReason(input.reason, { required: true, fallback: exitType === 'death' ? 'Muerte de animal' : 'Venta de animal' });
+  const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: `animal.${exitType}`,
+    authorUserId: actorUserId, entityType: 'animal', entityId: animalId, barnId, effectiveDate,
+    payload, result: { animalId, code: row.code, exitType } });
+  const createdAt = claim.recordedAt;
+  const movementId = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+  const status = exitType === 'sale' ? 'vendido' : 'muerto';
+  await commitOperation(db, claim, [
+    db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
+    db.prepare(`UPDATE animals SET status = ?, exit_date = ?, exit_type = ?, is_active = 0,
+      deactivated_at = ?, deactivation_reason = ?, updated_at = ? WHERE id = ? AND exit_date IS NULL`)
+      .bind(status, effectiveDate, exitType, createdAt, reason, createdAt, animalId),
+    db.prepare(`INSERT INTO inventory_movements
+      (id, operation_log_id, movement_type, effective_date, barn_id, location_code, lot_code, stage_code, sex,
+       quantity, cause_code, notes, animal_id, created_by_user_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`)
+      .bind(movementId, claim.id, exitType, effectiveDate, barnId, locationCode, lotCode, stageCode, sex,
+        causeCode, reason, animalId, actorUserId, createdAt),
+    stockGuardStatement(db, barnId, locationCode, lotCode, stageCode, sex),
+    db.prepare('DELETE FROM inventory_write_guard'),
+  ], [{ entityType: 'animal', entityId: animalId, action: 'update', actorUserId, barnId, reason,
+    previousData: { status: String(row.status), exitDate: null },
+    newData: { status, exitType, exitDate: effectiveDate, causeCode, inventoryMovementId: movementId }, effectiveDate, recordedAt: createdAt }]);
   return { animal: await getAnimal(db, key, scope), replayed: false };
 }
 

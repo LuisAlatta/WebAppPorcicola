@@ -163,7 +163,7 @@ function movementDelta(type: MovementType, quantity: number): number {
 }
 
 /** Revalida el mínimo histórico dentro del mismo batch que escribe los movimientos. */
-function stockGuardStatement(
+export function stockGuardStatement(
   db: D1Database,
   barnId: number,
   locationCode: string | null,
@@ -173,8 +173,9 @@ function stockGuardStatement(
 ) {
   return db.prepare(`INSERT INTO inventory_write_guard (guard_id)
     SELECT CASE WHEN COALESCE((SELECT MIN(running) FROM (
-      SELECT SUM(delta) OVER (ORDER BY effective_date, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running
+      SELECT SUM(delta) OVER (ORDER BY effective_date, ordering_id, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running
       FROM (SELECT effective_date, id,
+        COALESCE(reverses_movement_id, id) AS ordering_id,
         CASE WHEN movement_type IN ('sale','death','transfer_out') THEN -quantity ELSE quantity END AS delta
         FROM inventory_movements WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?)
     )), 0) >= 0 THEN 0 ELSE -1 END`)
@@ -374,13 +375,20 @@ export async function getInventorySnapshot(
   // Desglose individual (INV-04): las fichas vigentes del mismo grupo explican
   // cuántas cabezas están identificadas y cuántas siguen sin arete.
   const identifiedScope = barnFilterSql(barnIds, 'a.barn_id');
+  const historicalScope = barnFilterSql(barnIds, 'h.barn_id');
   const identifiedRows = await db.prepare(`
-    SELECT a.barn_id, a.location_code, a.lot_code,
-      a.current_stage_code AS stage_code, a.sex, COUNT(*) AS identified
+    SELECT a.barn_id, a.location_code, a.lot_code, a.current_stage_code AS stage_code, a.sex, COUNT(*) AS identified
     FROM animals a
-    WHERE a.entry_date <= ? AND (a.exit_date IS NULL OR a.exit_date > ?)${identifiedScope.sql}
+    WHERE a.entry_date <= ? AND (a.exit_date IS NULL OR a.exit_date > ?)
+      AND NOT EXISTS (SELECT 1 FROM animal_location_history h0 WHERE h0.animal_id = a.id)${identifiedScope.sql}
     GROUP BY a.barn_id, a.location_code, a.lot_code, a.current_stage_code, a.sex
-  `).bind(asOf, asOf, ...identifiedScope.params).all<Row>();
+    UNION ALL
+    SELECT h.barn_id, h.location_code, h.lot_code, h.stage_code, a.sex, COUNT(*) AS identified
+    FROM animal_location_history h JOIN animals a ON a.id = h.animal_id
+    WHERE h.valid_from <= ? AND (h.valid_until IS NULL OR h.valid_until > ?)
+      AND a.entry_date <= ? AND (a.exit_date IS NULL OR a.exit_date > ?)${historicalScope.sql}
+    GROUP BY h.barn_id, h.location_code, h.lot_code, h.stage_code, a.sex
+  `).bind(asOf, asOf, ...identifiedScope.params, asOf, asOf, asOf, asOf, ...historicalScope.params).all<Row>();
 
   const bucketKey = (
     barnId: number,
@@ -425,6 +433,10 @@ export async function getInventorySnapshot(
       SUM(m.quantity) AS total
     FROM inventory_movements m
     WHERE m.effective_date >= ? AND m.effective_date <= ?${summaryScope.sql}
+      AND NOT (m.movement_type = 'adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
+      AND NOT EXISTS (SELECT 1 FROM inventory_movements correction
+        WHERE correction.reverses_movement_id = m.id AND correction.movement_type = 'adjustment'
+          AND correction.notes LIKE 'Reversión del movimiento #%')
     GROUP BY m.stage_code, m.movement_type, m.sex,
       CASE WHEN m.quantity > 0 THEN 1 ELSE 0 END
   `).bind(from, asOf, ...summaryScope.params).all<Row>();
@@ -794,6 +806,10 @@ export interface TransferInput {
   destinationBarnId?: unknown;
   locationCode?: unknown;
   lotCode?: unknown;
+  sourceLocationCode?: unknown;
+  sourceLotCode?: unknown;
+  destinationLocationCode?: unknown;
+  destinationLotCode?: unknown;
   stageCode?: unknown;
   sex?: unknown;
   quantity?: unknown;
@@ -808,7 +824,7 @@ export async function transferInventory(
   actorUserId: number,
   input: TransferInput,
   scope: ScopeOptions = {},
-): Promise<{ transferGroupId: string; replayed: boolean }> {
+): Promise<{ transferGroupId: string; replayed: boolean; warning: string | null }> {
   const effectiveDate = parseDate(input.effectiveDate, 'Fecha del traslado');
   if (effectiveDate > today()) throw new ApiError(400, 'La fecha del traslado no puede ser futura');
   const sourceBarnId = Number(input.sourceBarnId);
@@ -824,23 +840,46 @@ export async function transferInventory(
   if (!SEXES.includes(sex)) throw new ApiError(400, 'Sexo inválido');
   const locationCode = optionalCode(input.locationCode);
   const lotCode = optionalCode(input.lotCode);
+  const sourceLocationCode = optionalCode(input.sourceLocationCode ?? locationCode);
+  const sourceLotCode = optionalCode(input.sourceLotCode ?? lotCode);
+  const destinationLocationCode = optionalCode(input.destinationLocationCode ?? locationCode);
+  const destinationLotCode = optionalCode(input.destinationLotCode ?? lotCode);
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Traslado interno' });
-  const barns = await db.prepare('SELECT id, name FROM barns WHERE id IN (?, ?)').bind(sourceBarnId, destinationBarnId).all<{ id: number; name: string }>();
+  const barns = await db.prepare('SELECT id, name, capacity FROM barns WHERE id IN (?, ?)').bind(sourceBarnId, destinationBarnId).all<{ id: number; name: string; capacity: number | null }>();
   if ((barns.results ?? []).length !== 2) throw new ApiError(404, 'No se encontró uno de los galpones');
   for (const barn of barns.results ?? []) {
     if (scope.allowedBarnNames && !scope.allowedBarnNames.includes(barn.name)) {
       throw new ApiError(403, 'Debe tener acceso a ambos galpones para registrar el traslado');
     }
   }
-  const payload = { effectiveDate, sourceBarnId, destinationBarnId, locationCode, lotCode, stageCode, sex, quantity };
+  const config = await getConfigSnapshot(db, effectiveDate);
+  if (!config.stages.some((stage) => stage.code === stageCode)) throw new ApiError(400, 'La etapa no está vigente en la fecha del traslado');
+  for (const code of [sourceLocationCode, destinationLocationCode]) {
+    if (code && !config.locations.some((item) => item.code === code)) throw new ApiError(400, 'Una ubicación no está vigente en la fecha del traslado');
+  }
+  for (const code of [sourceLotCode, destinationLotCode]) {
+    if (code && !config.lots.some((item) => item.code === code)) throw new ApiError(400, 'Un lote no está vigente en la fecha del traslado');
+  }
+  const payload = { effectiveDate, sourceBarnId, destinationBarnId, sourceLocationCode, sourceLotCode,
+    destinationLocationCode, destinationLotCode, stageCode, sex, quantity };
   const existing = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
-  if (existing) return { transferGroupId: String((existing.result as { transferGroupId: string }).transferGroupId), replayed: true };
+  if (existing) return { ...(existing.result as { transferGroupId: string; warning: string | null }), replayed: true };
+
+  const destinationBarn = barns.results?.find((barn) => Number(barn.id) === destinationBarnId);
+  let warning: string | null = null;
+  if (destinationBarn?.capacity !== null && destinationBarn?.capacity !== undefined) {
+    const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out')
+      THEN -quantity ELSE quantity END), 0) AS heads FROM inventory_movements WHERE barn_id = ? AND effective_date <= ?`)
+      .bind(destinationBarnId, effectiveDate).first<{ heads: number }>();
+    const projected = Number(occupied?.heads ?? 0) + quantity;
+    if (projected > Number(destinationBarn.capacity)) warning = `El destino quedaría sobre capacidad: ${projected}/${destinationBarn.capacity} cabezas.`;
+  }
 
   // Evita aceptar una corrección que deje saldo negativo en cualquier fecha posterior.
-  for (const [barnId, delta] of [[sourceBarnId, -quantity], [destinationBarnId, quantity]] as const) {
+  for (const [barnId, location, lot, delta] of [[sourceBarnId, sourceLocationCode, sourceLotCode, -quantity], [destinationBarnId, destinationLocationCode, destinationLotCode, quantity]] as const) {
     const rows = await db.prepare(`SELECT effective_date, movement_type, quantity FROM inventory_movements
       WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
-      ORDER BY effective_date, id`).bind(barnId, locationCode, lotCode, stageCode, sex).all<Row>();
+      ORDER BY effective_date, id`).bind(barnId, location, lot, stageCode, sex).all<Row>();
     const timeline = (rows.results ?? []).map((row) => ({ date: String(row.effective_date), delta: movementDelta(String(row.movement_type) as MovementType, Number(row.quantity)) }));
     timeline.push({ date: effectiveDate, delta });
     timeline.sort((a, b) => a.date.localeCompare(b.date));
@@ -861,26 +900,26 @@ export async function transferInventory(
     barnId: sourceBarnId,
     effectiveDate,
     payload,
-    result: { transferGroupId },
+    result: { transferGroupId, warning },
   });
-  const insert = (barnId: number, type: 'transfer_out' | 'transfer_in') => db.prepare(`
+  const insert = (barnId: number, location: string | null, lot: string | null, type: 'transfer_out' | 'transfer_in') => db.prepare(`
     INSERT INTO inventory_movements (operation_log_id, movement_type, effective_date, barn_id,
       location_code, lot_code, stage_code, sex, quantity, transfer_group_id, notes, created_by_user_id, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(claim.id, type, effectiveDate, barnId, locationCode, lotCode, stageCode, sex, quantity,
+  `).bind(claim.id, type, effectiveDate, barnId, location, lot, stageCode, sex, quantity,
     transferGroupId, typeof input.notes === 'string' ? input.notes.slice(0, 300) : null, actorUserId, claim.recordedAt);
   const commit = await commitOperation(db, claim, [
     db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
-    insert(sourceBarnId, 'transfer_out'),
-    insert(destinationBarnId, 'transfer_in'),
-    stockGuardStatement(db, sourceBarnId, locationCode, lotCode, stageCode, sex),
-    stockGuardStatement(db, destinationBarnId, locationCode, lotCode, stageCode, sex),
+    insert(sourceBarnId, sourceLocationCode, sourceLotCode, 'transfer_out'),
+    insert(destinationBarnId, destinationLocationCode, destinationLotCode, 'transfer_in'),
+    stockGuardStatement(db, sourceBarnId, sourceLocationCode, sourceLotCode, stageCode, sex),
+    stockGuardStatement(db, destinationBarnId, destinationLocationCode, destinationLotCode, stageCode, sex),
     db.prepare('DELETE FROM inventory_write_guard'),
   ], [
     { entityType: 'inventory_transfer', entityId: 1, action: 'create', actorUserId, barnId: sourceBarnId,
       reason, previousData: null, newData: { ...payload, transferGroupId }, effectiveDate, recordedAt: claim.recordedAt },
   ]);
-  return { transferGroupId: String((commit.result as { transferGroupId: string }).transferGroupId), replayed: commit.replayed };
+  return { ...(commit.result as { transferGroupId: string; warning: string | null }), replayed: commit.replayed };
 }
 
 export interface ReconcileInput {
@@ -949,4 +988,132 @@ export async function reconcileInventory(
   const commit = await commitOperation(db, claim, effects, [{ entityType: 'inventory_reconciliation', entityId: 0,
     action: 'create', actorUserId, barnId, reason, previousData: { expectedHeads }, newData: payload, effectiveDate, recordedAt: createdAt }]);
   return { ...(commit.result as Omit<Awaited<ReturnType<typeof reconcileInventory>>, 'replayed'>), replayed: commit.replayed };
+}
+
+export interface CorrectMovementInput {
+  movementId?: unknown;
+  correctedQuantity?: unknown;
+  reason?: string;
+  operationKey?: string;
+}
+
+export async function previewMovementCorrection(
+  db: D1Database,
+  movementId: number,
+  correctedQuantity: number,
+  scope: ScopeOptions = {},
+): Promise<{ allowed: boolean; originalMovementId: number; originalQuantity: number; correctedQuantity: number; incompatibleMovements: { id: number; date: string; type: string; quantity: number; balanceAfter: number }[] }> {
+  if (!Number.isInteger(movementId) || movementId <= 0 || !Number.isInteger(correctedQuantity) || correctedQuantity === 0) {
+    throw new ApiError(400, 'Movimiento o cantidad corregida inválidos');
+  }
+  const original = await db.prepare('SELECT * FROM inventory_movements WHERE id = ?').bind(movementId).first<Row>();
+  if (!original) throw new ApiError(404, 'Movimiento no encontrado');
+  const barnId = Number(original.barn_id);
+  const barn = await db.prepare('SELECT name FROM barns WHERE id = ?').bind(barnId).first<{ name: string }>();
+  if (scope.allowedBarnNames && (!barn || !scope.allowedBarnNames.includes(barn.name))) throw new ApiError(403, 'Acceso denegado al galpón del movimiento');
+  const type = String(original.movement_type) as MovementType;
+  if (original.transfer_group_id || original.animal_id !== null && original.animal_id !== undefined) throw new ApiError(400, 'Este evento debe corregirse desde su módulo de origen');
+  const alreadyCorrected = await db.prepare(`SELECT id FROM inventory_movements WHERE reverses_movement_id = ? AND notes LIKE 'Reversión del movimiento #%' LIMIT 1`)
+    .bind(movementId).first();
+  if (alreadyCorrected) throw new ApiError(409, 'El movimiento ya tiene una corrección registrada');
+  if (type !== 'adjustment' && correctedQuantity < 0) throw new ApiError(400, 'La cantidad corregida debe ser positiva');
+  const rows = await db.prepare(`SELECT id, effective_date, movement_type, quantity FROM inventory_movements
+    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
+    ORDER BY effective_date, id`).bind(barnId, original.location_code ?? null, original.lot_code ?? null, original.stage_code, original.sex).all<Row>();
+  const inverse = -movementDelta(type, Number(original.quantity));
+  const correctedDelta = type === 'adjustment' ? correctedQuantity : movementDelta(type, correctedQuantity);
+  const timeline: { id: number; date: string; type: string; quantity: number; delta: number }[] = [];
+  for (const row of rows.results ?? []) {
+    const id = Number(row.id); const date = String(row.effective_date); const rowType = String(row.movement_type); const quantity = Number(row.quantity);
+    timeline.push({ id, date, type: rowType, quantity, delta: movementDelta(rowType as MovementType, quantity) });
+    if (id === movementId) {
+      timeline.push({ id: movementId, date, type: 'reversión', quantity: inverse, delta: inverse });
+      timeline.push({ id: movementId, date, type: `corrección ${type}`, quantity: correctedQuantity, delta: correctedDelta });
+    }
+  }
+  let balance = 0;
+  const incompatibleMovements: { id: number; date: string; type: string; quantity: number; balanceAfter: number }[] = [];
+  for (const item of timeline) {
+    balance += item.delta;
+    if (balance < 0) incompatibleMovements.push({ id: item.id, date: item.date, type: item.type, quantity: item.quantity, balanceAfter: balance });
+  }
+  return { allowed: incompatibleMovements.length === 0, originalMovementId: movementId,
+    originalQuantity: Number(original.quantity), correctedQuantity, incompatibleMovements };
+}
+
+/** Conserva el movimiento original y agrega su reversión y la cantidad corregida. */
+export async function correctInventoryMovement(
+  db: D1Database,
+  actorUserId: number,
+  input: CorrectMovementInput,
+  scope: ScopeOptions = {},
+): Promise<{ originalMovementId: number; correctedQuantity: number; replayed: boolean }> {
+  const movementId = Number(input.movementId);
+  if (!Number.isInteger(movementId) || movementId <= 0) throw new ApiError(400, 'Movimiento inválido');
+  const correctedQuantity = Number(input.correctedQuantity);
+  if (!Number.isInteger(correctedQuantity) || correctedQuantity === 0) throw new ApiError(400, 'La cantidad corregida debe ser un entero distinto de cero');
+  const original = await db.prepare('SELECT * FROM inventory_movements WHERE id = ?').bind(movementId).first<Row>();
+  if (!original) throw new ApiError(404, 'Movimiento no encontrado');
+  if (original.transfer_group_id || original.animal_id !== null && original.animal_id !== undefined) {
+    throw new ApiError(400, 'Corrija los traslados conjuntos o las fichas individuales desde su módulo correspondiente');
+  }
+  const barnId = Number(original.barn_id);
+  const barn = await db.prepare('SELECT name FROM barns WHERE id = ?').bind(barnId).first<{ name: string }>();
+  if (scope.allowedBarnNames && (!barn || !scope.allowedBarnNames.includes(barn.name))) throw new ApiError(403, 'Acceso denegado al galpón del movimiento');
+  const type = String(original.movement_type) as MovementType;
+  if (type !== 'adjustment' && correctedQuantity < 0) throw new ApiError(400, 'La cantidad corregida debe ser positiva para este tipo de movimiento');
+  const oldQuantity = Number(original.quantity);
+  if (oldQuantity === correctedQuantity) throw new ApiError(400, 'La cantidad corregida es igual a la original');
+  const existingCorrection = await db.prepare('SELECT id FROM inventory_movements WHERE reverses_movement_id = ? AND movement_type = ? LIMIT 1')
+    .bind(movementId, 'adjustment').first();
+  const payload = { movementId, correctedQuantity };
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) return { ...(replay.result as Omit<Awaited<ReturnType<typeof correctInventoryMovement>>, 'replayed'>), replayed: true };
+  if (existingCorrection) throw new ApiError(409, 'El movimiento ya tiene una corrección registrada');
+  const reason = normalizeReason(input.reason, { required: true, fallback: 'Corrección de inventario' });
+  const locationCode = original.location_code === null ? null : String(original.location_code);
+  const lotCode = original.lot_code === null ? null : String(original.lot_code);
+  const stageCode = String(original.stage_code);
+  const sex = String(original.sex) as Sex;
+  const effectiveDate = String(original.effective_date);
+  const oldDelta = movementDelta(type, oldQuantity);
+  const newDelta = type === 'adjustment' ? correctedQuantity : movementDelta(type, correctedQuantity);
+  const inverseDelta = -oldDelta;
+  const rows = await db.prepare(`SELECT id, effective_date, movement_type, quantity FROM inventory_movements
+    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
+    ORDER BY effective_date, id`).bind(barnId, locationCode, lotCode, stageCode, sex).all<Row>();
+  const timeline: { date: string; id: number; delta: number }[] = [];
+  for (const row of rows.results ?? []) {
+    const id = Number(row.id);
+    timeline.push({ date: String(row.effective_date), id, delta: movementDelta(String(row.movement_type) as MovementType, Number(row.quantity)) });
+    if (id === movementId) {
+      timeline.push({ date: effectiveDate, id: id + 0.1, delta: inverseDelta },
+        { date: effectiveDate, id: id + 0.2, delta: newDelta });
+    }
+  }
+  let running = 0;
+  for (const item of timeline) {
+    running += item.delta;
+    if (running < 0) throw new ApiError(409, `Corrección incompatible con el movimiento #${item.id} el ${item.date}: quedarían ${running} cabezas`);
+  }
+  const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'inventory.correct',
+    authorUserId: actorUserId, entityType: 'inventory_movement', entityId: movementId, barnId, effectiveDate,
+    payload, result: { originalMovementId: movementId, correctedQuantity } });
+  const createdAt = claim.recordedAt;
+  const insert = (movementType: MovementType, quantity: number, notes: string) => db.prepare(`
+    INSERT INTO inventory_movements (operation_log_id, movement_type, effective_date, barn_id, location_code,
+      lot_code, stage_code, sex, quantity, cause_code, reverses_movement_id, notes, created_by_user_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(claim.id, movementType, effectiveDate, barnId, locationCode, lotCode, stageCode, sex, quantity,
+      movementType === type ? original.cause_code ?? null : null, movementId, notes, actorUserId, createdAt);
+  await commitOperation(db, claim, [
+    db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
+    insert('adjustment', inverseDelta, `Reversión del movimiento #${movementId}`),
+    insert(type, correctedQuantity, `Corrección del movimiento #${movementId}`),
+    stockGuardStatement(db, barnId, locationCode, lotCode, stageCode, sex),
+    db.prepare('DELETE FROM inventory_write_guard'),
+  ], [{ entityType: 'inventory_movement', entityId: movementId, action: 'correct', actorUserId, barnId,
+    reason, previousData: { movementType: type, quantity: oldQuantity, effectiveDate },
+    newData: { movementType: type, quantity: correctedQuantity, effectiveDate }, effectiveDate, recordedAt: createdAt }]);
+  return { originalMovementId: movementId, correctedQuantity, replayed: false };
 }

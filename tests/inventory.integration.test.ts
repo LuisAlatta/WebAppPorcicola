@@ -107,6 +107,7 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
       '0005_inventory_schema.sql',
       '0006_animals_schema.sql',
       '0007_transfer_and_stock_guard.sql',
+      '0008_animal_location_history.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -445,11 +446,11 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
   it('traslada cabezas en una sola operación y exige acceso a ambos galpones', async () => {
     const seeded = await register({ movementType: 'initial', barnId: 1, locationCode: null, lotCode: null, effectiveDate: '2026-05-01', quantity: 12, operationKey: 't10-source' });
     expect(seeded.status).toBe(201);
-    const destinationSeeded = await register({ movementType: 'initial', barnId: 2, locationCode: null, lotCode: null, effectiveDate: '2026-05-01', quantity: 8, operationKey: 't10-destination' });
+    const destinationSeeded = await register({ movementType: 'initial', barnId: 2, locationCode: 'galpon_b', lotCode: null, effectiveDate: '2026-05-01', quantity: 8, operationKey: 't10-destination' });
     expect(destinationSeeded.status).toBe(201);
     const body = {
       effectiveDate: '2026-05-02', sourceBarnId: 1, destinationBarnId: 2,
-      locationCode: null, lotCode: null, stageCode: 'levante', sex: 'macho', quantity: 5,
+      sourceLocationCode: null, sourceLotCode: null, destinationLocationCode: 'galpon_b', destinationLotCode: null, stageCode: 'levante', sex: 'macho', quantity: 5,
       reason: 'Traslado de prueba', operationKey: 't10-transfer',
     };
     const denied = await api('/api/inventory/transfers', { method: 'POST', body: JSON.stringify(body) }, operarioToken);
@@ -463,7 +464,7 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
     expect(legs.results?.map((row) => row.movement_type).sort()).toEqual(['transfer_in', 'transfer_out']);
     const stock = await snapshot('2026-05-02');
     expect(stock.balances.find((row) => row.barnId === 1 && row.locationCode === null && row.lotCode === null && row.stageCode === 'levante' && row.sex === 'macho')?.heads).toBe(7);
-    expect(stock.balances.find((row) => row.barnId === 2 && row.locationCode === null && row.lotCode === null && row.stageCode === 'levante' && row.sex === 'macho')?.heads).toBe(13);
+    expect(stock.balances.find((row) => row.barnId === 2 && row.locationCode === 'galpon_b' && row.lotCode === null && row.stageCode === 'levante' && row.sex === 'macho')?.heads).toBe(13);
   });
 
   it('concilia el conteo físico con un ajuste aprobado y auditable', async () => {
@@ -478,8 +479,13 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
     expect(result.variance).toBe(10 - result.expectedHeads);
     const replay = await api('/api/inventory/reconciliations', { method: 'POST', body: JSON.stringify(payload) });
     expect(replay.status).toBe(200);
-    const count = await db.prepare('SELECT COUNT(*) AS n FROM inventory_reconciliations WHERE operation_log_id = (SELECT id FROM operation_log WHERE operation_key = ?)').bind('t10-count').first<{ n: number }>();
-    expect(count?.n).toBe(1);
+    const audit = await db.prepare(`SELECT r.expected_heads, r.counted_heads, r.variance, r.adjustment_movement_id,
+      r.created_by_user_id, m.quantity AS adjustment_quantity FROM inventory_reconciliations r
+      LEFT JOIN inventory_movements m ON m.id = r.adjustment_movement_id
+      WHERE r.operation_log_id = (SELECT id FROM operation_log WHERE operation_key = ?)`)
+      .bind('t10-count').first<{ expected_heads: number; counted_heads: number; variance: number; adjustment_movement_id: number; created_by_user_id: number; adjustment_quantity: number }>();
+    expect(audit).toMatchObject({ counted_heads: 10, variance: 10 - result.expectedHeads, adjustment_quantity: 10 - result.expectedHeads, created_by_user_id: adminId });
+    expect(audit?.adjustment_movement_id).toBeGreaterThan(0);
   });
 
   it('serializa dos retiros concurrentes para que el stock nunca sea negativo', async () => {
@@ -491,5 +497,59 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
     ]);
     const outcomes = await Promise.all(requests.map(async (response) => ({ status: response.status, error: (await response.clone().json() as { error?: string }).error })));
     expect(outcomes.map((outcome) => outcome.status).sort(), JSON.stringify(outcomes)).toEqual([201, 409]);
+  });
+
+  it('corrige un movimiento sin borrar el original y actualiza el saldo derivado', async () => {
+    const before = await snapshot('2026-09-01');
+    const baseline = before.balances.filter((row) => row.barnId === 1 && row.stageCode === 'preinicio' && row.sex === 'pendiente' && row.locationCode === null && row.lotCode === null).reduce((sum, row) => sum + row.heads, 0);
+    const created = await register({ barnId: 1, stageCode: 'preinicio', sex: 'pendiente', locationCode: null, lotCode: null,
+      effectiveDate: '2026-09-01', quantity: 10, operationKey: 't10-correction-seed' });
+    expect(created.status).toBe(201);
+    const movement = await created.json() as { movement: { id: number } };
+    const sale = await register({ movementType: 'sale', barnId: 1, stageCode: 'preinicio', sex: 'pendiente', locationCode: null, lotCode: null,
+      effectiveDate: '2026-09-02', quantity: 7, reason: 'Salida posterior para previsualización', operationKey: 't10-correction-sale' });
+    expect(sale.status).toBe(201);
+    const allowedPreview = await api(`/api/inventory/corrections/preview?movementId=${movement.movement.id}&correctedQuantity=8`);
+    expect((await allowedPreview.json() as { preview: { allowed: boolean } }).preview.allowed).toBe(true);
+    const blockedPreview = await api(`/api/inventory/corrections/preview?movementId=${movement.movement.id}&correctedQuantity=2`);
+    const previewBody = await blockedPreview.json() as { preview: { allowed: boolean; incompatibleMovements: { type: string; balanceAfter: number }[] } };
+    expect(previewBody.preview.allowed).toBe(false);
+    expect(previewBody.preview.incompatibleMovements).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'sale', balanceAfter: -5 })]));
+    const corrected = await api('/api/inventory/corrections', { method: 'POST', body: JSON.stringify({
+      movementId: movement.movement.id, correctedQuantity: 8, reason: 'Corrección de conteo', operationKey: 't10-correction-01',
+    }) });
+    expect(corrected.status).toBe(201);
+    const replay = await api('/api/inventory/corrections', { method: 'POST', body: JSON.stringify({
+      movementId: movement.movement.id, correctedQuantity: 8, reason: 'Corrección de conteo', operationKey: 't10-correction-01',
+    }) });
+    expect(replay.status).toBe(200);
+    const after = await snapshot('2026-09-02');
+    const final = after.balances.filter((row) => row.barnId === 1 && row.stageCode === 'preinicio' && row.sex === 'pendiente' && row.locationCode === null && row.lotCode === null).reduce((sum, row) => sum + row.heads, 0);
+    expect(final).toBe(baseline + 1);
+    const movements = await db.prepare('SELECT movement_type, quantity, reverses_movement_id FROM inventory_movements WHERE reverses_movement_id = ?').bind(movement.movement.id).all<{ movement_type: string; quantity: number; reverses_movement_id: number }>();
+    expect(movements.results).toHaveLength(2);
+    expect(movements.results?.some((row) => row.movement_type === 'adjustment' && row.quantity === -10)).toBe(true);
+    const original = await db.prepare('SELECT COUNT(*) AS n FROM inventory_movements WHERE id = ?').bind(movement.movement.id).first<{ n: number }>();
+    expect(original?.n).toBe(1);
+  });
+
+  it('revierte el traslado completo si D1 falla al insertar el destino', async () => {
+    const seed = await register({ barnId: 1, sex: 'pendiente', locationCode: null, lotCode: null,
+      effectiveDate: '2026-10-01', quantity: 4, operationKey: 't10-atomic-seed' });
+    expect(seed.status).toBe(201);
+    await db.prepare(`CREATE TRIGGER fail_transfer_destination BEFORE INSERT ON inventory_movements
+      WHEN NEW.operation_log_id = (SELECT id FROM operation_log WHERE operation_key = 't10-atomic-transfer') AND NEW.movement_type = 'transfer_in'
+      BEGIN SELECT RAISE(ABORT, 'fallo forzado en destino'); END`).run();
+    try {
+      const response = await api('/api/inventory/transfers', { method: 'POST', body: JSON.stringify({
+        effectiveDate: '2026-10-02', sourceBarnId: 1, destinationBarnId: 2, locationCode: null, lotCode: null,
+        stageCode: 'levante', sex: 'pendiente', quantity: 2, reason: 'Prueba de rollback', operationKey: 't10-atomic-transfer',
+      }) });
+      expect(response.status).toBe(400);
+      const legs = await db.prepare("SELECT COUNT(*) AS n FROM inventory_movements WHERE operation_log_id = (SELECT id FROM operation_log WHERE operation_key = 't10-atomic-transfer')").first<{ n: number }>();
+      expect(legs?.n).toBe(0);
+    } finally {
+      await db.exec('DROP TRIGGER IF EXISTS fail_transfer_destination;');
+    }
   });
 });

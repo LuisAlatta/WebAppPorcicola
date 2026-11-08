@@ -1,6 +1,6 @@
 # Control de ejecución
 
-Estado actual: Fase 2 completa (T01 a T07 y Cierre 2), T08 y T09 completas; T10 en curso. Siguiente trabajo: terminar T10. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: Fase 2 completa (T01 a T07 y Cierre 2), T08–T10 completas. Siguiente: T11 (producción y pesajes). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -21,7 +21,7 @@ Estado actual: Fase 2 completa (T01 a T07 y Cierre 2), T08 y T09 completas; T10 
 
 - [x] T08 · Abrir inventario individual y colectivo · dependencias 07.
 - [x] T09 · Dar de alta y consultar animales · dependencias 08.
-- [ ] T10 · Transferir, dar de baja, conciliar y corregir · dependencias 09.
+- [x] T10 · Transferir, dar de baja, conciliar y corregir · dependencias 09.
 - [ ] T11 · Registrar producción y pesajes · dependencias 09,10.
 - [ ] Cierre 3: Reconstruir el saldo a dos fechas desde el historial. Comparar la suma de grupos e identificados con la ocupación. Probar dos escritores y un reintento.
 
@@ -154,14 +154,14 @@ Estado actual: Fase 2 completa (T01 a T07 y Cierre 2), T08 y T09 completas; T10 
 | INV-02 | T08 | Verificado en tests/inventory.integration.test.ts: cada movimiento declara origen (saldo inicial, compra, nacimiento, venta, muerte, traslado o ajuste); saldo inicial por fecha, galpón, ubicación, lote, etapa y sexo; corte al 2026-01-31 reconstruye 12 cabezas antes de las compras de febrero |
 | INV-03 | T08 | Verificado en tests/inventory.integration.test.ts: saldo = inicial + entradas externas + nacimientos + traslados recibidos − salidas externas − muertes + ajustes; categorías excluyentes; traslado interno A→B conserva el total de la granja; correcciones retroactivas que dejarían saldo negativo responden 409 |
 | INV-04 | T09 | Verificado en tests/animals.integration.test.ts e inventory.integration.test.ts: nacimientos/compras/iniciales generan una entrada individual idempotente; vincular un animal ya contado consume una cabeza sin sumar inventario; snapshot separa identificadas y sin identificar |
-| INV-05 | T10 | Pendiente |
-| INV-06 | T10 | Pendiente |
-| INV-07 | T10 | Pendiente |
+| INV-05 | T10 | Verificado en tests/inventory.integration.test.ts y tests/animals.integration.test.ts: traslados colectivos e individuales vinculan ambos extremos, las fichas y las coordenadas históricas; permisos en los dos galpones |
+| INV-06 | T10 | Verificado en tests/inventory.integration.test.ts: conciliación registra esperado, conteo, delta, causa/motivo, autor y ajuste enlazado con reintento idempotente |
+| INV-07 | T10 | Verificado en tests/inventory.integration.test.ts: corrección conserva original, enlaza reversión y valor corregido, permite vista previa de movimientos incompatibles y rechaza saldo negativo o segunda corrección |
 | PRO-01 | T11 | Pendiente |
 | PRO-02 | T11 | Pendiente |
 | PRO-03 | T11 | Pendiente |
-| PRO-04 | T10 | Pendiente |
-| PRO-05 | T10 | Pendiente |
+| PRO-04 | T10 | Verificado en tests/inventory.integration.test.ts: movimientos de salida controlan causa; ventas/muertes de animales se sincronizan con ficha y saldo en un solo batch |
+| PRO-05 | T10 | Verificado en tests/admin.integration.test.ts: el estado inactivo se bloquea mientras el libro de inventario indique animales presentes |
 | PRO-06 | T11 | Pendiente |
 | REP-01 | T12 | Pendiente |
 | REP-02 | T12 | Pendiente |
@@ -199,14 +199,14 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 | CA-01 | T09 | Verificado en tests/animals.integration.test.ts: alta repetida de 002 devuelve la misma ficha, conserva ceros, registra una entrada y encuentra el arete vigente; payload distinto 409 |
 | CA-02 | T12 | Pendiente |
 | CA-03 | T13 | Pendiente |
-| CA-04 | T10 | Pendiente |
+| CA-04 | T10 | Verificado en tests/inventory.integration.test.ts y tests/animals.integration.test.ts: traslado colectivo 12→7/8→13, traslado individual, dos movimientos vinculados, historial y permisos por origen/destino |
 | CA-05 | T20 | Pendiente |
 | CA-06 | T11 | Pendiente |
 | CA-07 | T16 | Pendiente |
 | CA-08 | T17 | Pendiente |
 | CA-09 | T14 | Pendiente |
 | CA-10 | T25 | Pendiente |
-| CA-11 | T10 | Pendiente |
+| CA-11 | T10 | Verificado en tests/inventory.integration.test.ts: dos salidas concurrentes de 7 sobre 10 producen una respuesta 201 y otra 409; saldo nunca negativo; fallo forzado al insertar el destino revierte toda la transferencia |
 | CA-12 | T13 | Pendiente |
 | CA-13 | T18 | Pendiente |
 | CA-14 | T14 | Pendiente |
@@ -233,7 +233,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 
 | Fecha | Tarea | Estado | Prueba ejecutada y resultado real | Evidencia / commit | Pendiente o decisión |
 |---|---|---|---|---|---|
-| 2026-11-07 | T10 | En curso | API de traslado interno atómica e idempotente, con permisos en origen/destino; conciliación física conserva esperado, contado, delta, autor, motivo y ajuste; bloquear inactivación si el saldo del libro queda ocupado; consulta de guardia en el mismo batch para que retiros concurrentes no generen saldo negativo; resumen de mortalidad omite transferencias internas; interfaz de inventario incorpora traslado y conciliación. Pruebas afectadas 27/27; suite serial 68/68; typecheck, lint y build correctos. D1 staging migración 0007 aplicada; Worker staging versión `d2928010-56ba-41b7-81ae-dbe10c414105`; `/inventario` y `/animal/002` 200, `/api/inventory` 401 sin sesión; tablas verificadas. | migrations/0007_transfer_and_stock_guard.sql, worker/inventory.ts, worker/index.ts, worker/admin.ts, src/components/ModuloInventario.tsx, tests/inventory.integration.test.ts, tests/animals.integration.test.ts, tests/admin.integration.test.ts | No cerrar: traslado/muerte/venta de animal identificado y sus movimientos/historial; previsualización de corrección retroactiva con filas incompatibles y vínculo de reversión; fallo forzado entre origen/destino; prueba concreta 12→7/8→13. Capacidad por confirmar: aviso provisional no bloqueante. Producción sin cambios. |
+| 2026-11-07 | T10 | Completada | Traslado grupal atómico con galpones, ubicaciones y lotes independientes en origen/destino, permisos en ambos extremos y reintento; caso 12→7/8→13. Traslado individual mueve ficha, historial de ubicación y libro en la misma operación; salida individual de venta/muerte guarda causa y movimiento enlazado y cierra ficha; conciliación física conserva saldo esperado, cantidad contada, delta, autor, motivo y ajuste; corrección conserva movimiento original, añade reversión y reemplazo enlazados, y previsualiza filas posteriores incompatibles. Inactivación de galpón con cabezas bloqueada; capacidad excesiva produce advertencia provisional; mortalidad excluye transferencias internas. Dos retiros concurrentes de 7 sobre 10 dejan uno exitoso y el otro en 409; falla forzada al insertar la recepción y se revierte el batch completo. Pruebas afectadas 31/31; suite 72/72; E2E 2/2; typecheck, lint y build correctos. Migraciones 0007–0008 y Worker staging versión `58d55da3-b1dd-497a-83a1-bdedf74956b3`; smoke `/animales`, `/inventario`, `/animal/T10-MOVE-01` 200 y API sin sesión 401. No se usó producción. | migrations/0007_transfer_and_stock_guard.sql, migrations/0008_animal_location_history.sql, worker/inventory.ts, worker/animals.ts, worker/admin.ts, worker/index.ts, src/components/ModuloInventario.tsx, src/components/ModuloAnimales.tsx, tests/inventory.integration.test.ts, tests/animals.integration.test.ts, tests/admin.integration.test.ts | Continúa T11 (pesajes y producción porcina). Decisión de capacidad sigue abierta; mientras tanto solo se muestra aviso y no se impide el traslado. |
 | 2026-11-07 | T09 | Completada | Fichas individuales con código permanente textual, arete inicial e historial de cambios, sexo/tipo/raza/alias, fechas y pesos, procedencia, aptitud, genealogía interna o externa, galpón/ubicación/lote y observaciones. Alta de nacimiento, compra o saldo inicial genera ficha, pesajes de origen y una sola cabeza en el libro dentro de la misma operación idempotente; vincular una cabeza de grupo solo reduce el saldo sin sumar otra. Ficha deriva edad y último peso, conserva historial de aretes/tipo/pesajes/movimientos y ofrece filtros combinables por código/alias/arete, tipo, sexo, estado, etapa, disponibilidad, galpón, ubicación y lote. Cambio de tipo mantiene ID y cabeza; tipos cerda/verraco validan sexo. Desactivar ficha requiere motivo y no registra venta/muerte. Alcance por galpón probado; sin asignaciones devuelve 404. 9/9 pruebas específicas; suite 64/64, integración 52/52, E2E 2/2, typecheck, lint, build y dry-run staging correctos. Migración 0006 aplicada y Worker desplegado en staging; smoke `/animales` y `/animal/002` 200 HTML, `/api/animals` 401; tablas verificadas en D1. | migrations/0006_animals_schema.sql, worker/animals.ts, worker/inventory.ts, worker/index.ts, src/components/ModuloAnimales.tsx, tests/animals.integration.test.ts; commit `f902675`; Worker staging versión `35816410-622a-40d9-b586-7eeea51fed93` | Reproducción y sanidad se integran a la cronología al completar T12–T18. La ficha informa ubicación de ingreso; traslados de ficha identificada y derivación histórica de ubicación corresponden a T10. Continuar con T10. |
 | 2026-11-07 | T08 | Completada | Libro inmutable de movimientos de cabezas (`inventory_movements`) con tipo excluyente (saldo inicial, compra, nacimiento, venta, muerte, traslado recibido/enviado y ajuste), fecha efectiva, galpón, ubicación, lote, etapa y sexo. Existencias a fecha de corte y resumen por etapa calculados desde la misma fuente; el detalle reconstruye el total del tablero. Validación cronológica impide saldos negativos, incluidas correcciones retroactivas (409). Idempotencia con clave de reintento (200 en replay, 409 con contenido distinto) y auditoría con autor, motivo y fecha efectiva. Traslados internos verificados cancelando el total de la granja; su API queda para T10. Permisos: veterinario solo lectura (403 al escribir), operario limitado a sus galpones (403 fuera de alcance). Interfaz `ModuloInventario` con fecha de corte, KPIs, resumen por etapa, saldos por grupo, desglose por sexo, formulario de movimiento y listado filtrable; rutas `/inventario` y `/configuracion` enlazadas, configuración visible solo para administrador. 8/8 pruebas nuevas y 55/55 en total, typecheck, lint y build correctos. Migración 0005 aplicada en staging y producción; ambos Workers desplegados. Verificación en vivo: producción `/api/inventory` 401 sin sesión y 200 autenticado con 2 galpones y 8 etapas; staging registró un saldo inicial de 2 cabezas y el snapshot pasó de 0 a 2 disponibles. | worker/inventory.ts, worker/index.ts, migrations/0005_inventory_schema.sql, tests/inventory.integration.test.ts, src/components/ModuloInventario.tsx, src/main.tsx, src/components/Navbar.tsx, src/types/index.ts | Siguiente: T09 (alta y consulta de animales) para separar identificados de no identificados. El desglose individual queda en 0 identificadas / todas sin identificar. |
 | 2026-11-07 | Despliegue | Completada | Migraciones 0001–0004 aplicadas en remoto a `webporcicola-staging` (0e990468-3530-4e3a-a1df-530721ce38d7) y `webporcicola-produccion` (1a6f4451-bde8-46cf-beae-ed4dd76d34c0); 12 tablas de aplicación verificadas en ambas. Administrador inicial insertado directo en D1 y bootstrap cerrado. Worker de producción desplegado con `npx wrangler deploy --config dist/web_porcicola/wrangler.json` (versión c7794b50-9355-4939-8917-7b3f5d304470). Verificación en vivo contra https://web-porcicola-produccion.luisalatta.workers.dev: `/` 200 text/html, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie de sesión y `/api/config` 200 autenticado con las semillas de T07. | wrangler.jsonc, migrations/0001-0004, dist/web_porcicola/wrangler.json | Cambiar la contraseña inicial débil desde el módulo de administración. |

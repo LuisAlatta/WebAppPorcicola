@@ -49,6 +49,8 @@ import {
   registerMovement,
   transferInventory,
   reconcileInventory,
+  correctInventoryMovement,
+  previewMovementCorrection,
 } from './inventory';
 import {
   listAnimals,
@@ -57,6 +59,8 @@ import {
   updateAnimal,
   changeTag,
   setAnimalAvailability,
+  transferAnimal,
+  registerAnimalExit,
 } from './animals';
 
 export interface Env {
@@ -488,6 +492,19 @@ const worker = {
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
 
+        if (path === '/api/inventory/corrections' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof correctInventoryMovement>[2];
+          const result = await correctInventoryMovement(env.DB, session.user.id, body, scope);
+          return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
+        }
+
+        if (path === '/api/inventory/corrections/preview' && request.method === 'GET') {
+          const movementId = Number(url.searchParams.get('movementId'));
+          const correctedQuantity = Number(url.searchParams.get('correctedQuantity'));
+          const preview = await previewMovementCorrection(env.DB, movementId, correctedQuantity, scope);
+          return Response.json({ ok: true, preview });
+        }
+
         return Response.json({ error: 'Ruta de inventario no encontrada' }, { status: 404 });
       } catch (err) {
         const message = (err as Error).message || String(err);
@@ -584,6 +601,18 @@ const worker = {
           const body = await request.json() as Parameters<typeof setAnimalAvailability>[4];
           const result = await setAnimalAvailability(env.DB, session.user.id, key, true, body, scope);
           return Response.json({ ok: true, animal: result.animal, replayed: result.replayed });
+        }
+
+        if (key && segments.length === 2 && segments[1] === 'transfer' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof transferAnimal>[3];
+          const result = await transferAnimal(env.DB, session.user.id, key, body, scope);
+          return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
+        }
+
+        if (key && segments.length === 2 && segments[1] === 'exit' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof registerAnimalExit>[3];
+          const result = await registerAnimalExit(env.DB, session.user.id, key, body, scope);
+          return Response.json({ ok: true, animal: result.animal, replayed: result.replayed }, { status: result.replayed ? 200 : 201 });
         }
 
         return Response.json({ error: 'Ruta de animales no encontrada' }, { status: 404 });
