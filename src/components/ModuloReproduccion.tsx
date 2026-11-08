@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { IconCalendar, IconCheck, IconHeart, IconPig, IconPlus, IconRefreshCw } from './icons';
+import { IconCalendar, IconCheck, IconHeart, IconPlus, IconRefreshCw } from './icons';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
 import type { Perfil } from '../types';
 
