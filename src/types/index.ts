@@ -10,6 +10,7 @@ export type Vista =
   | 'reproduccion'
   | 'inventario'
   | 'alimentacion'
+  | 'sanidad'
   | 'configuracion'
   | 'administracion';
 

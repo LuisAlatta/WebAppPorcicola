@@ -187,6 +187,17 @@ export function Navbar({
           </span>
         </button>
 
+        <button
+          type="button"
+          className={`nav-tab ${vistaActual === 'sanidad' ? 'nav-tab-active' : ''}`}
+          onClick={() => onNavigate('sanidad')}
+        >
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconPlus size={16} />
+            <span>Sanidad</span>
+          </span>
+        </button>
+
         {perfilActual === 'administrador' && (
           <button
             type="button"

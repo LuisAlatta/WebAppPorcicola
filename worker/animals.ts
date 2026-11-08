@@ -1757,29 +1757,41 @@ export async function registerAnimalExit(
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) return { animal: await getAnimal(db, key, scope), replayed: true };
   if (!exitedCheck(row)) throw new ApiError(409, 'La ficha ya tiene una salida física');
+  if(exitType==='sale'){
+    const restriction=await db.prepare(`SELECT h.product,h.withdrawal_until FROM health_events h JOIN health_event_animals ha ON ha.health_event_id=h.id
+      WHERE ha.animal_id=? AND h.event_type<>'death' AND h.effective_date<=? AND ha.withdrawal_until>=? ORDER BY ha.withdrawal_until DESC LIMIT 1`).bind(animalId,effectiveDate,effectiveDate).first<{product:string;withdrawal_until:string}>();
+    if(restriction)throw new ApiError(409,`No se puede vender: retiro sanitario de ${restriction.product} hasta ${restriction.withdrawal_until}`);
+  }
   const reason = normalizeReason(input.reason, { required: true, fallback: exitType === 'death' ? 'Muerte de animal' : 'Venta de animal' });
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: `animal.${exitType}`,
     authorUserId: actorUserId, entityType: 'animal', entityId: animalId, barnId, effectiveDate,
     payload, result: { animalId, code: row.code, exitType } });
   const createdAt = claim.recordedAt;
   const movementId = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+  const healthEventId = exitType === 'death' ? Date.now() * 1000 + Math.floor(Math.random() * 1000) : null;
   const status = exitType === 'sale' ? 'vendido' : 'muerto';
-  await commitOperation(db, claim, [
+  const statements: D1PreparedStatement[] = [
     db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
     db.prepare(`UPDATE animals SET status = ?, exit_date = ?, exit_type = ?, is_active = 0,
       deactivated_at = ?, deactivation_reason = ?, updated_at = ? WHERE id = ? AND exit_date IS NULL`)
       .bind(status, effectiveDate, exitType, createdAt, reason, createdAt, animalId),
+    ...(healthEventId === null ? [] : [db.prepare(`INSERT INTO health_events(id,operation_log_id,event_type,effective_date,cause_code,observations,created_by_user_id,created_at)
+      VALUES(?,?,'death',?,?,?, ?,?)`).bind(healthEventId,claim.id,effectiveDate,causeCode,reason,actorUserId,createdAt)]),
     db.prepare(`INSERT INTO inventory_movements
       (id, operation_log_id, movement_type, effective_date, barn_id, location_code, lot_code, stage_code, sex,
-       quantity, cause_code, notes, animal_id, created_by_user_id, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`)
+       quantity, cause_code, notes, animal_id, created_by_user_id, created_at, health_event_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`)
       .bind(movementId, claim.id, exitType, effectiveDate, barnId, locationCode, lotCode, stageCode, sex,
-        causeCode, reason, animalId, actorUserId, createdAt),
+        causeCode, reason, animalId, actorUserId, createdAt,healthEventId),
+    ...(healthEventId === null ? [] : [db.prepare(`INSERT INTO health_event_animals(health_event_id,animal_id,animal_code_snapshot,barn_id,barn_name_snapshot,location_code_snapshot,lot_code_snapshot,stage_code_snapshot,withdrawal_until)
+      VALUES(?,?,?,?,?,?,?,?,NULL)`).bind(healthEventId,animalId,String(row.code),barnId,String(row.barn_name),locationCode,lotCode,stageCode)]),
     stockGuardStatement(db, barnId, locationCode, lotCode, stageCode, sex),
     db.prepare('DELETE FROM inventory_write_guard'),
-  ], [{ entityType: 'animal', entityId: animalId, action: 'update', actorUserId, barnId, reason,
+  ];
+  await commitOperation(db, claim, statements, [{ entityType: 'animal', entityId: animalId, action: 'update', actorUserId, barnId, reason,
     previousData: { status: String(row.status), exitDate: null },
-    newData: { status, exitType, exitDate: effectiveDate, causeCode, inventoryMovementId: movementId }, effectiveDate, recordedAt: createdAt }]);
+    newData: { status, exitType, exitDate: effectiveDate, causeCode, inventoryMovementId: movementId,healthEventId }, effectiveDate, recordedAt: createdAt },
+    ...(healthEventId===null?[]:[{entityType:'health_event',entityId:healthEventId,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{eventType:'death',causeCode,animalCode:String(row.code),inventoryMovementId:movementId},effectiveDate,recordedAt:createdAt}])]);
   return { animal: await getAnimal(db, key, scope), replayed: false };
 }
 

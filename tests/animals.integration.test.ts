@@ -131,6 +131,9 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0010_reproduction_cycles.sql',
       '0011_litters_and_farrowing.sql',
       '0012_weaning_events_and_cycles.sql',
+      '0013_feed_warehouses_and_ledger.sql',
+      '0014_feed_projections_and_turns.sql',
+      '0015_health_events_and_withdrawals.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -611,6 +614,24 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect((await detail.json() as { animal: AnimalSummary }).animal.status).toBe('muerto');
     const linked = await db.prepare("SELECT COUNT(*) AS n FROM inventory_movements WHERE animal_id = (SELECT id FROM animals WHERE code = 'T10-EXIT-01') AND movement_type = 'death'").first<{ n: number }>();
     expect(linked?.n).toBe(1);
+    const linkedHealth = await db.prepare("SELECT COUNT(*) AS n FROM health_events WHERE event_type='death' AND id=(SELECT health_event_id FROM inventory_movements WHERE animal_id=(SELECT id FROM animals WHERE code='T10-EXIT-01') AND movement_type='death')").first<{ n: number }>();
+    expect(linkedHealth?.n).toBe(1);
+  });
+
+  it('conserva historial sanitario grupal, bloquea retiro y enlaza muerte en una sola baja', async () => {
+    await create({ code: 'T17-SALUD-01', entryDate: '2026-11-05', entryStageCode: 'engorde', lotCode: 'lote_engorde_a', originType: 'nacimiento', operationKey: 'ani-t17-salud-01' });
+    await create({ code: 'T17-SALUD-02', entryDate: '2026-11-05', entryStageCode: 'engorde', lotCode: 'lote_engorde_a', originType: 'nacimiento', operationKey: 'ani-t17-salud-02' });
+    const healthPayload={eventType:'treatment',effectiveDate:'2026-11-06',animalCodes:['T17-SALUD-01','T17-SALUD-02'],product:'Tratamiento T17',productLot:'MED-LOTE-8',dosage:2.5,dosageUnit:'ml',nextDueDate:'2026-11-08',withdrawalUntil:'2026-11-07',reason:'Tratamiento respiratorio',observations:'Aplicación grupal',operationKey:'health-t17-group'};
+    const response=await api('/api/health/events',{method:'POST',body:JSON.stringify(healthPayload)},veterinarioToken);expect(response.status).toBe(201);
+    expect((await api('/api/health/events',{method:'POST',body:JSON.stringify(healthPayload)},veterinarioToken)).status).toBe(200);
+    expect((await api('/api/health/events',{method:'POST',body:JSON.stringify({...healthPayload,operationKey:'health-t17-denied'})},operarioToken)).status).toBe(403);
+    const history=await api('/api/health/events?animalCode=T17-SALUD-01&product=Tratamiento');const historyData=await history.json() as {events:{barnName:string;lotCode:string|null;productLot:string|null}[]};expect(historyData.events[0]).toMatchObject({barnName:'Galpón A',lotCode:'lote_engorde_a',productLot:'MED-LOTE-8'});
+    const alerts=await api('/api/health/withdrawals?asOf=2026-11-07');const alertData=await alerts.json() as {alerts:{animalCode:string;withdrawalUntil:string}[]};expect(alertData.alerts.map(row=>row.animalCode)).toContain('T17-SALUD-01');
+    const upcoming=await api('/api/health/upcoming?asOf=2026-11-07');const upcomingData=await upcoming.json() as {events:{animalCode:string;nextDueDate:string}[]};expect(upcomingData.events).toEqual(expect.arrayContaining([expect.objectContaining({animalCode:'T17-SALUD-01',nextDueDate:'2026-11-08'})]));
+    const blockedSale=await api('/api/animals/T17-SALUD-01/exit',{method:'POST',body:JSON.stringify({exitType:'sale',causeCode:'edad',effectiveDate:'2026-11-07',reason:'Venta de prueba bloqueada',operationKey:'t17-blocked-sale'})});expect(blockedSale.status).toBe(409);
+    const transfer=await api('/api/animals/T17-SALUD-01/transfer',{method:'POST',body:JSON.stringify({destinationBarnId:2,locationCode:null,lotCode:null,effectiveDate:'2026-11-07',reason:'Traslado posterior al tratamiento',operationKey:'t17-health-transfer'})});expect(transfer.status).toBe(201);
+    const historyAfter=await api('/api/health/events?animalCode=T17-SALUD-01');const historyAfterData=await historyAfter.json() as {events:{barnName:string}[]};expect(historyAfterData.events[0].barnName).toBe('Galpón A');
+    const saleAfterWithdrawal=await api('/api/animals/T17-SALUD-01/exit',{method:'POST',body:JSON.stringify({exitType:'sale',causeCode:'edad',effectiveDate:'2026-11-08',reason:'Venta posterior al retiro',operationKey:'t17-sale-after-withdrawal'})});expect(saleAfterWithdrawal.status).toBe(201);
   });
 
   it('respeta el alcance por galpón y el perfil de solo lectura', async () => {

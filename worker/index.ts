@@ -71,6 +71,7 @@ import {
 } from './reproduction';
 import { correctLitter, recordFarrowing, recordLitterEvent } from './litters';
 import { createFeedWarehouse, getFeedInventory, getFeedProjection, listFeedMovements, listFeedWarehouses, registerFeedMovement } from './feed';
+import { createHealthEvent, listHealthEvents, listUpcomingHealthEvents, listWithdrawalAlerts } from './health';
 
 export interface Env {
   DB: D1Database;
@@ -520,6 +521,23 @@ const worker = {
         const status = err instanceof ApiError ? err.status : /guard_id|inventory_movements\.id/.test(message) ? 409 : 400;
         return Response.json({ error: message }, { status });
       }
+    }
+
+    // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
+    if(path==='/api/health/events'||path==='/api/health/withdrawals'||path==='/api/health/upcoming'){
+      const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});
+      const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});
+      const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
+      try{
+        if(path==='/api/health/events'&&request.method==='GET')return Response.json({ok:true,events:await listHealthEvents(env.DB,{animalCode:url.searchParams.get('animalCode'),lotCode:url.searchParams.get('lotCode'),product:url.searchParams.get('product'),from:url.searchParams.get('from'),to:url.searchParams.get('to'),limit:url.searchParams.get('limit')},scope)});
+        if(path==='/api/health/events'&&request.method==='POST'){
+          if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo el veterinario o administrador puede registrar tratamientos'},{status:403});
+          const body=await request.json() as Parameters<typeof createHealthEvent>[2];const result=await createHealthEvent(env.DB,session.user.id,body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});
+        }
+        if(path==='/api/health/withdrawals'&&request.method==='GET')return Response.json({ok:true,alerts:await listWithdrawalAlerts(env.DB,url.searchParams.get('asOf')??undefined,scope)});
+        if(path==='/api/health/upcoming'&&request.method==='GET')return Response.json({ok:true,events:await listUpcomingHealthEvents(env.DB,url.searchParams.get('asOf')??undefined,scope)});
+        return Response.json({error:'Ruta sanitaria no encontrada'},{status:404});
+      }catch(err){const message=(err as Error).message||String(err);const status=err instanceof ApiError?err.status:/UNIQUE constraint/.test(message)?409:400;return Response.json({error:message},{status});}
     }
 
     // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)

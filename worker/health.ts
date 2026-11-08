@@ -1,0 +1,57 @@
+import { ApiError, commitOperation, createOperationClaim, currentFarmDate, isValidDateString, lookupExistingOperation, normalizeReason } from './events';
+
+type Row=Record<string,unknown>;
+export type HealthScope={allowedBarnNames?:string[]|null};
+export type HealthEventInput={eventType?:unknown;effectiveDate?:unknown;animalCodes?:unknown;product?:unknown;productLot?:unknown;dosage?:unknown;dosageUnit?:unknown;nextDueDate?:unknown;withdrawalUntil?:unknown;observations?:unknown;reason?:unknown;operationKey?:string};
+const requiredText=(value:unknown,label:string,max=160)=>{const text=String(value??'').trim();if(!text)throw new ApiError(400,`${label} es obligatorio`);if(text.length>max)throw new ApiError(400,`${label} supera ${max} caracteres`);return text;};
+const optionalText=(value:unknown,label:string,max=500)=>{const text=String(value??'').trim();if(!text)return null;if(text.length>max)throw new ApiError(400,`${label} supera ${max} caracteres`);return text;};
+function date(value:unknown,label:string,optional=false):string|null{if(optional&&(value===null||value===undefined||value===''))return null;if(!isValidDateString(value))throw new ApiError(400,`${label} inválida; use AAAA-MM-DD`);const result=String(value);if(result>currentFarmDate())throw new ApiError(400,`${label} no puede ser futura`);return result;}
+
+async function resolveAnimalAt(db:D1Database,code:string,effectiveDate:string,scope:HealthScope){
+  const row=await db.prepare(`SELECT a.id,a.code,a.entry_date,a.exit_date,a.is_active FROM animals a WHERE a.code=?`).bind(code).first<Row>();
+  if(!row||effectiveDate<String(row.entry_date)||(row.exit_date!==null&&effectiveDate>String(row.exit_date)))throw new ApiError(404,`Animal ${code} no estaba en la granja en la fecha indicada`);
+  const location=await db.prepare(`SELECT h.barn_id,h.location_code,h.lot_code,h.stage_code,b.name AS barn_name
+    FROM animal_location_history h JOIN barns b ON b.id=h.barn_id
+    WHERE h.animal_id=? AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?) ORDER BY h.valid_from DESC,h.id DESC LIMIT 1`).bind(row.id,effectiveDate,effectiveDate).first<Row>();
+  if(!location)throw new ApiError(409,`No existe ubicación histórica de ${code} para la fecha`);
+  if(scope.allowedBarnNames!==undefined&&scope.allowedBarnNames!==null&&!scope.allowedBarnNames.includes(String(location.barn_name)))throw new ApiError(403,`Sin acceso al animal ${code}`);
+  return {id:Number(row.id),code:String(row.code),barnId:Number(location.barn_id),barnName:String(location.barn_name),locationCode:location.location_code===null?null:String(location.location_code),lotCode:location.lot_code===null?null:String(location.lot_code),stageCode:String(location.stage_code)};
+}
+
+export async function createHealthEvent(db:D1Database,actorUserId:number,input:HealthEventInput,scope:HealthScope={}){
+  const eventType=String(input.eventType??'');if(!['treatment','deworming','other'].includes(eventType))throw new ApiError(400,'Tipo de evento sanitario inválido');
+  const effectiveDate=date(input.effectiveDate,'Fecha del evento')!;const product=requiredText(input.product,'Producto');const productLot=optionalText(input.productLot,'Lote del producto',80);
+  const dosage=Number(input.dosage);if(!Number.isFinite(dosage)||dosage<=0||Math.round(dosage*1000)!==dosage*1000)throw new ApiError(400,'La dosis debe ser positiva y tener hasta 3 decimales');
+  const dosageUnit=requiredText(input.dosageUnit,'Unidad de dosis',30);const nextDueDate=date(input.nextDueDate,'Próxima aplicación',true);const withdrawalUntil=date(input.withdrawalUntil,'Fin de retiro',true);
+  if(nextDueDate&&nextDueDate<=effectiveDate)throw new ApiError(400,'La próxima aplicación debe ser posterior al evento');if(withdrawalUntil&&withdrawalUntil<effectiveDate)throw new ApiError(400,'El fin de retiro no puede preceder al evento');
+  const reason=normalizeReason(input.reason,{required:true});const observations=optionalText(input.observations,'Observaciones');
+  if(!Array.isArray(input.animalCodes)||input.animalCodes.length===0||input.animalCodes.length>500)throw new ApiError(400,'Seleccione entre 1 y 500 animales');
+  const codes=[...new Set(input.animalCodes.map(value=>String(value).trim()).filter(Boolean))];if(codes.length!==input.animalCodes.length)throw new ApiError(400,'Hay códigos de animales repetidos o vacíos');
+  const animals=[];for(const code of codes)animals.push(await resolveAnimalAt(db,code,effectiveDate,scope));
+  const payload={eventType,effectiveDate,product,productLot,dosage,dosageUnit,nextDueDate,withdrawalUntil,observations,reason,animals};
+  const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);if(replay)return {replayed:true,event:replay.result};
+  const id=Date.now()*1000+Math.floor(Math.random()*1000);const claim=await createOperationClaim({operationKey:input.operationKey,operationType:'health.event.create',authorUserId:actorUserId,entityType:'health_event',entityId:id,barnId:animals.length===1?animals[0].barnId:null,effectiveDate,payload,result:{id,eventType,effectiveDate,product,animalCodes:codes,nextDueDate,withdrawalUntil}});
+  const statements=[db.prepare(`INSERT INTO health_events(id,operation_log_id,event_type,effective_date,product,product_lot,dosage,dosage_unit,next_due_date,withdrawal_until,observations,created_by_user_id,created_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,claim.id,eventType,effectiveDate,product,productLot,dosage,dosageUnit,nextDueDate,withdrawalUntil,observations,actorUserId,claim.recordedAt),...animals.map(animal=>db.prepare(`INSERT INTO health_event_animals(health_event_id,animal_id,animal_code_snapshot,barn_id,barn_name_snapshot,location_code_snapshot,lot_code_snapshot,stage_code_snapshot,withdrawal_until) VALUES(?,?,?,?,?,?,?,?,?)`).bind(id,animal.id,animal.code,animal.barnId,animal.barnName,animal.locationCode,animal.lotCode,animal.stageCode,withdrawalUntil))];
+  await commitOperation(db,claim,statements,animals.map(animal=>({entityType:'health_event',entityId:id,action:'create' as const,actorUserId,barnId:animal.barnId,reason,previousData:null,newData:{eventType,effectiveDate,product,productLot,dosage,dosageUnit,animalCode:animal.code,nextDueDate,withdrawalUntil,location:animal.locationCode,lot:animal.lotCode},effectiveDate,recordedAt:claim.recordedAt})));
+  return {replayed:false,event:{id,eventType,effectiveDate,product,animalCodes:codes,nextDueDate,withdrawalUntil}};
+}
+
+export async function listHealthEvents(db:D1Database,filters:{animalCode?:unknown;lotCode?:unknown;product?:unknown;from?:unknown;to?:unknown;limit?:unknown}={},scope:HealthScope={}){
+  const where=['1=1'];const params:unknown[]=[];if(filters.animalCode){where.push('ha.animal_code_snapshot=?');params.push(String(filters.animalCode));}if(filters.lotCode){where.push('ha.lot_code_snapshot=?');params.push(String(filters.lotCode));}if(filters.product){where.push('h.product LIKE ?');params.push(`%${String(filters.product)}%`);}if(filters.from){where.push('h.effective_date>=?');params.push(date(filters.from,'Fecha inicial')!);}if(filters.to){where.push('h.effective_date<=?');params.push(date(filters.to,'Fecha final')!);}
+  if(scope.allowedBarnNames!==undefined&&scope.allowedBarnNames!==null){const ids=await db.prepare(`SELECT id FROM barns WHERE name IN (${scope.allowedBarnNames.map(()=>'?').join(',')||'NULL'})`).bind(...scope.allowedBarnNames).all<{id:number}>();const barnIds=(ids.results??[]).map(item=>Number(item.id));if(!barnIds.length)where.push('0=1');else{where.push(`ha.barn_id IN (${barnIds.map(()=>'?').join(',')})`);params.push(...barnIds);}}
+  const limit=filters.limit?Math.min(Math.max(Number(filters.limit),1),500):100;const rows=await db.prepare(`SELECT h.id,h.event_type,h.effective_date,h.product,h.product_lot,h.dosage,h.dosage_unit,h.next_due_date,h.withdrawal_until,h.cause_code,h.observations,h.created_at,u.name AS responsible_name,ha.animal_code_snapshot,ha.barn_id,ha.barn_name_snapshot,ha.location_code_snapshot,ha.lot_code_snapshot,ha.stage_code_snapshot,ha.withdrawal_until AS animal_withdrawal_until
+    FROM health_events h JOIN health_event_animals ha ON ha.health_event_id=h.id JOIN users u ON u.id=h.created_by_user_id WHERE ${where.join(' AND ')} ORDER BY h.effective_date DESC,h.id DESC LIMIT ?`).bind(...params,limit).all<Row>();
+  return (rows.results??[]).map(row=>({id:Number(row.id),eventType:String(row.event_type),effectiveDate:String(row.effective_date),product:row.product===null?null:String(row.product),productLot:row.product_lot===null?null:String(row.product_lot),dosage:row.dosage===null?null:Number(row.dosage),dosageUnit:row.dosage_unit===null?null:String(row.dosage_unit),nextDueDate:row.next_due_date===null?null:String(row.next_due_date),withdrawalUntil:row.animal_withdrawal_until===null?null:String(row.animal_withdrawal_until),causeCode:row.cause_code===null?null:String(row.cause_code),observations:row.observations===null?null:String(row.observations),responsibleName:String(row.responsible_name),animalCode:String(row.animal_code_snapshot),barnId:Number(row.barn_id),barnName:String(row.barn_name_snapshot),locationCode:row.location_code_snapshot===null?null:String(row.location_code_snapshot),lotCode:row.lot_code_snapshot===null?null:String(row.lot_code_snapshot),stageCode:String(row.stage_code_snapshot)}));
+}
+
+export async function listWithdrawalAlerts(db:D1Database,asOfValue:unknown,scope:HealthScope={}){
+  const asOf=date(asOfValue,'Fecha de consulta')!;const rows=await listHealthEvents(db,{from:'0001-01-01',to:asOf,limit:500},scope);return rows.filter(row=>row.withdrawalUntil!==null&&row.withdrawalUntil>=asOf).map(row=>({animalCode:row.animalCode,product:row.product,withdrawalUntil:row.withdrawalUntil,eventDate:row.effectiveDate,barnName:row.barnName}));
+}
+
+export async function listUpcomingHealthEvents(db:D1Database,asOfValue:unknown,scope:HealthScope={}){
+  const asOf=date(asOfValue,'Fecha de consulta')!;const where=['h.next_due_date>=?'];const params:unknown[]=[asOf];
+  if(scope.allowedBarnNames!==undefined&&scope.allowedBarnNames!==null){const rows=await db.prepare(`SELECT id FROM barns WHERE name IN (${scope.allowedBarnNames.map(()=>'?').join(',')||'NULL'})`).bind(...scope.allowedBarnNames).all<{id:number}>();const ids=(rows.results??[]).map(row=>Number(row.id));if(!ids.length)where.push('0=1');else{where.push(`ha.barn_id IN (${ids.map(()=>'?').join(',')})`);params.push(...ids);}}
+  const rows=await db.prepare(`SELECT h.id,h.event_type,h.effective_date,h.next_due_date,h.product,h.product_lot,h.dosage,h.dosage_unit,ha.animal_code_snapshot,ha.barn_name_snapshot,ha.lot_code_snapshot,u.name AS responsible_name FROM health_events h JOIN health_event_animals ha ON ha.health_event_id=h.id JOIN users u ON u.id=h.created_by_user_id WHERE ${where.join(' AND ')} AND h.event_type<>'death' ORDER BY h.next_due_date,h.id LIMIT 500`).bind(...params).all<Row>();
+  return (rows.results??[]).map(row=>({eventId:Number(row.id),eventType:String(row.event_type),lastDate:String(row.effective_date),nextDueDate:String(row.next_due_date),product:String(row.product),productLot:row.product_lot===null?null:String(row.product_lot),dosage:Number(row.dosage),dosageUnit:String(row.dosage_unit),animalCode:String(row.animal_code_snapshot),barnName:String(row.barn_name_snapshot),lotCode:row.lot_code_snapshot===null?null:String(row.lot_code_snapshot),responsibleName:String(row.responsible_name)}));
+}
