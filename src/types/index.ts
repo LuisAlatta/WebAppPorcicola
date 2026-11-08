@@ -9,6 +9,7 @@ export type Vista =
   | 'animales'
   | 'reproduccion'
   | 'inventario'
+  | 'alimentacion'
   | 'configuracion'
   | 'administracion';
 

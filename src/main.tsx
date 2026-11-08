@@ -11,6 +11,7 @@ import { ModuloConfiguracion } from './components/ModuloConfiguracion';
 import { ModuloInventario } from './components/ModuloInventario';
 import { ModuloAnimales } from './components/ModuloAnimales';
 import { ModuloReproduccion } from './components/ModuloReproduccion';
+import { ModuloAlimentacion } from './components/ModuloAlimentacion';
 import './style.css';
 
 function getInitialView(): Vista {
@@ -22,6 +23,7 @@ function getInitialView(): Vista {
     if (path === '/alta' || path === '/formulario') return 'formulario';
     if (path === '/detalle' || path.startsWith('/animal/')) return 'detalle';
     if (path === '/inventario') return 'inventario';
+    if (path === '/alimentacion') return 'alimentacion';
     if (path === '/configuracion' || path === '/config') return 'configuracion';
     if (path === '/administracion' || path === '/admin') return 'administracion';
     if (path === '/login') return 'login';
@@ -80,6 +82,7 @@ function App() {
       else if (vista === 'formulario') targetPath = '/alta';
       else if (vista === 'detalle') targetPath = `/animal/${selectedAnimalId}`;
       else if (vista === 'inventario') targetPath = '/inventario';
+      else if (vista === 'alimentacion') targetPath = '/alimentacion';
       else if (vista === 'configuracion') targetPath = '/configuracion';
       else if (vista === 'administracion') targetPath = '/administracion';
       else if (vista === 'login') targetPath = '/login';
@@ -143,6 +146,8 @@ function App() {
         return <ModuloAnimales perfil={perfilActual} initialAnimalKey={selectedAnimalId} />;
       case 'inventario':
         return <ModuloInventario perfil={perfilActual} />;
+      case 'alimentacion':
+        return <ModuloAlimentacion perfil={perfilActual} />;
       case 'animales':
         return <ModuloAnimales perfil={perfilActual} />;
       case 'reproduccion':

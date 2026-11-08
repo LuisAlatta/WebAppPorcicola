@@ -70,6 +70,7 @@ import {
   saveWeaningPlan,
 } from './reproduction';
 import { correctLitter, recordFarrowing, recordLitterEvent } from './litters';
+import { createFeedWarehouse, getFeedInventory, listFeedMovements, listFeedWarehouses, registerFeedMovement } from './feed';
 
 export interface Env {
   DB: D1Database;
@@ -518,6 +519,39 @@ const worker = {
         const message = (err as Error).message || String(err);
         const status = err instanceof ApiError ? err.status : /guard_id|inventory_movements\.id/.test(message) ? 409 : 400;
         return Response.json({ error: message }, { status });
+      }
+    }
+
+    // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
+    if (path === '/api/feed/warehouses' || path === '/api/feed/inventory' || path === '/api/feed/movements') {
+      const token=getSessionToken(request);
+      if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});
+      const session=await validateSession(env.DB,token);
+      if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});
+      const isWrite=request.method!=='GET';
+      if(isWrite&&!['administrador','responsable','operario'].includes(session.user.role))return Response.json({error:'El perfil veterinario solo puede consultar almacenes y movimientos de alimento'},{status:403});
+      const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
+      try{
+        if(path==='/api/feed/warehouses'&&request.method==='GET')return Response.json({ok:true,warehouses:await listFeedWarehouses(env.DB,scope)});
+        if(path==='/api/feed/warehouses'&&request.method==='POST'){
+          if(session.user.role!=='administrador')return Response.json({error:'Solo el administrador puede crear almacenes'},{status:403});
+          const body=await request.json() as Parameters<typeof createFeedWarehouse>[2];
+          const result=await createFeedWarehouse(env.DB,session.user.id,body,scope);
+          return Response.json({ok:true,...result},{status:result.replayed?200:201});
+        }
+        if(path==='/api/feed/inventory'&&request.method==='GET')return Response.json({ok:true,...await getFeedInventory(env.DB,url.searchParams.get('asOf'),scope)});
+        if(path==='/api/feed/movements'&&request.method==='GET')return Response.json({ok:true,movements:await listFeedMovements(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),warehouseId:url.searchParams.get('warehouseId'),feedCode:url.searchParams.get('feedCode'),limit:url.searchParams.get('limit')},scope)});
+        if(path==='/api/feed/movements'&&request.method==='POST'){
+          const body=await request.json() as Parameters<typeof registerFeedMovement>[2];
+          if(['opening','purchase','return_supplier'].includes(String(body.movementType))&&!['administrador','responsable'].includes(session.user.role))return Response.json({error:'El operario no puede registrar compras, saldos iniciales o devoluciones a proveedor'},{status:403});
+          const result=await registerFeedMovement(env.DB,session.user.id,body,scope);
+          return Response.json({ok:true,...result},{status:result.replayed?200:201});
+        }
+        return Response.json({error:'Ruta de alimento no encontrada'},{status:404});
+      }catch(err){
+        const message=(err as Error).message||String(err);
+        const status=err instanceof ApiError?err.status:/feed_stock_guard|guard_id|UNIQUE constraint/.test(message)?409:400;
+        return Response.json({error:message},{status});
       }
     }
 
