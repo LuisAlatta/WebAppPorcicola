@@ -43,6 +43,11 @@ import {
   retireLot,
   type ConfigHistoryEntity,
 } from './config';
+import {
+  getInventorySnapshot,
+  listInventoryMovements,
+  registerMovement,
+} from './inventory';
 
 export interface Env {
   DB: D1Database;
@@ -403,7 +408,71 @@ const worker = {
       }
     }
 
-    // 7. MÓDULO EXCLUSIVO DE ADMINISTRACIÓN (T05 · ACC-06, ACC-07, ADM-01..04, CFG-06, CA-27, CA-28)
+    // 7. INVENTARIO INDIVIDUAL Y COLECTIVO (T08 · INV-01..INV-03)
+    if (path === '/api/inventory' || path.startsWith('/api/inventory/')) {
+      const token = getSessionToken(request);
+      if (!token) {
+        return Response.json({ error: 'No autenticado: falta sesión' }, { status: 401 });
+      }
+
+      const session = await validateSession(env.DB, token);
+      if (!session) {
+        return Response.json({ error: 'Sesión inválida, expirada o revocada' }, { status: 401 });
+      }
+
+      const isWrite = request.method !== 'GET';
+      if (isWrite && !['administrador', 'responsable', 'operario'].includes(session.user.role)) {
+        return Response.json(
+          { error: 'Acceso denegado: el perfil Veterinario solo puede consultar el inventario' },
+          { status: 403 },
+        );
+      }
+
+      const scope = session.user.role === 'administrador'
+        ? { allowedBarnNames: null }
+        : { allowedBarnNames: session.barns };
+
+      try {
+        if (path === '/api/inventory' && request.method === 'GET') {
+          const snapshot = await getInventorySnapshot(env.DB, {
+            asOf: url.searchParams.get('asOf'),
+            from: url.searchParams.get('from'),
+            movementLimit: url.searchParams.get('movementLimit') !== null
+              ? parseInt(url.searchParams.get('movementLimit') as string, 10)
+              : undefined,
+          }, scope);
+          return Response.json({ ok: true, ...snapshot });
+        }
+
+        if (path === '/api/inventory/movements' && request.method === 'GET') {
+          const movements = await listInventoryMovements(env.DB, {
+            from: url.searchParams.get('from'),
+            to: url.searchParams.get('to'),
+            type: url.searchParams.get('type'),
+            limit: url.searchParams.get('limit') !== null
+              ? parseInt(url.searchParams.get('limit') as string, 10)
+              : undefined,
+          }, scope);
+          return Response.json({ ok: true, movements });
+        }
+
+        if (path === '/api/inventory/movements' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof registerMovement>[2];
+          const result = await registerMovement(env.DB, session.user.id, body, scope);
+          return Response.json(
+            { ok: true, movement: result.movement, replayed: result.replayed },
+            { status: result.replayed ? 200 : 201 },
+          );
+        }
+
+        return Response.json({ error: 'Ruta de inventario no encontrada' }, { status: 404 });
+      } catch (err) {
+        const status = err instanceof ApiError ? err.status : 400;
+        return Response.json({ error: (err as Error).message || String(err) }, { status });
+      }
+    }
+
+    // 8. MÓDULO EXCLUSIVO DE ADMINISTRACIÓN (T05 · ACC-06, ACC-07, ADM-01..04, CFG-06, CA-27, CA-28)
     if (path.startsWith('/api/admin/')) {
       const token = getSessionToken(request);
       if (!token) {

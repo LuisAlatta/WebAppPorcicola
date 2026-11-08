@@ -8,6 +8,8 @@ import { BocetoListado } from './components/BocetoListado';
 import { BocetoFormulario } from './components/BocetoFormulario';
 import { BocetoDetalle } from './components/BocetoDetalle';
 import { ModuloAdministracion } from './components/ModuloAdministracion';
+import { ModuloConfiguracion } from './components/ModuloConfiguracion';
+import { ModuloInventario } from './components/ModuloInventario';
 import './style.css';
 
 function getInitialView(): Vista {
@@ -16,6 +18,8 @@ function getInitialView(): Vista {
     if (path === '/animales' || path === '/listado') return 'listado';
     if (path === '/alta' || path === '/formulario') return 'formulario';
     if (path === '/detalle' || path.startsWith('/animal/')) return 'detalle';
+    if (path === '/inventario') return 'inventario';
+    if (path === '/configuracion' || path === '/config') return 'configuracion';
     if (path === '/administracion' || path === '/admin') return 'administracion';
     if (path === '/login') return 'login';
     if (path === '/inicio' || path === '/') return 'inicio';
@@ -62,6 +66,8 @@ function App() {
       if (vista === 'listado') targetPath = '/animales';
       else if (vista === 'formulario') targetPath = '/alta';
       else if (vista === 'detalle') targetPath = `/animal/${selectedAnimalId}`;
+      else if (vista === 'inventario') targetPath = '/inventario';
+      else if (vista === 'configuracion') targetPath = '/configuracion';
       else if (vista === 'administracion') targetPath = '/administracion';
       else if (vista === 'login') targetPath = '/login';
       else if (vista === 'inicio') targetPath = '/inicio';
@@ -127,6 +133,10 @@ function App() {
             onNavigate={handleNavigate}
           />
         );
+      case 'inventario':
+        return <ModuloInventario perfil={perfilActual} />;
+      case 'configuracion':
+        return <ModuloConfiguracion />;
       case 'administracion':
         return (
           <ModuloAdministracion

@@ -12,7 +12,17 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
 
 ## Estado real
 
-- **Fase 2 completa: T01 a T07 y Cierre 2 terminados. Siguiente: T08 (Abrir inventario individual y colectivo).**
+- **Fase 2 completa: T01 a T07 y Cierre 2. T08 completa (inventario individual y colectivo). Siguiente: T09 (Dar de alta y consultar animales).**
+- Se implementó T08 (`worker/inventory.ts`, `migrations/0005_inventory_schema.sql` y `src/components/ModuloInventario.tsx`):
+  - Libro inmutable de movimientos de cabezas con tipo excluyente: saldo inicial, compra, nacimiento, venta, muerte, traslado recibido, traslado enviado y ajuste. Cada fila guarda fecha efectiva, galpón, ubicación, lote, etapa, sexo (incluido pendiente de sexado), cantidad, causa y notas.
+  - Existencias a fecha de corte y resumen por etapa calculados desde el mismo libro; el detalle de saldos reconstruye exactamente el total del tablero.
+  - Resumen con entradas (iniciales y externas), salidas, muertes, disponibles y mortalidad con denominador explícito (muertes sobre entradas) por etapa y total de la granja.
+  - Validación cronológica por grupo (galpón, ubicación, lote, etapa y sexo): ninguna entrada o corrección retroactiva puede dejar saldo negativo (409).
+  - Idempotencia con clave de reintento por autor: mismo contenido devuelve el evento previo sin duplicar y contenido distinto responde 409. Auditoría con autor, motivo, fecha efectiva y datos del movimiento.
+  - Traslados internos registrados como dos filas del mismo grupo que se cancelan en el total de la granja; su API queda para T10.
+  - Permisos: veterinario solo lectura (403 al escribir); operario, responsable y administrador escriben, limitados a los galpones asignados (403 fuera de alcance). El administrador ve toda la granja.
+  - Interfaz `ModuloInventario` con fecha de corte, KPIs, resumen por etapa, saldos por grupo, desglose por sexo, formulario de movimiento y listado filtrable. Rutas `/inventario` y `/configuracion` enlazadas en la SPA; Configuración visible solo para administrador.
+  - Migración 0005 aplicada en staging y producción; ambos Workers desplegados. Verificación en vivo: producción `/api/inventory` responde 401 sin sesión y 200 autenticado con 2 galpones y 8 etapas; staging registró un saldo inicial de 2 cabezas y el snapshot pasó de 0 a 2 disponibles.
 - Se implementó el módulo exclusivo de administración (`worker/admin.ts`, `migrations/0002_administration_schema.sql` y `src/components/ModuloAdministracion.tsx`):
   - Exclusividad en servidor: rutas bajo `/api/admin/*` protegidas con 401 si no hay sesión y 403 Forbidden si el perfil no es `administrador` (CA-27).
   - Gestión integral de usuarios para los 4 perfiles (`administrador`, `responsable`, `operario`, `veterinario`) con hashing PBKDF2 y preservación de autoría histórica.
@@ -38,8 +48,9 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
   - Matriz de acceso directo: responsable, operario y veterinario reciben 403 en listar/crear cuentas, listar/eliminar galpones, consultar auditoría y escribir configuración, sin efectos secundarios.
   - Revocación inmediata: desactivar una cuenta revoca sus sesiones, invalida `/api/auth/me` y `/api/data/resumen`, y reactivarla no revive el token anterior. El cambio de rol se refleja en la sesión existente y el logout revoca el token en el acto.
   - Total final: 47 pruebas en 11 archivos, todas pasando, con typecheck, lint y build correctos.
-- **Despliegue de producción activo:** https://web-porcicola-produccion.luisalatta.workers.dev (versión `c7794b50-9355-4939-8917-7b3f5d304470`). Migraciones 0001–0004 aplicadas en remoto a staging y producción; administrador inicial creado directamente en D1 con el bootstrap ya cerrado. Verificado en vivo: `/` 200 HTML, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie y `/api/config` 200 autenticado con las semillas de T07.
-- **Despliegue de staging activo:** https://web-porcicola-staging.luisalatta.workers.dev (versión `e9ef04a6-3ed2-43ae-9258-1a257a231025`), con su propio administrador inicial y los mismos galpones base. Verificación en vivo equivalente: `/` 200, `/dashboard` 200, `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 y `/api/config` 200 con 4 parámetros, 11 catálogos, 8 etapas, 3 ubicaciones y 2 lotes.
+- T08 agregó 8 pruebas de integración de inventario: total final 55 pruebas en 12 archivos, todas pasando.
+- **Despliegue de producción activo:** https://web-porcicola-produccion.luisalatta.workers.dev (versión `77c622ca-fa59-454a-820b-802d92799d78`). Migraciones 0001–0005 aplicadas en remoto a staging y producción; administrador inicial creado directamente en D1 con el bootstrap ya cerrado. Verificado en vivo: `/` 200 HTML, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie, `/api/config` 200 autenticado y `/api/inventory` 401 sin sesión y 200 autenticado con 2 galpones y 8 etapas. Las rutas `/inventario` y `/configuracion` devuelven 200.
+- **Despliegue de staging activo:** https://web-porcicola-staging.luisalatta.workers.dev (versión `e4291fb4-5db6-4e4f-b3d5-afdb940c0bde`), con su propio administrador inicial y los mismos galpones base. Verificación en vivo equivalente más el registro real de un saldo inicial de 2 cabezas: el snapshot pasó de 0 a 2 disponibles y el movimiento quedó auditado.
 - Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`).
 - El commit previo verificado en GitHub Actions con éxito es `75c2c9f` (ejecución 42425588778).
 
@@ -62,13 +73,13 @@ Las configuraciones están en `wrangler.jsonc`:
 
 Ambas bases fueron creadas por separado. La de producción estaba vacía al crearla. La configuración por defecto no declara un binding D1. El plugin de Vite selecciona un entorno nombrado con `CLOUDFLARE_ENV=staging` o `CLOUDFLARE_ENV=production`; los datos locales y remotos son independientes. En PowerShell, para compilar staging, ejecutar `$env:CLOUDFLARE_ENV='staging'; npm run build`. Confirmar que los bindings generados corresponden al entorno deseado antes de operar.
 
-Todavía faltan definir y configurar los secretos separados, dominio propio y cron. Los Workers de producción y staging están desplegados y verificados en `https://web-porcicola-produccion.luisalatta.workers.dev` y `https://web-porcicola-staging.luisalatta.workers.dev`; las cuatro migraciones están aplicadas en ambas bases. El administrador inicial de cada entorno se insertó directo en su D1 para que `/api/auth/bootstrap` quedara cerrado antes de publicar. Cambiar la contraseña inicial débil desde el módulo de administración. No usar datos reales para pruebas ni escribir en la base de producción para comprobar una función. No poner secretos en archivos rastreados ni en el registro de avance.
+Todavía faltan definir y configurar los secretos separados, dominio propio y cron. Los Workers de producción y staging están desplegados y verificados en `https://web-porcicola-produccion.luisalatta.workers.dev` y `https://web-porcicola-staging.luisalatta.workers.dev`; las cinco migraciones están aplicadas en ambas bases. El administrador inicial de cada entorno se insertó directo en su D1 para que `/api/auth/bootstrap` quedara cerrado antes de publicar. Cambiar la contraseña inicial débil desde el módulo de administración. No usar datos reales para pruebas ni escribir en la base de producción para comprobar una función. No poner secretos en archivos rastreados ni en el registro de avance.
 
 ## Pasos concretos para continuar
 
-1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 47 pruebas deben pasar.
-2. **Continuar con T08 (Abrir inventario individual y colectivo).** Movimientos de cabezas por fecha, ubicación, lote, etapa, sexo (incluido pendiente de sexado) y causa; saldo inicial, grupos sin arete y desglose individual desde la configuración versionada de T07.
+1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 55 pruebas deben pasar.
+2. **Continuar con T09 (Dar de alta y consultar animales).** Fichas individuales con arete, trazabilidad por evento y desglose identificados/no identificados dentro de los grupos de inventario, reutilizando el libro de movimientos de T08.
 
 ## Instrucción para continuar
 
-Lee esta carpeta, revisa el estado del repositorio y retoma T08. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.
+Lee esta carpeta, revisa el estado del repositorio y retoma T09. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.

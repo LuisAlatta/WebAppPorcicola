@@ -11,6 +11,8 @@ import {
   IconAlertTriangle,
   IconCheck,
   IconClock,
+  IconScale,
+  IconSettings,
 } from './icons';
 
 interface NavbarProps {
@@ -138,6 +140,30 @@ export function Navbar({
             <span>Detalle 002</span>
           </span>
         </button>
+
+        <button
+          type="button"
+          className={`nav-tab ${vistaActual === 'inventario' ? 'nav-tab-active' : ''}`}
+          onClick={() => onNavigate('inventario')}
+        >
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconScale size={16} />
+            <span>Inventario</span>
+          </span>
+        </button>
+
+        {perfilActual === 'administrador' && (
+          <button
+            type="button"
+            className={`nav-tab ${vistaActual === 'configuracion' ? 'nav-tab-active' : ''}`}
+            onClick={() => onNavigate('configuracion')}
+          >
+            <span className="inline-flex items-center justify-center gap-2 leading-none">
+              <IconSettings size={16} />
+              <span>Configuración</span>
+            </span>
+          </button>
+        )}
 
         {perfilActual === 'administrador' && (
           <button

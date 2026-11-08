@@ -1,6 +1,6 @@
 # Control de ejecución
 
-Estado actual: Fase 2 completa (T01 a T07 y Cierre 2). Siguiente: T08 (Abrir inventario individual y colectivo). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: Fase 2 completa (T01 a T07 y Cierre 2) y T08 completa (inventario individual y colectivo). Siguiente: T09 (Dar de alta y consultar animales). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -19,7 +19,7 @@ Estado actual: Fase 2 completa (T01 a T07 y Cierre 2). Siguiente: T08 (Abrir inv
 
 ## 3. Animales e inventario
 
-- [ ] T08 · Abrir inventario individual y colectivo · dependencias 07.
+- [x] T08 · Abrir inventario individual y colectivo · dependencias 07.
 - [ ] T09 · Dar de alta y consultar animales · dependencias 08.
 - [ ] T10 · Transferir, dar de baja, conciliar y corregir · dependencias 09.
 - [ ] T11 · Registrar producción y pesajes · dependencias 09,10.
@@ -150,9 +150,9 @@ Estado actual: Fase 2 completa (T01 a T07 y Cierre 2). Siguiente: T08 (Abrir inv
 | INF-07 | T25 | Pendiente |
 | INF-08 | T22 | Pendiente |
 | INF-09 | T26 | Pendiente |
-| INV-01 | T08 | Pendiente |
-| INV-02 | T08 | Pendiente |
-| INV-03 | T08 | Pendiente |
+| INV-01 | T08 | Verificado en tests/inventory.integration.test.ts: entradas y salidas por fecha, etapa y sexo; salidas con causa obligatoria en muerte; resumen por etapa con entradas, salidas, disponibles y mortalidad (muertes/entradas) y total de la granja |
+| INV-02 | T08 | Verificado en tests/inventory.integration.test.ts: cada movimiento declara origen (saldo inicial, compra, nacimiento, venta, muerte, traslado o ajuste); saldo inicial por fecha, galpón, ubicación, lote, etapa y sexo; corte al 2026-01-31 reconstruye 12 cabezas antes de las compras de febrero |
+| INV-03 | T08 | Verificado en tests/inventory.integration.test.ts: saldo = inicial + entradas externas + nacimientos + traslados recibidos − salidas externas − muertes + ajustes; categorías excluyentes; traslado interno A→B conserva el total de la granja; correcciones retroactivas que dejarían saldo negativo responden 409 |
 | INV-04 | T09 | Pendiente |
 | INV-05 | T10 | Pendiente |
 | INV-06 | T10 | Pendiente |
@@ -233,6 +233,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 
 | Fecha | Tarea | Estado | Prueba ejecutada y resultado real | Evidencia / commit | Pendiente o decisión |
 |---|---|---|---|---|---|
+| 2026-11-07 | T08 | Completada | Libro inmutable de movimientos de cabezas (`inventory_movements`) con tipo excluyente (saldo inicial, compra, nacimiento, venta, muerte, traslado recibido/enviado y ajuste), fecha efectiva, galpón, ubicación, lote, etapa y sexo. Existencias a fecha de corte y resumen por etapa calculados desde la misma fuente; el detalle reconstruye el total del tablero. Validación cronológica impide saldos negativos, incluidas correcciones retroactivas (409). Idempotencia con clave de reintento (200 en replay, 409 con contenido distinto) y auditoría con autor, motivo y fecha efectiva. Traslados internos verificados cancelando el total de la granja; su API queda para T10. Permisos: veterinario solo lectura (403 al escribir), operario limitado a sus galpones (403 fuera de alcance). Interfaz `ModuloInventario` con fecha de corte, KPIs, resumen por etapa, saldos por grupo, desglose por sexo, formulario de movimiento y listado filtrable; rutas `/inventario` y `/configuracion` enlazadas, configuración visible solo para administrador. 8/8 pruebas nuevas y 55/55 en total, typecheck, lint y build correctos. Migración 0005 aplicada en staging y producción; ambos Workers desplegados. Verificación en vivo: producción `/api/inventory` 401 sin sesión y 200 autenticado con 2 galpones y 8 etapas; staging registró un saldo inicial de 2 cabezas y el snapshot pasó de 0 a 2 disponibles. | worker/inventory.ts, worker/index.ts, migrations/0005_inventory_schema.sql, tests/inventory.integration.test.ts, src/components/ModuloInventario.tsx, src/main.tsx, src/components/Navbar.tsx, src/types/index.ts | Siguiente: T09 (alta y consulta de animales) para separar identificados de no identificados. El desglose individual queda en 0 identificadas / todas sin identificar. |
 | 2026-11-07 | Despliegue | Completada | Migraciones 0001–0004 aplicadas en remoto a `webporcicola-staging` (0e990468-3530-4e3a-a1df-530721ce38d7) y `webporcicola-produccion` (1a6f4451-bde8-46cf-beae-ed4dd76d34c0); 12 tablas de aplicación verificadas en ambas. Administrador inicial insertado directo en D1 y bootstrap cerrado. Worker de producción desplegado con `npx wrangler deploy --config dist/web_porcicola/wrangler.json` (versión c7794b50-9355-4939-8917-7b3f5d304470). Verificación en vivo contra https://web-porcicola-produccion.luisalatta.workers.dev: `/` 200 text/html, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie de sesión y `/api/config` 200 autenticado con las semillas de T07. | wrangler.jsonc, migrations/0001-0004, dist/web_porcicola/wrangler.json | Cambiar la contraseña inicial débil desde el módulo de administración. |
 | 2026-11-07 | Despliegue staging | Completada | Base staging verificada vacía y con migraciones 0001–0004. Administrador inicial insertado directo en D1 (bootstrap cerrado) con galpones A/B asignados. Worker de staging compilado con `CLOUDFLARE_ENV=staging` y desplegado con `npx wrangler deploy --config dist/web_porcicola/wrangler.json` (versión e9ef04a6-3ed2-43ae-9258-1a257a231025). Verificación en vivo contra https://web-porcicola-staging.luisalatta.workers.dev: `/` 200 text/html, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie y `/api/config` 200 con 4 parámetros, 11 catálogos, 8 etapas, 3 ubicaciones y 2 lotes. | wrangler.jsonc, migrations/0001-0004, dist/web_porcicola/wrangler.json | Cambiar la contraseña inicial débil desde el módulo de administración. |
 | 2026-11-07 | Cierre 2 | Completada | Verificación con dos sesiones de administrador: los cambios de la sesión uno se ven de inmediato en la sesión dos. Matriz de acceso directo probada en 3 perfiles (responsable, operario y veterinario) contra 6 rutas: listar cuentas, crear cuenta, listar galpones, eliminar galpón, consultar auditoría y escribir configuración; las 18 combinaciones devuelven 403 y no dejan efectos (la cuenta intrusa no se crea y el galpón permanece). Revocación inmediata: al desactivar una cuenta se revocan sus sesiones, `/api/auth/me` y `/api/data/resumen` pasan a 401, y reactivar la cuenta no revive el token anterior; el cambio de rol se refleja en la sesión existente y el logout revoca el token en el acto. 47/47 pruebas, typecheck, lint y build correctos. | tests/cierre2.integration.test.ts, worker/admin.ts (revocación de sesiones al desactivar), migrations/0001-0004 | Fase 2 cerrada. Siguiente: T08 (inventario individual y colectivo). |
