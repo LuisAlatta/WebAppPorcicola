@@ -15,7 +15,10 @@ import {
   IconTrash,
   IconEdit,
   IconCalendar,
+  IconSettings,
 } from './icons';
+import { farmToday, newOperationKey } from '../utils/operations';
+import { ModuloConfiguracion } from './ModuloConfiguracion';
 
 interface ModuloAdministracionProps {
   perfil: Perfil;
@@ -97,26 +100,8 @@ const ACTION_LABEL: Record<AuditItem['action'], string> = {
   delete: 'Baja',
 };
 
-function farmToday(): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Lima',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
-  return `${get('year')}-${get('month')}-${get('day')}`;
-}
-
-function newOperationKey(prefix: string): string {
-  const random = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `${prefix}-${random}`;
-}
-
 export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracionProps) {
-  const [activeTab, setActiveTab] = useState<'usuarios' | 'galpones' | 'equipo' | 'historial' | 'auditoria'>('usuarios');
+  const [activeTab, setActiveTab] = useState<'usuarios' | 'galpones' | 'equipo' | 'historial' | 'auditoria' | 'configuracion'>('usuarios');
   const [users, setUsers] = useState<UserItem[]>([]);
   const [barns, setBarns] = useState<BarnItem[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -661,6 +646,17 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconClipboard size={16} />
             <span>Auditoría de Eventos ({auditLog.length})</span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className={`btn btn-sm ${activeTab === 'configuracion' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setActiveTab('configuracion')}
+        >
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconSettings size={16} />
+            <span>Configuración de la Granja</span>
           </span>
         </button>
       </div>
@@ -1413,6 +1409,11 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
             </div>
           )}
         </div>
+      )}
+
+      {/* 6. PESTAÑA: CONFIGURACIÓN VERSIONADA (T07 · CFG-01..CFG-05) */}
+      {activeTab === 'configuracion' && (
+        <ModuloConfiguracion />
       )}
     </div>
   );

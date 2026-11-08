@@ -29,6 +29,20 @@ import {
   getTeamHistory,
 } from './admin';
 import { ApiError, listAuditLog } from './events';
+import {
+  getConfigSnapshot,
+  getConfigHistory,
+  saveCatalogItem,
+  saveStage,
+  saveSetting,
+  saveLocation,
+  saveLot,
+  retireCatalogItem,
+  retireStage,
+  retireLocation,
+  retireLot,
+  type ConfigHistoryEntity,
+} from './config';
 
 export interface Env {
   DB: D1Database;
@@ -292,7 +306,104 @@ const worker = {
       });
     }
 
-    // 6. MÓDULO EXCLUSIVO DE ADMINISTRACIÓN (T05 · ACC-06, ACC-07, ADM-01..04, CFG-06, CA-27, CA-28)
+    // 6. CONFIGURACIÓN VERSIONADA DE LA GRANJA (T07 · CFG-01..CFG-05)
+    if (path === '/api/config' || path.startsWith('/api/config/')) {
+      const token = getSessionToken(request);
+      if (!token) {
+        return Response.json({ error: 'No autenticado: falta sesión' }, { status: 401 });
+      }
+
+      const session = await validateSession(env.DB, token);
+      if (!session) {
+        return Response.json({ error: 'Sesión inválida, expirada o revocada' }, { status: 401 });
+      }
+
+      const isWrite = request.method !== 'GET';
+      if (isWrite && session.user.role !== 'administrador') {
+        return Response.json({ error: 'Acceso denegado: solo el Administrador configura la granja' }, { status: 403 });
+      }
+
+      try {
+        if (path === '/api/config' && request.method === 'GET') {
+          const snapshot = await getConfigSnapshot(env.DB, url.searchParams.get('asOf'));
+          return Response.json({ ok: true, ...snapshot });
+        }
+
+        if (path === '/api/config/history' && request.method === 'GET') {
+          const entity = (url.searchParams.get('entity') ?? '') as ConfigHistoryEntity;
+          if (!['catalog', 'stage', 'setting', 'location', 'lot'].includes(entity)) {
+            return Response.json({ error: 'Entidad de historial inválida' }, { status: 400 });
+          }
+          const code = url.searchParams.get('code') ?? '';
+          const catalogKey = url.searchParams.get('catalogKey') ?? undefined;
+          const history = await getConfigHistory(env.DB, entity, code, catalogKey);
+          return Response.json({ ok: true, history });
+        }
+
+        if (path === '/api/config/settings' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof saveSetting>[2];
+          const result = await saveSetting(env.DB, session.user.id, body);
+          return Response.json({ ok: true, item: result.item, replayed: result.replayed });
+        }
+
+        if (path === '/api/config/stages' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof saveStage>[2];
+          const result = await saveStage(env.DB, session.user.id, body);
+          return Response.json({ ok: true, item: result.item, replayed: result.replayed });
+        }
+
+        if (path === '/api/config/stages/retire' && request.method === 'POST') {
+          const body = await request.json() as { code?: string; effectiveFrom?: string; operationKey?: string; reason?: string };
+          const result = await retireStage(env.DB, session.user.id, body.code ?? '', body);
+          return Response.json({ ok: true, item: result.item, replayed: result.replayed });
+        }
+
+        if (path === '/api/config/catalogs' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof saveCatalogItem>[2];
+          const result = await saveCatalogItem(env.DB, session.user.id, body);
+          return Response.json({ ok: true, item: result.item, replayed: result.replayed });
+        }
+
+        if (path === '/api/config/catalogs/retire' && request.method === 'POST') {
+          const body = await request.json() as {
+            catalogKey?: string; code?: string; effectiveFrom?: string; operationKey?: string; reason?: string;
+          };
+          const result = await retireCatalogItem(env.DB, session.user.id, body.catalogKey ?? '', body.code ?? '', body);
+          return Response.json({ ok: true, item: result.item, replayed: result.replayed });
+        }
+
+        if (path === '/api/config/locations' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof saveLocation>[2];
+          const result = await saveLocation(env.DB, session.user.id, body);
+          return Response.json({ ok: true, item: result.item, replayed: result.replayed });
+        }
+
+        if (path === '/api/config/locations/retire' && request.method === 'POST') {
+          const body = await request.json() as { code?: string; effectiveFrom?: string; operationKey?: string; reason?: string };
+          const result = await retireLocation(env.DB, session.user.id, body.code ?? '', body);
+          return Response.json({ ok: true, item: result.item, replayed: result.replayed });
+        }
+
+        if (path === '/api/config/lots' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof saveLot>[2];
+          const result = await saveLot(env.DB, session.user.id, body);
+          return Response.json({ ok: true, item: result.item, replayed: result.replayed });
+        }
+
+        if (path === '/api/config/lots/retire' && request.method === 'POST') {
+          const body = await request.json() as { code?: string; effectiveFrom?: string; operationKey?: string; reason?: string };
+          const result = await retireLot(env.DB, session.user.id, body.code ?? '', body);
+          return Response.json({ ok: true, item: result.item, replayed: result.replayed });
+        }
+
+        return Response.json({ error: 'Ruta de configuración no encontrada' }, { status: 404 });
+      } catch (err) {
+        const status = err instanceof ApiError ? err.status : 400;
+        return Response.json({ error: (err as Error).message || String(err) }, { status });
+      }
+    }
+
+    // 7. MÓDULO EXCLUSIVO DE ADMINISTRACIÓN (T05 · ACC-06, ACC-07, ADM-01..04, CFG-06, CA-27, CA-28)
     if (path.startsWith('/api/admin/')) {
       const token = getSessionToken(request);
       if (!token) {

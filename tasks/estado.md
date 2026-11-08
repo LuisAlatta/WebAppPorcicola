@@ -12,7 +12,7 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
 
 ## Estado real
 
-- **T01, T02, T03, T04, T05 y T06 completadas. T07 (Configurar la granja y sus parámetros) pendiente.**
+- **T01, T02, T03, T04, T05, T06 y T07 completadas. Falta Cierre 2 (verificación cruzada de sesiones y matriz de permisos).**
 - Se implementó el módulo exclusivo de administración (`worker/admin.ts`, `migrations/0002_administration_schema.sql` y `src/components/ModuloAdministracion.tsx`):
   - Exclusividad en servidor: rutas bajo `/api/admin/*` protegidas con 401 si no hay sesión y 403 Forbidden si el perfil no es `administrador` (CA-27).
   - Gestión integral de usuarios para los 4 perfiles (`administrador`, `responsable`, `operario`, `veterinario`) con hashing PBKDF2 y preservación de autoría histórica.
@@ -26,7 +26,13 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
   - Primer flujo real: asignación de equipo idempotente y corrección con historial (`POST /api/admin/barns/:id/team/correction`). La corrección conserva la fila original con vigencia y autor, y registra el cambio en `audit_log` con motivo, fechas y datos previos/nuevos (GES-03).
   - La auditoría se expone solo al administrador en `GET /api/admin/audit`; la interfaz muestra historial con vigencia/estado, botón de corrección y pestaña de auditoría con detalle JSON.
   - Los formularios inválidos conservan sus campos y la clave de reintento para un nuevo intento.
-- Se cuenta con 35 pruebas automatizadas pasando en Vitest (aislamiento Cloudflare, bocetos, Worker 404, rutas E2E, exportaciones PDF/XLSX, D1 Miniflare, autenticación, integración administrativa y eventos idempotentes). En local pasaron las 35 pruebas, TypeScript (`tsc --noEmit`), ESLint (`eslint .`) y la compilación (`vite build`).
+- Se implementó T07 (configuración versionada) en `worker/config.ts` y `migrations/0004_farm_config_schema.sql`:
+  - Catálogos de sexo, estado del animal (activo, vendido, descartado, muerto), etapa, aptitud (pie de cría, engorde), ubicación, lote, causas de descarte y muerte, tipo de servicio, estado fisiológico y alimento.
+  - Ocho etapas productivas con peso y edad inicial/final, duración, ración y consumo diario por cabeza; se calculan consumo a 30 días y total de la etapa. Los límites abiertos quedan en `null` y se distinguen de cero.
+  - Parámetros generales de la granja (nombre, zona horaria, moneda y unidad de peso), ubicaciones físicas con jerarquía y lotes de manejo, separados de la etapa productiva (CFG-04).
+  - Versionado por fecha efectiva con cierre de la versión anterior, consulta histórica por `asOf`, retiro de valores sin borrar su historial y auditoría reutilizando la convención de T06 (clave de reintento, autor, motivo y datos previos/nuevos).
+  - Rutas `/api/config` (lectura autenticada) y escrituras solo para administrador; interfaz `ModuloConfiguracion` con pestañas de Parámetros, Catálogos, Etapas y Raciones, y Ubicaciones y Lotes.
+- Se cuenta con 42 pruebas automatizadas pasando en Vitest (aislamiento Cloudflare, bocetos, Worker 404, rutas E2E, exportaciones PDF/XLSX, D1 Miniflare, autenticación, integración administrativa, eventos idempotentes y configuración versionada). En local pasaron las 42 pruebas, TypeScript (`tsc --noEmit`), ESLint (`eslint .`) y la compilación (`vite build`).
 - Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`).
 - El commit previo verificado en GitHub Actions con éxito es `75c2c9f` (ejecución 42425588778).
 
@@ -53,10 +59,9 @@ Todavía faltan definir y configurar los secretos separados, migraciones, domini
 
 ## Pasos concretos para continuar
 
-1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 35 pruebas deben pasar.
-2. **Implementar T07 (Configurar la granja y sus parámetros).** Formularios para catálogos, piaras, corrales, lotes, etapas, raciones, unidades, zona horaria y vigencias; separar galpón físico, ubicación, tipo, etapa y estado reproductivo; retirar valores sin romper referencias históricas.
-3. **Cerrar Fase 2 con T07 y Cierre 2.** Configuración paramétrica y verificación cruzada de sesiones.
+1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 42 pruebas deben pasar.
+2. **Cerrar la Fase 2 con el Cierre 2.** Desde dos sesiones distintas verificar que solo el administrador gestione usuarios y que la revocación sea inmediata; revisar la matriz de permisos con ejemplos de acceso directo. Después continuar con T08 (inventario individual y colectivo).
 
 ## Instrucción para continuar
 
-Lee esta carpeta, revisa el estado del repositorio y retoma T07. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.
+Lee esta carpeta, revisa el estado del repositorio y retoma el Cierre 2. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.

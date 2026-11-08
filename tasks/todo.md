@@ -1,6 +1,6 @@
 # Control de ejecución
 
-Estado actual: T01 a T06 completadas; T07 (Configurar la granja y sus parámetros) pendiente. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: T01 a T07 completadas; falta Cierre 2 (verificación cruzada de sesiones y matriz de permisos). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -14,7 +14,7 @@ Estado actual: T01 a T06 completadas; T07 (Configurar la granja y sus parámetro
 - [x] T04 · Implementar sesiones y primer administrador · dependencias 03.
 - [x] T05 · Implementar módulo exclusivo de administración · dependencias 04.
 - [x] T06 · Registrar eventos con reintentos y auditoría · dependencias 05.
-- [ ] T07 · Configurar la granja y sus parámetros · dependencias 05,06.
+- [x] T07 · Configurar la granja y sus parámetros · dependencias 05,06.
 - [ ] Cierre 2: Desde dos sesiones distintas verificar que solo el administrador gestione usuarios y que la revocación sea inmediata. Revisar la matriz de permisos con ejemplos de acceso directo.
 
 ## 3. Animales e inventario
@@ -122,11 +122,11 @@ Estado actual: T01 a T06 completadas; T07 (Configurar la granja y sus parámetro
 | CAM-06 | T14 | Pendiente |
 | CAM-07 | T13 | Pendiente |
 | CAM-08 | T14 | Pendiente |
-| CFG-01 | T07 | Pendiente |
-| CFG-02 | T07 | Pendiente |
-| CFG-03 | T07 | Pendiente |
-| CFG-04 | T07 | Pendiente |
-| CFG-05 | T07 | Pendiente |
+| CFG-01 | T07 | Verificado en tests/config.integration.test.ts: catálogos de sexo, estado (activo, vendido, descartado, muerto), etapa, aptitud (pie de cría, engorde), ubicación, lote, causas de descarte y muerte, tipo de servicio, estado fisiológico y alimento, con vigencia y retiro |
+| CFG-02 | T07 | Verificado en tests/config.integration.test.ts: ocho etapas con peso y edad inicial/final, duración y límites abiertos en null (distintos de cero): preinicio, inicio, levante, engorde, gestación, lactancia, vacía y reproductor |
+| CFG-03 | T07 | Verificado en tests/config.integration.test.ts: ración y consumo diario por cabeza; preinicio 0,65 kg/día, 19,5 kg a 30 días y 13,65 kg en 21 días; total por etapa calculado desde la duración |
+| CFG-04 | T07 | Verificado en tests/config.integration.test.ts: ubicaciones físicas (galpón, corral con padre) separadas de lotes de manejo y de la etapa productiva; nombres propios versionados |
+| CFG-05 | T07 | Verificado en tests/config.integration.test.ts: dos versiones de la misma etapa en fechas distintas; la consulta al 31-05 conserva 0,65 kg y al 01-06 devuelve 0,8 kg; «vacía» retirada deja de ofrecerse al 01-07 pero sigue en el histórico |
 | CFG-06 | T05 | Verificado con tests/admin.integration.test.ts (alta, edición, capacidad, zona, estado y eliminación de galpón sin registros asociados) |
 | CFG-07 | T10 | Pendiente |
 | FIN-01 | T19 | Pendiente |
@@ -233,6 +233,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 
 | Fecha | Tarea | Estado | Prueba ejecutada y resultado real | Evidencia / commit | Pendiente o decisión |
 |---|---|---|---|---|---|
+| 2026-11-07 | T07 | Completada | Configuración versionada de la granja implementada: catálogos de sexo, estado, etapa, aptitud, ubicación, lote, causas, tipo de servicio, estado fisiológico y alimento; ocho etapas con pesos y edades inicial/final, duración, ración y consumo diario/mensual/total; parámetros generales (nombre, zona horaria, moneda y unidad de peso); ubicaciones físicas con jerarquía y lotes de manejo separados de la etapa productiva. Cada cambio se versiona por fecha efectiva, se audita con la convención de T06 (clave de reintento, autor, motivo, datos previos/nuevos) y conserva los valores anteriores. Los límites abiertos se guardan en null y se distinguen de cero. Retirar un valor lo excluye de las opciones nuevas sin borrar su histórico. Interfaz con pestañas de Parámetros, Catálogos, Etapas y Raciones, y Ubicaciones y Lotes, con consulta por fecha, historial de versiones y motivos obligatorios en retiros. 42/42 pruebas, typecheck, lint y build correctos. | worker/config.ts, worker/index.ts, migrations/0004_farm_config_schema.sql, tests/config.integration.test.ts, src/components/ModuloConfiguracion.tsx, src/components/ModuloAdministracion.tsx, src/utils/operations.ts | Siguiente: Cierre 2 (dos sesiones, permisos y revocación inmediata). Despliegue remoto y migración 0004 aún no ejecutados; se harán al configurar el entorno de producción. |
 | 2026-11-07 | T06 | Completada | Infraestructura de operaciones idempotentes y auditoría implementada: `worker/events.ts` normaliza el payload con JSON canónico + SHA-256, registra clave única por autor en `operation_log` (versión, autor, galpón, fecha efectiva y de registro) y devuelve el resultado previo en un replay. Contenido distinto con la misma clave responde 409 sin escribir. Primer flujo real: asignación de equipo de galpón idempotente y corrección con historial (`barn_team_history` versionado: `valid_until`, `reason`, `is_current`, `corrects_history_id`, `superseded_by_id`), que conserva la fila original y audita autor/motivo/fechas/datos previos y nuevos. Auditoría expuesta solo al administrador en `GET /api/admin/audit`. UI: formulario de equipo con fecha efectiva, motivo y clave de reintento; historial con vigencia, motivo, estado y botón Corregir; modal de corrección; pestaña de auditoría con detalle JSON. Los errores conservan los campos y la misma clave para reintentar (ACC-04, GES-03). 35/35 pruebas, typecheck, lint y build correctos. | worker/events.ts, worker/admin.ts, worker/index.ts, migrations/0003_events_audit_schema.sql, tests/events.integration.test.ts, src/components/ModuloAdministracion.tsx | Siguiente tarea: T07 (Configurar la granja y sus parámetros). El corte real de red se representa con el replay posterior al guardado; el formulario inválido conserva campos y clave en la UI. |
 | 2026-11-07 | T05 | Completada | Módulo exclusivo de administración implementado y verificado: API server-side en /api/admin/* con restricción estricta 403 Forbidden para perfiles no administradores (CA-27); gestión de cuentas en los 4 perfiles; alta, edición, estado y eliminación de galpones sin registros (CFG-06); asignación atómica de equipo (Usuario responsable, Operario, Veterinario) con bloqueo de activación si el equipo está incompleto; sustitución con registro de vigencia, autor y asignación anterior en barn_team_history, donde el profesional sustituido pierde acceso de inmediato (CA-28); invariante de administrador activo (impide desactivar o quitar rol al único admin); y protección de Usuario responsable (impide dejarlo sin galpones sin reasignación o desactivación atómica). Interfaz ModuloAdministracion integrada en SPA con pestañas y modales limpios. 30/30 pruebas pasadas. | worker/admin.ts, worker/index.ts, migrations/0002_administration_schema.sql, src/components/ModuloAdministracion.tsx, tests/admin.integration.test.ts | Siguiente tarea: T06 (Registrar eventos con reintentos y auditoría). |
 | 2026-11-07 | T04 | Completada | Autenticación completa implementada: inicialización bootstrap de un solo uso con bloqueo a segundos intentos (403), PBKDF2 WebCrypto con SHA-256 (100k iteraciones), sesiones revocables en D1 con tokens hasheados, cookies HttpOnly/Secure/SameSite=Lax y Bearer auth, logout con revocación inmediata y Max-Age=0, protección ante cuentas desactivadas, rate limiting de intentos fallidos (429), defensas CSRF por origen y protección de datos operativos (401 sin sesión). Interfaz de login actualizada con identidad institucional y control de visibilidad de contraseña (ACC-01, ACC-03, ACC-05). 23/23 pruebas pasadas. | worker/auth.ts, worker/index.ts, migrations/0001_initial_schema.sql, tests/auth.integration.test.ts, src/components/BocetoLogin.tsx | Siguiente tarea: T05 (Módulo exclusivo de administración y activación de equipo completo). |
