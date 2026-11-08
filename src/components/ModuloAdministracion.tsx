@@ -602,7 +602,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconUser size={16} />
-            <span>Cuentas de Usuarios ({users.length})</span>
+            <span>Usuarios ({users.length})</span>
           </span>
         </button>
 
@@ -624,7 +624,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconClipboard size={16} />
-            <span>Equipo por Galpón</span>
+            <span>Equipo operativo</span>
           </span>
         </button>
 
@@ -635,7 +635,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconClock size={16} />
-            <span>Historial de Asignaciones ({history.length})</span>
+            <span>Historial ({history.length})</span>
           </span>
         </button>
 
@@ -646,7 +646,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconClipboard size={16} />
-            <span>Auditoría de Eventos ({auditLog.length})</span>
+            <span>Auditoría ({auditLog.length})</span>
           </span>
         </button>
 
@@ -657,7 +657,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconSettings size={16} />
-            <span>Configuración de la Granja</span>
+            <span>Configuración</span>
           </span>
         </button>
       </div>
@@ -666,7 +666,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
       {activeTab === 'usuarios' && (
         <div className="card p-4">
           <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
-            <h3 className="font-bold text-lg">Cuentas Registradas (4 Perfiles Operativos)</h3>
+            <h3 className="font-bold text-lg">Cuentas registradas</h3>
             <button
               type="button"
               className="btn btn-primary btn-sm"
@@ -683,7 +683,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
             <p className="text-muted p-4 text-center">Cargando cuentas...</p>
           ) : (
             <div className="table-responsive">
-              <table className="table">
+              <table className="data-table">
                 <thead>
                   <tr>
                     <th>Nombre / Usuario</th>
@@ -861,7 +861,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
           </div>
 
           <div className="table-responsive">
-            <table className="table">
+            <table className="data-table">
               <thead>
                 <tr>
                   <th>Código</th>
@@ -1158,7 +1158,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
             <p className="text-muted text-center p-4">No hay cambios de equipo registrados aún.</p>
           ) : (
             <div className="table-responsive">
-              <table className="table">
+              <table className="data-table">
                 <thead>
                   <tr>
                     <th>Galpón</th>
@@ -1354,7 +1354,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
             <p className="text-muted text-center p-4">No hay eventos de auditoría registrados aún.</p>
           ) : (
             <div className="table-responsive">
-              <table className="table">
+              <table className="data-table">
                 <thead>
                   <tr>
                     <th>Registrado</th>

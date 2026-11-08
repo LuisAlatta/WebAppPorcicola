@@ -691,8 +691,7 @@ export function ModuloConfiguracion() {
             <div className="card p-4">
               <h4 className="font-bold mb-2">Catálogos configurables</h4>
               <p className="text-xs text-muted mb-4">
-                Sexo, estado, etapa, aptitud, ubicación, lote, causas, tipo de servicio, estado fisiológico y alimento.
-                Los valores retirados dejan de ofrecerse pero siguen consultables por fecha.
+                Valores predefinidos y opciones activas para los módulos de la granja.
               </p>
 
               <div className="form-group mb-3" style={{ maxWidth: '340px' }}>
