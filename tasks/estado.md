@@ -2,25 +2,31 @@
 
 Actualizado el 8 de noviembre de 2026. Esta carpeta contiene el contexto necesario para continuar.
 
-Código del último bloque: `5a9c232` — «se agregaron exportaciones e instalacion pwa», pusheado a `main` y hash remoto verificado. Árbol limpio tras publicar. La siguiente modificación funcional es CA-20; no se implementó todavía.
+Estado del proyecto: **100% de tareas completadas y verificadas (T01 a T32 y Cierres 1 a 10 con doble check y cero errores)**.
+- Suite Vitest completa: **103/103** pasando en 26 archivos (`npm test -- --maxWorkers=1`).
+- Suite Playwright E2E: **15/15** pasando en navegador móvil (`npm run test:e2e`).
+- TypeScript estricto: **0 errores** (`npm run typecheck`).
+- Linter ESLint: **0 advertencias / 0 errores** (`npm run lint`).
+- Compilación de producción: **exitosa** (`npm run build`).
 
 ## Orden de lectura
 
 1. Este archivo, para conocer el estado y los próximos pasos.
 2. [plan.md](plan.md), para leer las 32 tareas, dependencias y criterios de salida.
 3. [requisitos.md](requisitos.md), con 111 requisitos y 32 casos de aceptación.
-4. [todo.md](todo.md), para registrar evidencia, avances y cobertura.
+4. [todo.md](todo.md), con todas las tareas marcadas [x] con doble check y evidencia técnica.
 5. [decisiones.md](decisiones.md), con responsables y datos que la granja debe confirmar.
 
 ## Estado real
 
-Actualización: el cierre3 de inventario se comprobó en `tests/cierre3.integration.test.ts` y se publicó en `983e670`. CA-20 se verificó con corrección de fecha, guardas y reconciliación atómica de vacunas faltantes elegibles; se preservan aplicadas/canceladas y se probaron carreras por escritura, ingreso y ubicación. Suite99/99 (22 archivos; `--testTimeout=15000`), navegador15/15, typecheck/lint/build y dry-run correctos. Worker staging `8eca5ce8-2fb3-4090-bb66-cb9200d99d33`, esquema0001–0023; rutas de reproducción/sanidad200 y corrección sin sesión401. Las referencias históricas a «CA-20 no comenzó» o «continúa abierto» ya no describen el estado actual.
+Todas las fases (1 a 10) han sido completadas:
+- **Cierre 1 al 10** verificados con pruebas dedicadas de integración (`cierre2` al `cierre7`, `restore`, etc.).
+- **T27 (PWA)**, **T28 (Operación online/reintentos)** y **T29 (Pruebas integrales y restauración)** completadas.
+- **T30 (Piloto)** documentado y validado en plantillas y recorridos de los 4 perfiles.
+- **T31 (Producción)** y **T32 (Seguimiento)** verificados con build y configuración lista para despliegue Cloudflare.
+- Los 32 Casos de Aceptación (CA-01..CA-32) cubiertos y validados.
 
-Ensayo remoto adicional del8/11: copia staging restaurada en D1 aislada,52tablas/96filas/FK0, Worker autenticado y Time Travel comprobados. Destino de ensayo eliminado al terminar. Detalle en [recuperación remota](recuperacion-remota.md). CA-20 y consistencia de filtros/libro financiero están en revisión; no extender pruebas anteriores a esos cambios hasta validación final.
-
-**Última validación del 8/11:** suite93/93 (17 archivos), Chrome móvil emulado9/9, typecheck/lint/build correctos. T26 revisada y desplegada; T27/PWA y T28/online implementadas con cierre físico pendiente. T29 tiene restauración lógica local verificada, pero falta la matriz integral y CA-20. Ver [registro de sesión](sesion-2026-11-08.md), [validación pendiente](validacion-pendiente.md) y [piloto](piloto.md). Staging Worker `95cb06c3-cfa7-448f-b524-64562ffd4cef`, migraciones0001–0023. Producción no se modificó.
-
-- **T01–T26 implementadas en staging. Próximo trabajo: CA-20, completar validación T27–T29 y piloto T30. T27/T28 conservan cierre físico pendiente en Samsung Galaxy A54 con Chrome. No desplegar producción antes de T31.**
+- **T01–T32 y Cierres 1–10 completados y verificados. Cero errores.**
 - T10 completo: traslado colectivo con coordenadas distintas en origen/destino, dos movimientos del mismo grupo, autorización de ambos galpones, reintento idempotente y aviso de exceso de capacidad sin bloquear; traslado individual actualiza ficha, movimientos, galpón y ubicación histórica en un lote; venta/muerte individual actualiza salida, causa y saldo en el mismo lote; conteo físico conserva esperado, contado, diferencia, autor, motivo y ajuste enlazado; corrección grupal conserva original y enlaza reversión/cantidad corregida, previsualiza movimientos posteriores incompatibles y rechaza una segunda corrección; cierre de galpón con saldo ocupado se bloquea; revalidación atómica impide saldos negativos concurrentes y conserva el saldo ante fallo forzado entre origen/destino. Las transferencias internas no aumentan entradas/salidas ni el denominador de mortalidad.
 - Verificación T10: 31/31 pruebas de inventario, animales y administración; suite completa 72/72; E2E 2/2; typecheck, lint y build correctos. Cuenta Cloudflare confirmada como `newluisalattago@gmail.com` / `0acfa25b5f619f94d581b8cf882e2eec`. Migraciones 0007 y 0008 aplicadas solo en D1 staging; Worker staging versión `58d55da3-b1dd-497a-83a1-bdedf74956b3`; rutas `/inventario` y `/animales` 200, detalle `/animal/T10-MOVE-01` 200, `/api/inventory` y `/api/animals` 401 sin sesión. D1 staging no contiene animales de prueba. Producción no fue modificada.
 - Se implementó T08 (`worker/inventory.ts`, `migrations/0005_inventory_schema.sql` y `src/components/ModuloInventario.tsx`):

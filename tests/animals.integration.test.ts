@@ -1003,6 +1003,10 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
   it('registra pesajes fuera de orden cronológico, calcula ganancias, conserva ubicación y corrige sin borrar el original', async () => {
     const created = await create({ code: 'T11-PESO', entryDate: '2026-06-01', operationKey: 'ani-t11-alta-peso' });
     expect(created.status).toBe(201);
+    const middle = await api('/api/animals/T11-PESO/weights', { method: 'POST', body: JSON.stringify({
+      weighedOn: '2026-06-10', weighedTime: '09:00', weightKg: 40, operationKey: 'ani-t11-peso-40',
+    }) });
+    expect(middle.status).toBe(201);
     const later = { weighedOn: '2026-06-20', weighedTime: '10:00', weightKg: 44, operationKey: 'ani-t11-peso-44' };
     const lateFirst = await api('/api/animals/T11-PESO/weights', { method: 'POST', body: JSON.stringify(later) });
     expect(lateFirst.status).toBe(201);
@@ -1014,7 +1018,10 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     let detail = (await detailResponse.json() as { animal: AnimalDetail & { currentWeightKg: number } }).animal;
     expect(detail.currentWeightKg).toBe(44);
     expect(detail.currentWeightDate).toBe('2026-06-20');
-    expect(detail.weights.find((weight) => weight.weighedOn === '2026-06-20')).toMatchObject({ gainKg: 6, gainDays: 15, lotCode: null });
+    expect(detail.weights.map((weight) => [weight.weighedOn, weight.weightKg])).toEqual([
+      ['2026-06-05', 38], ['2026-06-10', 40], ['2026-06-20', 44],
+    ]);
+    expect(detail.weights.find((weight) => weight.weighedOn === '2026-06-20')).toMatchObject({ gainKg: 4, gainDays: 10, lotCode: null });
 
     const sameDayA = await api('/api/animals/T11-PESO/weights', { method: 'POST', body: JSON.stringify({
       weighedOn: '2026-06-21', weighedTime: '08:00', weightKg: 45, operationKey: 'ani-t11-mismo-08',
@@ -1041,7 +1048,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(detail.currentWeightKg).toBe(46);
     expect(detail.weights.find((weight) => weight.id === weight44.id)?.corrected).toBe(true);
     expect(detail.weights.find((weight) => weight.correctsWeightId === weight44.id)?.weightKg).toBe(45);
-    expect(await db.prepare('SELECT COUNT(*) AS n FROM animal_weights WHERE animal_id = ?').bind(detail.id).first<{ n: number }>()).toMatchObject({ n: 5 });
+    expect(await db.prepare('SELECT COUNT(*) AS n FROM animal_weights WHERE animal_id = ?').bind(detail.id).first<{ n: number }>()).toMatchObject({ n: 6 });
 
     const zero = await api('/api/animals/T11-PESO/weights', { method: 'POST', body: JSON.stringify({
       weighedOn: '2026-06-22', weighedTime: '12:00', weightKg: 0, operationKey: 'ani-t11-peso-cero',

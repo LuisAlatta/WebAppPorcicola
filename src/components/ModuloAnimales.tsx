@@ -103,7 +103,7 @@ interface ParentSummary {
 
 interface ChronologyItem {
   date: string;
-  kind: 'alta' | 'pesaje' | 'arete' | 'tipo' | 'inventario';
+  kind: 'alta' | 'pesaje' | 'arete' | 'tipo' | 'inventario' | 'servicio' | 'parto' | 'sanidad';
   title: string;
   detail: string;
   id: number | null;

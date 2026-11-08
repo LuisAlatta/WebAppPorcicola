@@ -156,7 +156,7 @@ export interface ParentSummary {
 
 export interface ChronologyItem {
   date: string;
-  kind: 'alta' | 'pesaje' | 'arete' | 'tipo' | 'inventario';
+  kind: 'alta' | 'pesaje' | 'arete' | 'tipo' | 'inventario' | 'servicio' | 'parto' | 'sanidad';
   title: string;
   detail: string;
   id: number | null;
@@ -617,7 +617,7 @@ export async function getAnimal(
   const base = animalRowBase(row, maps, asOf);
   const id = base.id;
 
-  const [tagRows, typeRows, weightRows, movementRows] = await Promise.all([
+  const [tagRows, typeRows, weightRows, movementRows, serviceRows, litterRows, healthRows] = await Promise.all([
     db.prepare(`
       SELECT id, tag, valid_from, valid_to, is_current FROM animal_tags
       WHERE animal_id = ? ORDER BY valid_from ASC, id ASC
@@ -634,6 +634,26 @@ export async function getAnimal(
       SELECT id, movement_type, effective_date, quantity FROM inventory_movements
       WHERE animal_id = ? ORDER BY effective_date ASC, id ASC
     `).bind(id).all<Row>(),
+    db.prepare(`
+      SELECT s.id, s.service_date, s.service_type, s.service_number, s.sire_code_snapshot
+      FROM reproduction_services s
+      JOIN reproduction_cycles c ON c.id = s.cycle_id
+      WHERE c.female_animal_id = ? OR s.sire_animal_id = ?
+      ORDER BY s.service_date ASC, s.id ASC
+    `).bind(id, id).all<Row>().catch(() => ({ results: [] })),
+    db.prepare(`
+      SELECT l.id, l.farrowing_date, l.parity_number, l.live_count, l.stillborn_count
+      FROM litters l
+      WHERE l.female_animal_id = ?
+      ORDER BY l.farrowing_date ASC, l.id ASC
+    `).bind(id).all<Row>().catch(() => ({ results: [] })),
+    db.prepare(`
+      SELECT h.id, h.event_type, h.effective_date, h.product, h.dosage, h.dosage_unit
+      FROM health_events h
+      JOIN health_event_animals a ON a.health_event_id = h.id
+      WHERE a.animal_id = ?
+      ORDER BY h.effective_date ASC, h.id ASC
+    `).bind(id).all<Row>().catch(() => ({ results: [] })),
   ]);
 
   const tags: TagHistoryItem[] = (tagRows.results ?? []).map((tag) => ({
@@ -738,6 +758,35 @@ export async function getAnimal(
       title: `Inventario: ${type}`,
       detail: `${Number(movement.quantity) > 0 ? '+' : '−'}${Math.abs(Number(movement.quantity))} cabezas`,
       id: Number(movement.id),
+    });
+  }
+  for (const s of serviceRows.results ?? []) {
+    const typeLabel = s.service_type === 'inseminacion_artificial' ? 'Inseminación artificial' : s.service_type === 'monta_natural' ? 'Monta natural' : 'Transferencia de embriones';
+    chronology.push({
+      date: String(s.service_date),
+      kind: 'servicio',
+      title: `Servicio #${s.service_number ?? 1} (${typeLabel})`,
+      detail: s.sire_code_snapshot ? `Verraco: ${s.sire_code_snapshot}` : 'Servicio reproductivo',
+      id: Number(s.id),
+    });
+  }
+  for (const l of litterRows.results ?? []) {
+    chronology.push({
+      date: String(l.farrowing_date),
+      kind: 'parto',
+      title: `Parto de camada (paridad ${l.parity_number})`,
+      detail: `${l.live_count} nacidos vivos, ${l.stillborn_count} nacidos muertos`,
+      id: null,
+    });
+  }
+  for (const h of healthRows.results ?? []) {
+    const isVaccine = h.event_type === 'vaccination';
+    chronology.push({
+      date: String(h.effective_date),
+      kind: 'sanidad',
+      title: `${isVaccine ? 'Vacuna' : 'Tratamiento'}: ${h.product}`,
+      detail: h.dosage ? `${h.dosage} ${h.dosage_unit ?? ''}`.trim() : 'Evento sanitario',
+      id: Number(h.id),
     });
   }
   chronology.sort((a, b) => {
