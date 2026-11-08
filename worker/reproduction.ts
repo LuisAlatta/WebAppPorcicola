@@ -115,7 +115,7 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
       const litterEvents = await db.prepare('SELECT event_type,sex,quantity FROM litter_events WHERE litter_id=?').bind(litterRow.id).all<{event_type:string;sex:string;quantity:number}>();
       const counts = { macho:Number(litterRow.male_alive), hembra:Number(litterRow.female_alive), pendiente:Number(litterRow.unsexed_alive) };
       for (const item of litterEvents.results ?? []) counts[item.sex as keyof typeof counts] += item.event_type === 'adoption_in' ? Number(item.quantity) : -Number(item.quantity);
-      litter = { id:String(litterRow.id), liveCount:Number(litterRow.live_count), maleAlive:counts.macho, femaleAlive:counts.hembra, unsexedAlive:counts.pendiente,
+      litter = { id:String(litterRow.id), farrowingDate:String(litterRow.farrowing_date), liveCount:Number(litterRow.live_count), maleAlive:counts.macho, femaleAlive:counts.hembra, unsexedAlive:counts.pendiente,
         stillbornCount:Number(litterRow.stillborn_count), averageWeightKg:litterRow.average_weight_kg===null?null:Number(litterRow.average_weight_kg), expectedWeaningDate:litterRow.expected_weaning_date===null?null:String(litterRow.expected_weaning_date),
         actualWeaningDate:litterRow.actual_weaning_date===null?null:String(litterRow.actual_weaning_date) };
     }
@@ -192,7 +192,10 @@ export async function createReproductionCycle(db: D1Database, actorUserId: numbe
   if (openCycle) throw new ApiError(409, 'La hembra ya tiene un ciclo abierto; agregue el servicio al ciclo existente');
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'reproduction.cycle.create', authorUserId: actorUserId,
     entityType: 'reproduction_cycle', entityId: Number(context.female.id), barnId: context.barnId, effectiveDate: serviceDate, payload, result: { id, cycleNumber, dueDate } });
-  const statements: D1PreparedStatement[] = [db.prepare(`INSERT INTO reproduction_cycles
+  const statements: D1PreparedStatement[] = [db.prepare(`INSERT INTO inventory_write_guard(guard_id)
+    SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM reproduction_cycles WHERE female_animal_id=? AND last_farrowing_date>?)
+      AND NOT EXISTS(SELECT 1 FROM litters WHERE female_animal_id=? AND farrowing_date>?) THEN 0 ELSE -1 END`)
+    .bind(context.female.id,serviceDate,context.female.id,serviceDate),db.prepare(`INSERT INTO reproduction_cycles
     (id,female_animal_id,cycle_number,cycle_status,reproductive_status,cycle_opened_on,service_anchor_date,gestation_days,probable_farrowing_date,due_date_source,due_date_reason,
      barn_id,location_code,lot_code,female_breed_snapshot,aptitude,last_farrowing_date,observations,created_by_user_id,created_at,updated_at)
     VALUES (?,?,?,'open','possible_pregnancy',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
@@ -203,6 +206,7 @@ export async function createReproductionCycle(db: D1Database, actorUserId: numbe
       source, externalSource, aptitude, observations, actorUserId, claim.recordedAt)];
   if (suppliedDue) statements.push(db.prepare(`INSERT INTO reproduction_events (cycle_id,event_type,event_date,reason,observations,created_by_user_id,created_at)
     VALUES (?,'manual_due_date',?,?,?, ?,?)`).bind(id, serviceDate, dueDateReason, `Fecha probable: ${dueDate}`, actorUserId, claim.recordedAt));
+  statements.push(db.prepare('DELETE FROM inventory_write_guard'));
   await commitOperation(db, claim, statements, [{ entityType: 'reproduction_cycle', entityId: Number(context.female.id), action: 'create', actorUserId, barnId: context.barnId,
     reason: 'Apertura de ciclo reproductivo', previousData: null, newData: { ...payload, cycleId: id }, effectiveDate: serviceDate, recordedAt: claim.recordedAt }]);
   const result = await listReproductionCycles(db, { from: '0001-01-01', to: '9999-12-31' }, scope);

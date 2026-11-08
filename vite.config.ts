@@ -7,7 +7,17 @@ import { readFileSync } from 'node:fs';
 export default defineConfig({
   plugins: [
     react(),
-    cloudflare(),
+    cloudflare({
+      config: () => ({
+        d1_databases: [
+          {
+            binding: 'DB',
+            database_name: 'webporcicola-staging',
+            database_id: '0e990468-3530-4e3a-a1df-530721ce38d7',
+          },
+        ],
+      }),
+    }),
     {
       name: 'porcicola-service-worker',
       apply: 'build',

@@ -3,8 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { Perfil, Vista } from './types';
 import { Navbar } from './components/Navbar';
 import { PwaControls } from './components/PwaControls';
-import {clearOperationAttempts} from './utils/operations';
+import { clearOperationAttempts } from './utils/operations';
 import { BocetoLogin } from './components/BocetoLogin';
+import { MenuPrincipal } from './components/MenuPrincipal';
+import { BottomNav } from './components/BottomNav';
 import { ModuloAdministracion } from './components/ModuloAdministracion';
 import { ModuloConfiguracion } from './components/ModuloConfiguracion';
 import { ModuloInventario } from './components/ModuloInventario';
@@ -149,7 +151,13 @@ function App() {
     if((vistaActual==='configuracion'||vistaActual==='administracion')&&perfilActual!=='administrador')return <div className="session-check" role="alert"><h1>Acceso restringido</h1><p>Este módulo solo está disponible para el administrador.</p></div>;
     switch (vistaActual) {
       case 'inicio':
-        return <ModuloInventario perfil={perfilActual} />;
+        return (
+          <MenuPrincipal
+            perfil={perfilActual}
+            usuario={usuarioActual}
+            onNavigate={handleNavigate}
+          />
+        );
       case 'listado':
       case 'formulario':
         return <Suspense fallback={<div className="module-container">Cargando animales…</div>}><ModuloAnimales perfil={perfilActual} /></Suspense>;
@@ -211,6 +219,14 @@ function App() {
           </p>
         </div>
       </footer>
+
+      {estaAutenticado && vistaActual !== 'login' && (
+        <BottomNav
+          vistaActual={vistaActual}
+          perfilActual={perfilActual}
+          onNavigate={handleNavigate}
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { IconCalendar, IconCheck, IconPig, IconPlus, IconRefreshCw } from './icons';
-import { farmToday, newOperationKey } from '../utils/operations';
+import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
 import type { Perfil } from '../types';
 
 interface AnimalOption { code: string; alias: string | null; barnName: string; breed: string | null }
@@ -8,7 +8,7 @@ interface Service { id: number; serviceNumber: number; serviceDate: string; serv
 interface ReproductionEvent { id: number; eventType: string; eventDate: string; physiologicalStatus: string | null; reason: string | null; observations: string | null }
 interface WeaningPlan { referenceWeaningDate: string; heatIntervalDays: number; firstRepeatIntervalDays: number; secondRepeatIntervalDays: number;
   expectedHeatDate: string; expectedFirstRepeatDate: string; expectedSecondRepeatDate: string; actualHeatDate: string | null; actualFirstRepeatDate: string | null; actualSecondRepeatDate: string | null }
-interface Litter { id: string; liveCount: number; maleAlive: number; femaleAlive: number; unsexedAlive: number; stillbornCount: number; averageWeightKg: number | null; expectedWeaningDate: string | null; actualWeaningDate: string | null }
+interface Litter { id: string; farrowingDate?: string; liveCount: number; maleAlive: number; femaleAlive: number; unsexedAlive: number; stillbornCount: number; averageWeightKg: number | null; expectedWeaningDate: string | null; actualWeaningDate: string | null }
 interface Cycle { id: string; femaleCode: string; femaleAlias: string | null; cycleNumber: number; cycleStatus: string; reproductiveStatus: string;
   serviceAnchorDate: string | null; gestationDays: number; probableFarrowingDate: string; dueDateSource: string; dueDateReason: string | null;
   daysRemaining: number; dueLabel: string; barnId: number; barnName: string; locationCode: string | null; lotCode: string | null; femaleBreed: string | null; aptitude: string | null;
@@ -47,6 +47,14 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
   const [postweaningKeys, setPostweaningKeys] = useState<Record<string,string>>({});
   const [litterEventCycle, setLitterEventCycle] = useState<string | null>(null);
   const [litterEventKeys, setLitterEventKeys] = useState<Record<string,string>>({});
+  const [dateCorrection, setDateCorrection] = useState<{cycleId:string;litterId:string;expectedCurrentDate:string;farrowingDate:string;reason:string;operationKey:string}|null>(null);
+
+  const openDateCorrection = (cycle:Cycle) => {
+    const currentDate=cycle.litter?.farrowingDate??cycle.lastFarrowingDate;
+    if(!cycle.litter||!currentDate)return;
+    setError(null);setNotice(null);
+    setDateCorrection({cycleId:cycle.id,litterId:cycle.litter.id,expectedCurrentDate:currentDate,farrowingDate:currentDate,reason:'',operationKey:newOperationKey('camada-fecha')});
+  };
 
   const fetchData = useCallback(async () => {
     const params = new URLSearchParams(); if (from) params.set('from', from); if (to) params.set('to', to); if (status !== 'all') params.set('status', status);
@@ -201,6 +209,20 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     finally {setBusy(false);}
   };
 
+  const saveLitterDate = async (event:React.FormEvent) => {
+    event.preventDefault();if(!dateCorrection||soloLectura)return;
+    setBusy(true);setError(null);setNotice(null);
+    try{
+      const {litterId,farrowingDate,expectedCurrentDate,reason,operationKey}=dateCorrection;
+      const response=await fetchOperation(`/api/reproduction/litters/${encodeURIComponent(litterId)}/date-correction`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({farrowingDate,expectedCurrentDate,reason,operationKey})});
+      const body=await response.json() as {error?:string;replayed?:boolean};
+      if(!response.ok){setError(body.error??'No se pudo corregir la fecha real del parto.');return;}
+      setDateCorrection(null);setNotice(body.replayed?'La corrección ya estaba registrada; se recuperó el resultado.':'Fecha real del parto corregida. Se actualizaron las vacunas pendientes vinculadas; las aplicaciones permanecen en el historial.');
+      try{await load();}catch{setError('La corrección fue guardada, pero no se pudo actualizar la lista. Pulse Actualizar para consultar el resultado.');}
+    }catch(err){setError(err instanceof Error?err.message:'No se pudo confirmar la corrección. Conserve el formulario y reintente.');}
+    finally{setBusy(false);}
+  };
+
   return <section className="reproduction-page">
     <header className="reproduction-header"><div><h1 className="font-bold text-xl inline-flex items-center gap-2"><IconPig size={22} />Reproducción</h1>
       <p className="text-sm text-muted">Ciclos, servicios, palpaciones y fechas probables. El cálculo usa la duración vigente de la etapa Gestación.</p></div>
@@ -231,8 +253,14 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         {cycle.services.map((service) => <div key={service.id} className="text-xs text-muted mt-1">{service.serviceDate} · #{service.serviceNumber} {serviceLabels[service.serviceType] ?? service.serviceType} · Padre/material {service.sireCode ?? service.externalSource ?? '—'}{service.sireBreed ? ` (${service.sireBreed})` : ''}</div>)}
         {cycle.events.map((entry) => <div key={entry.id} className="text-xs text-muted mt-1">{entry.eventDate} · {entry.eventType}{entry.physiologicalStatus ? ` · ${statusLabels[entry.physiologicalStatus] ?? entry.physiologicalStatus}` : ''}{entry.reason ? ` · ${entry.reason}` : ''}</div>)}
         {cycle.observations && <p className="text-sm mt-2">{cycle.observations}</p>}
-        {cycle.litter && <div className="card mt-3"><strong>Camada · {cycle.litter.id.slice(0,8)}</strong><p className="text-sm">Pendientes: {cycle.litter.femaleAlive} hembras · {cycle.litter.maleAlive} machos · {cycle.litter.unsexedAlive} sin sexar · {cycle.litter.femaleAlive+cycle.litter.maleAlive+cycle.litter.unsexedAlive} total. Destete previsto: {cycle.litter.expectedWeaningDate ?? 'sin parámetro'}{cycle.litter.actualWeaningDate ? ` · destete real: ${cycle.litter.actualWeaningDate}` : ''}.</p>
-          {!soloLectura && <div className="form-actions"><button type="button" className="btn btn-outline btn-sm" onClick={()=>setLitterEventCycle(litterEventCycle===cycle.id?null:cycle.id)}>Registrar baja, adopción o destete</button></div>}
+        {cycle.litter && <div className="card mt-3"><strong>Camada · {cycle.litter.id.slice(0,8)}</strong><p className="text-sm">Fecha real del parto: {cycle.litter.farrowingDate??cycle.lastFarrowingDate??'sin registrar'}. Pendientes: {cycle.litter.femaleAlive} hembras · {cycle.litter.maleAlive} machos · {cycle.litter.unsexedAlive} sin sexar · {cycle.litter.femaleAlive+cycle.litter.maleAlive+cycle.litter.unsexedAlive} total. Destete previsto: {cycle.litter.expectedWeaningDate ?? 'sin parámetro'}{cycle.litter.actualWeaningDate ? ` · destete real: ${cycle.litter.actualWeaningDate}` : ''}.</p>
+          {!soloLectura && <div className="form-actions"><button type="button" className="btn btn-outline btn-sm" onClick={()=>setLitterEventCycle(litterEventCycle===cycle.id?null:cycle.id)}>Registrar baja, adopción o destete</button><button type="button" className="btn btn-outline btn-sm" disabled={busy||!(cycle.litter.farrowingDate??cycle.lastFarrowingDate)} onClick={()=>openDateCorrection(cycle)}>Corregir fecha real del parto</button></div>}
+          {!soloLectura&&dateCorrection?.cycleId===cycle.id&&<form className="form-stack mt-3" aria-label="Corrección de fecha real del parto" onSubmit={(event)=>void saveLitterDate(event)}>
+            <p className="text-sm">Fecha vigente al abrir: <strong>{dateCorrection.expectedCurrentDate}</strong>. Indique el motivo de la corrección para conservarlo en el historial.</p>
+            <label className="form-label" htmlFor={`litter-date-${cycle.litter.id}`}>Nueva fecha real del parto</label><input id={`litter-date-${cycle.litter.id}`} type="date" className="form-input" required max={farmToday()} value={dateCorrection.farrowingDate} onChange={(event)=>setDateCorrection(previous=>previous?{...previous,farrowingDate:event.target.value}:previous)}/>
+            <label className="form-label" htmlFor={`litter-date-reason-${cycle.litter.id}`}>Motivo de la corrección de fecha</label><textarea id={`litter-date-reason-${cycle.litter.id}`} className="form-input" required minLength={5} maxLength={300} value={dateCorrection.reason} onChange={(event)=>setDateCorrection(previous=>previous?{...previous,reason:event.target.value}:previous)}/>
+            <div className="form-actions"><button className="btn btn-primary btn-sm" disabled={busy||dateCorrection.farrowingDate===dateCorrection.expectedCurrentDate}>{busy?'Guardando corrección…':'Guardar corrección de fecha'}</button><button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={()=>setDateCorrection(null)}>Cancelar corrección</button></div>
+          </form>}
           {cycle.weaningPlan && <p className="text-sm mt-2">Destete anterior {cycle.weaningPlan.referenceWeaningDate} · +{cycle.weaningPlan.heatIntervalDays} días: celo {cycle.weaningPlan.expectedHeatDate} · +{cycle.weaningPlan.firstRepeatIntervalDays}: repetición {cycle.weaningPlan.expectedFirstRepeatDate} · +{cycle.weaningPlan.secondRepeatIntervalDays}: segunda {cycle.weaningPlan.expectedSecondRepeatDate}</p>}
         </div>}
         {!soloLectura && <div className="mt-2"><button type="button" className="btn btn-outline btn-sm" onClick={()=>setPostweaningCycle(postweaningCycle===cycle.id?null:cycle.id)}>{cycle.weaningPlan?'Editar plan postdestete':'Configurar celo y repeticiones'}</button></div>}
