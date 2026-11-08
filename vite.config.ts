@@ -4,20 +4,12 @@ import { cloudflare } from '@cloudflare/vite-plugin';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-export default defineConfig({
+export default defineConfig(({ command }) => {
+  if (command === 'serve' && !process.env.CLOUDFLARE_ENV) process.env.CLOUDFLARE_ENV = 'staging';
+  return {
   plugins: [
     react(),
-    cloudflare({
-      config: () => ({
-        d1_databases: [
-          {
-            binding: 'DB',
-            database_name: 'webporcicola-staging',
-            database_id: '0e990468-3530-4e3a-a1df-530721ce38d7',
-          },
-        ],
-      }),
-    }),
+    cloudflare(),
     {
       name: 'porcicola-service-worker',
       apply: 'build',
@@ -35,4 +27,5 @@ export default defineConfig({
       },
     },
   ],
+  };
 });

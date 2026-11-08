@@ -14,6 +14,8 @@ Código del último bloque: `5a9c232` — «se agregaron exportaciones e instala
 
 ## Estado real
 
+Actualización: el cierre3 de inventario se comprobó en `tests/cierre3.integration.test.ts` y se publicó en `983e670`. CA-20 se verificó con corrección de fecha, guardas y reconciliación atómica de vacunas faltantes elegibles; se preservan aplicadas/canceladas y se probaron carreras por escritura, ingreso y ubicación. Suite99/99 (22 archivos; `--testTimeout=15000`), navegador15/15, typecheck/lint/build y dry-run correctos. Worker staging `8eca5ce8-2fb3-4090-bb66-cb9200d99d33`, esquema0001–0023; rutas de reproducción/sanidad200 y corrección sin sesión401. Las referencias históricas a «CA-20 no comenzó» o «continúa abierto» ya no describen el estado actual.
+
 Ensayo remoto adicional del8/11: copia staging restaurada en D1 aislada,52tablas/96filas/FK0, Worker autenticado y Time Travel comprobados. Destino de ensayo eliminado al terminar. Detalle en [recuperación remota](recuperacion-remota.md). CA-20 y consistencia de filtros/libro financiero están en revisión; no extender pruebas anteriores a esos cambios hasta validación final.
 
 **Última validación del 8/11:** suite93/93 (17 archivos), Chrome móvil emulado9/9, typecheck/lint/build correctos. T26 revisada y desplegada; T27/PWA y T28/online implementadas con cierre físico pendiente. T29 tiene restauración lógica local verificada, pero falta la matriz integral y CA-20. Ver [registro de sesión](sesion-2026-11-08.md), [validación pendiente](validacion-pendiente.md) y [piloto](piloto.md). Staging Worker `95cb06c3-cfa7-448f-b524-64562ffd4cef`, migraciones0001–0023. Producción no se modificó.

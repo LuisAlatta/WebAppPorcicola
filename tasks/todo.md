@@ -2,7 +2,7 @@
 
 Actualización de trabajo: exportaciones T26 implementadas y verificadas; PWA T27, reintentos online T28 y restauración sintética T29 implementados con cierres finales pendientes. Suite completa 93/93 y navegador móvil emulado 9/9. Consultar [registro de sesión](sesion-2026-11-08.md) y [validación pendiente](validacion-pendiente.md). Los cierres que requieren Android físico o piloto siguen abiertos.
 
-Estado actual: T01–T26 implementadas; T27–T29 con evidencia automática y condiciones de salida abiertas. Siguiente: corregir fecha real de parto CA-20, completar matriz T29 y probar instalación/actualización en Samsung A54 físico. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: T01–T26 implementadas; T27–T29 con evidencia automática y condiciones de salida abiertas. CA-20 corregido y probado en staging. Siguiente: completar matriz T29, pruebas de flujos integrales y probar instalación/actualización en Samsung A54 físico. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -215,9 +215,9 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 | CA-15 | T18 | Pendiente |
 | CA-16 | T12 | Verificado en `tests/animals.integration.test.ts`: 114 días desde 25/05/2026 da 16/09/2026; edición manual 18/09 se identifica como manual y conserva el motivo |
 | CA-17 | T26 | Pendiente |
-| CA-18 | T26 | Pendiente |
+| CA-18 | T26 | Verificado en `tests/ca18.integration.test.ts`: venta180PEN, consumo individual24, reintentos sin duplicar ni generar segundo egreso; vista/exportación y PDF/XLSX reabiertos conservan180/24. |
 | CA-19 | T22 | Verificado: aviso único, aplicación lo resuelve con responsable, motivo y vínculo al evento sanitario |
-| CA-20 | T18 | Pendiente |
+| CA-20 | T18 | Verificado en `tests/litter-date.integration.test.ts`: corrección auditada conserva libro y saldos, reprograma solo pendientes del parto, mantiene aplicadas/canceladas y crea ocurrencias faltantes elegibles. Pruebas intercalan corrección con generación antes de escribir y después de la última lectura, por ingreso y ubicación. Revocación, idempotencia, conflictos y rollback también comprobados. |
 | CA-21 | T22 | Verificado: vacuna vencida y las cinco fechas de parto ayer/hoy/+1/+7/+8; cada ciclo aparece una vez en el grupo correcto y +8 permanece fuera de próximos |
 | CA-22 | T22 | Verificado: vacuna reprogramada hoy→+8→hoy→+1→+7, dosis cancelada y enlazada al motivo, y parto real retira el pendiente |
 | CA-23 | T22 | Verificado: 8 crías, destete de 5 deja saldo 3, segunda dosis sanitaria +3 queda como ocurrencia vigente y el aviso de camada se resuelve al completar |
