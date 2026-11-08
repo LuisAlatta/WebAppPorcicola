@@ -23,10 +23,12 @@ import {
   createBarn,
   updateBarn,
   assignBarnTeam,
+  correctTeamAssignment,
   updateBarnStatus,
   deleteBarn,
   getTeamHistory,
 } from './admin';
+import { ApiError, listAuditLog } from './events';
 
 export interface Env {
   DB: D1Database;
@@ -356,8 +358,52 @@ const worker = {
             return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
           }
           const body = await request.json() as Parameters<typeof assignBarnTeam>[3];
-          const barn = await assignBarnTeam(env.DB, session.user.id, barnId, body);
-          return Response.json({ ok: true, barn });
+          const result = await assignBarnTeam(env.DB, session.user.id, barnId, body);
+          return Response.json({ ok: true, barn: result.barn, replayed: result.replayed });
+        }
+
+        // POST /api/admin/barns/:id/team/correction: Corrección con historial (T06 · GES-03)
+        if (path.includes('/api/admin/barns/') && path.endsWith('/team/correction') && request.method === 'POST') {
+          const parts = path.split('/');
+          const barnId = parseInt(parts[4], 10);
+          if (isNaN(barnId)) {
+            return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
+          }
+          const body = await request.json() as Parameters<typeof correctTeamAssignment>[3];
+          const result = await correctTeamAssignment(env.DB, session.user.id, barnId, body);
+          return Response.json({
+            ok: true,
+            barn: result.barn,
+            correctedHistoryId: result.correctedHistoryId,
+            newHistoryId: result.newHistoryId,
+            replayed: result.replayed,
+          });
+        }
+
+        // GET /api/admin/audit: Auditoría de eventos con autor, motivo y registro original
+        if (path === '/api/admin/audit' && request.method === 'GET') {
+          const entityType = url.searchParams.get('entityType') ?? undefined;
+          const entityIdParam = url.searchParams.get('entityId');
+          const barnIdParam = url.searchParams.get('barnId');
+          const limitParam = url.searchParams.get('limit');
+
+          const entityId = entityIdParam !== null ? parseInt(entityIdParam, 10) : undefined;
+          const barnId = barnIdParam !== null ? parseInt(barnIdParam, 10) : undefined;
+
+          if (entityIdParam !== null && isNaN(entityId as number)) {
+            return Response.json({ error: 'entityId inválido' }, { status: 400 });
+          }
+          if (barnIdParam !== null && isNaN(barnId as number)) {
+            return Response.json({ error: 'barnId inválido' }, { status: 400 });
+          }
+
+          const audit = await listAuditLog(env.DB, {
+            entityType,
+            entityId,
+            barnId,
+            limit: limitParam !== null ? parseInt(limitParam, 10) : undefined,
+          });
+          return Response.json({ ok: true, audit });
         }
 
         // PUT /api/admin/barns/:id/status: Cambiar estado (preparacion, operativo, inactivo)
@@ -401,7 +447,8 @@ const worker = {
 
         return Response.json({ error: 'Ruta de administración no encontrada' }, { status: 404 });
       } catch (err) {
-        return Response.json({ error: (err as Error).message || String(err) }, { status: 400 });
+        const status = err instanceof ApiError ? err.status : 400;
+        return Response.json({ error: (err as Error).message || String(err) }, { status });
       }
     }
 

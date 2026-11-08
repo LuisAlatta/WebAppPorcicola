@@ -12,15 +12,21 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
 
 ## Estado real
 
-- **T01, T02, T03, T04 y T05 completadas. T06 (Registrar eventos con reintentos y auditoría) en curso.**
+- **T01, T02, T03, T04, T05 y T06 completadas. T07 (Configurar la granja y sus parámetros) pendiente.**
 - Se implementó el módulo exclusivo de administración (`worker/admin.ts`, `migrations/0002_administration_schema.sql` y `src/components/ModuloAdministracion.tsx`):
   - Exclusividad en servidor: rutas bajo `/api/admin/*` protegidas con 401 si no hay sesión y 403 Forbidden si el perfil no es `administrador` (CA-27).
   - Gestión integral de usuarios para los 4 perfiles (`administrador`, `responsable`, `operario`, `veterinario`) con hashing PBKDF2 y preservación de autoría histórica.
   - Gestión de galpones (`CFG-06`): código único, nombre, zona, capacidad en cabezas, estados (`preparacion`, `operativo`, `inactivo`) y eliminación segura si carece de registros.
   - Asignación atómica de equipo operativo (`ADM-02`, `ADM-03`, `CA-28`): asignación conjunta de Responsable, Operario y Veterinario; bloqueo estricto si se intenta activar un galpón con equipo incompleto; registro de cambios en `barn_team_history` con vigencias, autor y titular anterior; revocación inmediata de acceso del profesional sustituido; y reasignación o desactivación atómica si un Responsable activo perdería su último galpón.
   - Invariante de administrador: impedimento de desactivar o degradar de rol al único administrador activo de la granja.
-  - Componente de interfaz `ModuloAdministracion.tsx` con navegación por pestañas (Cuentas, Galpones, Asignación de Equipo e Historial), controles táctiles accesibles (>=44px), modales limpios y uso estricto de iconos SVG.
-- Se cuenta con 30 pruebas automatizadas pasando en Vitest (aislamiento Cloudflare, bocetos, Worker 404, rutas E2E, exportaciones PDF/XLSX, D1 Miniflare, autenticación e integración administrativa). En local pasaron las 30 pruebas, TypeScript (`tsc --noEmit`), ESLint (`eslint .`) y la compilación (`vite build`).
+  - Componente de interfaz `ModuloAdministracion.tsx` con navegación por pestañas (Cuentas, Galpones, Asignación de Equipo, Historial y Auditoría), controles táctiles accesibles (>=44px), modales limpios y uso estricto de iconos SVG.
+- Se implementó T06 (eventos con reintentos y auditoría) en `worker/events.ts` y `migrations/0003_events_audit_schema.sql`:
+  - Operación única con clave de reintento por autor, payload normalizado con JSON canónico y SHA-256, versión, autor, galpón, fecha efectiva y fecha de registro en `operation_log`.
+  - Reintento con la misma clave y contenido devuelve el resultado anterior sin duplicar; contenido distinto responde 409 sin escribir (ACC-04).
+  - Primer flujo real: asignación de equipo idempotente y corrección con historial (`POST /api/admin/barns/:id/team/correction`). La corrección conserva la fila original con vigencia y autor, y registra el cambio en `audit_log` con motivo, fechas y datos previos/nuevos (GES-03).
+  - La auditoría se expone solo al administrador en `GET /api/admin/audit`; la interfaz muestra historial con vigencia/estado, botón de corrección y pestaña de auditoría con detalle JSON.
+  - Los formularios inválidos conservan sus campos y la clave de reintento para un nuevo intento.
+- Se cuenta con 35 pruebas automatizadas pasando en Vitest (aislamiento Cloudflare, bocetos, Worker 404, rutas E2E, exportaciones PDF/XLSX, D1 Miniflare, autenticación, integración administrativa y eventos idempotentes). En local pasaron las 35 pruebas, TypeScript (`tsc --noEmit`), ESLint (`eslint .`) y la compilación (`vite build`).
 - Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`).
 - El commit previo verificado en GitHub Actions con éxito es `75c2c9f` (ejecución 42425588778).
 
@@ -47,10 +53,10 @@ Todavía faltan definir y configurar los secretos separados, migraciones, domini
 
 ## Pasos concretos para continuar
 
-1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 23 pruebas deben pasar.
-2. **Implementar T05 (Módulo exclusivo de administración).** Crear endpoints y formularios para alta/edición de cuentas en los cuatro perfiles, gestión de galpones, activación en bloque de equipo completo, vigencias de asignación y prohibición estricta de acceso de otros roles.
-3. **Cerrar Fase 2 con T06, T07 y Cierre 2.** Auditoría de eventos, configuración paramétrica y verificación cruzada de sesiones.
+1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 35 pruebas deben pasar.
+2. **Implementar T07 (Configurar la granja y sus parámetros).** Formularios para catálogos, piaras, corrales, lotes, etapas, raciones, unidades, zona horaria y vigencias; separar galpón físico, ubicación, tipo, etapa y estado reproductivo; retirar valores sin romper referencias históricas.
+3. **Cerrar Fase 2 con T07 y Cierre 2.** Configuración paramétrica y verificación cruzada de sesiones.
 
 ## Instrucción para continuar
 
-Lee esta carpeta, revisa el estado del repositorio y retoma T02. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.
+Lee esta carpeta, revisa el estado del repositorio y retoma T07. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.

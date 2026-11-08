@@ -1,6 +1,6 @@
 # Control de ejecución
 
-Estado actual: T01 a T05 completadas; T06 (Registrar eventos con reintentos y auditoría) en curso; implementación funcional y despliegue pendientes. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: T01 a T06 completadas; T07 (Configurar la granja y sus parámetros) pendiente. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -13,7 +13,7 @@ Estado actual: T01 a T05 completadas; T06 (Registrar eventos con reintentos y au
 
 - [x] T04 · Implementar sesiones y primer administrador · dependencias 03.
 - [x] T05 · Implementar módulo exclusivo de administración · dependencias 04.
-- [ ] T06 · Registrar eventos con reintentos y auditoría · dependencias 05.
+- [x] T06 · Registrar eventos con reintentos y auditoría · dependencias 05.
 - [ ] T07 · Configurar la granja y sus parámetros · dependencias 05,06.
 - [ ] Cierre 2: Desde dos sesiones distintas verificar que solo el administrador gestione usuarios y que la revocación sea inmediata. Revisar la matriz de permisos con ejemplos de acceso directo.
 
@@ -81,7 +81,7 @@ Estado actual: T01 a T05 completadas; T06 (Registrar eventos con reintentos y au
 | ACC-01 | T04 | Verificado con tests/auth.integration.test.ts y BocetoLogin |
 | ACC-02 | T27 | Pendiente |
 | ACC-03 | T04 | Verificado con tests/auth.integration.test.ts y modelo de roles D1 |
-| ACC-04 | T06 | Pendiente |
+| ACC-04 | T06 | Verificado en tests/events.integration.test.ts: misma clave + mismo contenido devuelve el resultado previo (replayed, sin filas nuevas); contenido distinto con la misma clave da 409 y no escribe; 5 reenvíos concurrentes generan 1 sola fila en operation_log y 1 en audit_log |
 | ACC-05 | T04 | Verificado con BocetoLogin (identidad Granja San Luis, visibilidad de clave, perfil y logout) |
 | ACC-06 | T05 | Verificado con tests/admin.integration.test.ts (CA-27: exclusividad administrativa, 403 Forbidden para otros perfiles) |
 | ACC-07 | T05 | Verificado con tests/admin.integration.test.ts (CA-28: alcance granja para admin, aislamiento de galpones y pérdida inmediata al reasignar) |
@@ -137,7 +137,7 @@ Estado actual: T01 a T05 completadas; T06 (Registrar eventos con reintentos y au
 | FIN-06 | T25 | Pendiente |
 | GES-01 | T20 | Pendiente |
 | GES-02 | T21 | Pendiente |
-| GES-03 | T06 | Pendiente |
+| GES-03 | T06 | Verificado en tests/events.integration.test.ts: la corrección de una asignación vigente conserva la fila original como histórica (is_current = 0, valid_until y superseded_by_id), crea la nueva fila como vigente y registra en audit_log autor, motivo, fecha efectiva y datos previos/nuevos |
 | GES-04 | T27 | Pendiente |
 | GES-05 | T29 | Pendiente |
 | GES-06 | T28 | Pendiente |
@@ -233,6 +233,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 
 | Fecha | Tarea | Estado | Prueba ejecutada y resultado real | Evidencia / commit | Pendiente o decisión |
 |---|---|---|---|---|---|
+| 2026-11-07 | T06 | Completada | Infraestructura de operaciones idempotentes y auditoría implementada: `worker/events.ts` normaliza el payload con JSON canónico + SHA-256, registra clave única por autor en `operation_log` (versión, autor, galpón, fecha efectiva y de registro) y devuelve el resultado previo en un replay. Contenido distinto con la misma clave responde 409 sin escribir. Primer flujo real: asignación de equipo de galpón idempotente y corrección con historial (`barn_team_history` versionado: `valid_until`, `reason`, `is_current`, `corrects_history_id`, `superseded_by_id`), que conserva la fila original y audita autor/motivo/fechas/datos previos y nuevos. Auditoría expuesta solo al administrador en `GET /api/admin/audit`. UI: formulario de equipo con fecha efectiva, motivo y clave de reintento; historial con vigencia, motivo, estado y botón Corregir; modal de corrección; pestaña de auditoría con detalle JSON. Los errores conservan los campos y la misma clave para reintentar (ACC-04, GES-03). 35/35 pruebas, typecheck, lint y build correctos. | worker/events.ts, worker/admin.ts, worker/index.ts, migrations/0003_events_audit_schema.sql, tests/events.integration.test.ts, src/components/ModuloAdministracion.tsx | Siguiente tarea: T07 (Configurar la granja y sus parámetros). El corte real de red se representa con el replay posterior al guardado; el formulario inválido conserva campos y clave en la UI. |
 | 2026-11-07 | T05 | Completada | Módulo exclusivo de administración implementado y verificado: API server-side en /api/admin/* con restricción estricta 403 Forbidden para perfiles no administradores (CA-27); gestión de cuentas en los 4 perfiles; alta, edición, estado y eliminación de galpones sin registros (CFG-06); asignación atómica de equipo (Usuario responsable, Operario, Veterinario) con bloqueo de activación si el equipo está incompleto; sustitución con registro de vigencia, autor y asignación anterior en barn_team_history, donde el profesional sustituido pierde acceso de inmediato (CA-28); invariante de administrador activo (impide desactivar o quitar rol al único admin); y protección de Usuario responsable (impide dejarlo sin galpones sin reasignación o desactivación atómica). Interfaz ModuloAdministracion integrada en SPA con pestañas y modales limpios. 30/30 pruebas pasadas. | worker/admin.ts, worker/index.ts, migrations/0002_administration_schema.sql, src/components/ModuloAdministracion.tsx, tests/admin.integration.test.ts | Siguiente tarea: T06 (Registrar eventos con reintentos y auditoría). |
 | 2026-11-07 | T04 | Completada | Autenticación completa implementada: inicialización bootstrap de un solo uso con bloqueo a segundos intentos (403), PBKDF2 WebCrypto con SHA-256 (100k iteraciones), sesiones revocables en D1 con tokens hasheados, cookies HttpOnly/Secure/SameSite=Lax y Bearer auth, logout con revocación inmediata y Max-Age=0, protección ante cuentas desactivadas, rate limiting de intentos fallidos (429), defensas CSRF por origen y protección de datos operativos (401 sin sesión). Interfaz de login actualizada con identidad institucional y control de visibilidad de contraseña (ACC-01, ACC-03, ACC-05). 23/23 pruebas pasadas. | worker/auth.ts, worker/index.ts, migrations/0001_initial_schema.sql, tests/auth.integration.test.ts, src/components/BocetoLogin.tsx | Siguiente tarea: T05 (Módulo exclusivo de administración y activación de equipo completo). |
 | 2026-11-07 | T03 y Cierre 1 | Completada | En Miniflare D1: atomicidad en lote, claves foráneas, restricciones UNIQUE/CHECK, concurrencia de saldo con precondición (solo 1 de 2 solicitudes de 7 sobre 10 tiene éxito, saldo final 3), idempotencia ante pérdida de red y rechazo 409 por payload alterado, y migraciones ordenadas con tabla _d1_migrations. En exportaciones: generación real y validación de PDF paginado con pdf-lib y XLSX OpenXML con fflate (acentos, moneda S/, pesos kg, <500ms y <150KB para 300 filas). Decisión: exportación en cliente con datos autorizados por API. 16/16 pruebas pasadas. | tests/d1.integration.test.ts, tests/export.test.ts, src/utils/exportPdf.ts, src/utils/exportXlsx.ts, tasks/decisiones.md | Fase 1 concluida con éxito. Siguiente paso: Fase 2 Acceso (T04: sesiones y primer administrador). |

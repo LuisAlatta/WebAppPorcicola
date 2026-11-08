@@ -13,6 +13,8 @@ import {
   IconClock,
   IconRefreshCw,
   IconTrash,
+  IconEdit,
+  IconCalendar,
 } from './icons';
 
 interface ModuloAdministracionProps {
@@ -55,15 +57,70 @@ interface HistoryItem {
   new_user_id: number;
   new_user_name: string;
   valid_from: string;
+  valid_until: string | null;
+  reason: string | null;
+  is_current: number;
+  corrects_history_id: number | null;
+  superseded_by_id: number | null;
   changed_by_name: string;
   created_at: string;
 }
 
+interface AuditItem {
+  id: number;
+  action: 'create' | 'update' | 'correct' | 'annul' | 'delete';
+  entity_type: string;
+  entity_id: number;
+  barn_id: number | null;
+  barn_code: string | null;
+  barn_name: string | null;
+  actor_name: string;
+  reason: string;
+  previous_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  effective_date: string;
+  recorded_at: string;
+  operation_key: string | null;
+}
+
+const ROLE_LABEL: Record<HistoryItem['role'], string> = {
+  responsable: 'Usuario Responsable',
+  operario: 'Operario de Campo',
+  veterinario: 'Médico Veterinario',
+};
+
+const ACTION_LABEL: Record<AuditItem['action'], string> = {
+  create: 'Alta',
+  update: 'Actualización',
+  correct: 'Corrección',
+  annul: 'Anulación',
+  delete: 'Baja',
+};
+
+function farmToday(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Lima',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+function newOperationKey(prefix: string): string {
+  const random = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${random}`;
+}
+
 export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracionProps) {
-  const [activeTab, setActiveTab] = useState<'usuarios' | 'galpones' | 'equipo' | 'historial'>('usuarios');
+  const [activeTab, setActiveTab] = useState<'usuarios' | 'galpones' | 'equipo' | 'historial' | 'auditoria'>('usuarios');
   const [users, setUsers] = useState<UserItem[]>([]);
   const [barns, setBarns] = useState<BarnItem[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [auditLog, setAuditLog] = useState<AuditItem[]>([]);
   const [loading, setLoading] = useState<boolean>(perfil === 'administrador');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -83,25 +140,39 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
   const [newBarnZone, setNewBarnZone] = useState<string>('');
   const [newBarnCapacity, setNewBarnCapacity] = useState<number>(80);
 
-  // Asignación de equipo
+  // Asignación de equipo (ACC-04: clave de reintento estable por formulario)
   const [selectedBarnId, setSelectedBarnId] = useState<number | ''>('');
   const [selectedRespId, setSelectedRespId] = useState<number | ''>('');
   const [selectedOperId, setSelectedOperId] = useState<number | ''>('');
   const [selectedVetId, setSelectedVetId] = useState<number | ''>('');
   const [autoActivate, setAutoActivate] = useState<boolean>(true);
   const [deactivatePrevResp, setDeactivatePrevResp] = useState<boolean>(false);
+  const [assignmentReason, setAssignmentReason] = useState<string>('');
+  const [assignmentEffectiveDate, setAssignmentEffectiveDate] = useState<string>(() => farmToday());
+  const [assignmentOperationKey, setAssignmentOperationKey] = useState<string>(() => newOperationKey('asig'));
+  const [assignmentSaving, setAssignmentSaving] = useState<boolean>(false);
+
+  // Corrección con historial (T06 · GES-03)
+  const [correctionTarget, setCorrectionTarget] = useState<HistoryItem | null>(null);
+  const [correctionUserId, setCorrectionUserId] = useState<number | ''>('');
+  const [correctionReason, setCorrectionReason] = useState<string>('');
+  const [correctionEffectiveDate, setCorrectionEffectiveDate] = useState<string>(() => farmToday());
+  const [correctionOperationKey, setCorrectionOperationKey] = useState<string>(() => newOperationKey('corr'));
+  const [correctionSaving, setCorrectionSaving] = useState<boolean>(false);
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
 
   const refreshData = async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const [uRes, bRes, hRes] = await Promise.all([
+      const [uRes, bRes, hRes, aRes] = await Promise.all([
         fetch('/api/admin/users'),
         fetch('/api/admin/barns'),
         fetch('/api/admin/history'),
+        fetch('/api/admin/audit?limit=100'),
       ]);
 
-      if (uRes.status === 403 || bRes.status === 403) {
+      if (uRes.status === 403 || bRes.status === 403 || aRes.status === 403) {
         setErrorMsg('Acceso denegado: solo el Administrador tiene acceso a este módulo (ACC-06, ADM-01).');
         setLoading(false);
         return;
@@ -114,6 +185,10 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
         setUsers(uData.users || []);
         setBarns(bData.barns || []);
         setHistory(hData.history || []);
+        if (aRes.ok) {
+          const aData = await aRes.json() as { audit: AuditItem[] };
+          setAuditLog(aData.audit || []);
+        }
         if (bData.barns?.length > 0 && selectedBarnId === '') {
           const firstBarn = bData.barns[0];
           setSelectedBarnId(firstBarn.id);
@@ -135,15 +210,16 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
     let isMounted = true;
     const loadInitialData = async () => {
       try {
-        const [uRes, bRes, hRes] = await Promise.all([
+        const [uRes, bRes, hRes, aRes] = await Promise.all([
           fetch('/api/admin/users'),
           fetch('/api/admin/barns'),
           fetch('/api/admin/history'),
+          fetch('/api/admin/audit?limit=100'),
         ]);
 
         if (!isMounted) return;
 
-        if (uRes.status === 403 || bRes.status === 403) {
+        if (uRes.status === 403 || bRes.status === 403 || aRes.status === 403) {
           setErrorMsg('Acceso denegado: solo el Administrador tiene acceso a este módulo (ACC-06, ADM-01).');
           setLoading(false);
           return;
@@ -156,6 +232,10 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
           setUsers(uData.users || []);
           setBarns(bData.barns || []);
           setHistory(hData.history || []);
+          if (aRes.ok) {
+            const aData = await aRes.json() as { audit: AuditItem[] };
+            setAuditLog(aData.audit || []);
+          }
           if (bData.barns?.length > 0) {
             const first = bData.barns[0];
             setSelectedBarnId(first.id);
@@ -309,10 +389,16 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
     setSuccessMsg(null);
 
     if (selectedBarnId === '' || selectedRespId === '' || selectedOperId === '' || selectedVetId === '') {
-      setErrorMsg('Para asignar equipo se requiere Usuario responsable, Operario y Médico veterinario (ADM-02).');
+      setErrorMsg('Para asignar equipo se requiere Usuario responsable, Operario y Médico veterinario (ADM-02). Los datos ingresados se conservan.');
       return;
     }
 
+    if (!assignmentEffectiveDate) {
+      setErrorMsg('Indique la fecha efectiva de la asignación. Los datos ingresados se conservan.');
+      return;
+    }
+
+    setAssignmentSaving(true);
     try {
       const res = await fetch(`/api/admin/barns/${selectedBarnId}/team`, {
         method: 'PUT',
@@ -322,23 +408,108 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
           operarioId: Number(selectedOperId),
           veterinarioId: Number(selectedVetId),
           activate: autoActivate,
+          reason: assignmentReason,
+          effectiveDate: assignmentEffectiveDate,
+          operationKey: assignmentOperationKey,
           reassignment: {
             deactivatePreviousResponsable: deactivatePrevResp,
           },
         }),
       });
 
-      const data = await res.json() as { ok?: boolean; error?: string };
+      const data = await res.json() as { ok?: boolean; error?: string; replayed?: boolean };
       if (!res.ok) {
-        setErrorMsg(data.error || 'Error al asignar equipo');
+        setErrorMsg(data.error || 'Error al asignar equipo. Los datos ingresados se conservan.');
         return;
       }
 
-      setSuccessMsg('Equipo del galpón actualizado y registrado en historial exitosamente');
+      setSuccessMsg(
+        data.replayed
+          ? 'Operación ya registrada: se devolvió el resultado anterior sin duplicar el evento (ACC-04).'
+          : 'Equipo del galpón actualizado y registrado en historial y auditoría exitosamente.',
+      );
       setDeactivatePrevResp(false);
+      setAssignmentReason('');
+      setAssignmentEffectiveDate(farmToday());
+      setAssignmentOperationKey(newOperationKey('asig'));
       await refreshData();
     } catch (err) {
-      setErrorMsg(String(err));
+      setErrorMsg(`No se pudo confirmar la operación: ${String(err)}. Reintente con el mismo formulario; la clave de reintento evita duplicados.`);
+    } finally {
+      setAssignmentSaving(false);
+    }
+  };
+
+  const openCorrection = (item: HistoryItem) => {
+    setCorrectionTarget(item);
+    setCorrectionUserId('');
+    setCorrectionReason('');
+    setCorrectionEffectiveDate(farmToday());
+    setCorrectionOperationKey(newOperationKey('corr'));
+    setCorrectionError(null);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+  };
+
+  const closeCorrection = () => {
+    setCorrectionTarget(null);
+    setCorrectionUserId('');
+    setCorrectionReason('');
+    setCorrectionError(null);
+  };
+
+  const handleCorrectTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!correctionTarget) return;
+    setCorrectionError(null);
+
+    if (correctionUserId === '') {
+      setCorrectionError('Seleccione el usuario titular correcto. Los datos ingresados se conservan.');
+      return;
+    }
+
+    if (correctionReason.trim().length < 5) {
+      setCorrectionError('El motivo de la corrección es obligatorio y debe explicar la causa (mínimo 5 caracteres). Los datos ingresados se conservan.');
+      return;
+    }
+
+    if (!correctionEffectiveDate) {
+      setCorrectionError('Indique la fecha efectiva de la corrección. Los datos ingresados se conservan.');
+      return;
+    }
+
+    setCorrectionSaving(true);
+    try {
+      const res = await fetch(`/api/admin/barns/${correctionTarget.barn_id}/team/correction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          historyId: correctionTarget.id,
+          role: correctionTarget.role,
+          newUserId: Number(correctionUserId),
+          reason: correctionReason,
+          effectiveDate: correctionEffectiveDate,
+          operationKey: correctionOperationKey,
+        }),
+      });
+
+      const data = await res.json() as { ok?: boolean; error?: string; replayed?: boolean; newHistoryId?: number };
+      if (!res.ok) {
+        setCorrectionError(data.error || 'Error al registrar la corrección. Los datos ingresados se conservan.');
+        return;
+      }
+
+      closeCorrection();
+      setSuccessMsg(
+        data.replayed
+          ? 'Corrección ya registrada: se devolvió el resultado anterior sin duplicar el evento (ACC-04).'
+          : 'Corrección registrada con historial: el registro original se conserva en auditoría (GES-03).',
+      );
+      await refreshData();
+    } catch (err) {
+      setCorrectionError(`No se pudo confirmar la corrección: ${String(err)}. Reintente con el mismo formulario; la clave de reintento evita duplicados.`);
+    } finally {
+      setCorrectionSaving(false);
     }
   };
 
@@ -368,6 +539,26 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
   const activeResponsables = users.filter((u) => u.role === 'responsable' && u.is_active === 1);
   const activeOperarios = users.filter((u) => u.role === 'operario' && u.is_active === 1);
   const activeVeterinarios = users.filter((u) => u.role === 'veterinario' && u.is_active === 1);
+
+  const correctionCandidates = (() => {
+    if (!correctionTarget) return [] as UserItem[];
+    const pool = correctionTarget.role === 'responsable'
+      ? activeResponsables
+      : correctionTarget.role === 'operario'
+        ? activeOperarios
+        : activeVeterinarios;
+    return pool.filter((u) => u.id !== correctionTarget.new_user_id);
+  })();
+
+  const formatDateTime = (value: string): string => {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('es-PE');
+  };
+
+  const formatDate = (value: string): string => {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('es-PE');
+  };
 
   return (
     <div className="admin-container">
@@ -459,6 +650,17 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconClock size={16} />
             <span>Historial de Asignaciones ({history.length})</span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className={`btn btn-sm ${activeTab === 'auditoria' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setActiveTab('auditoria')}
+        >
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconClipboard size={16} />
+            <span>Auditoría de Eventos ({auditLog.length})</span>
           </span>
         </button>
       </div>
@@ -881,6 +1083,37 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
               </div>
             </div>
 
+            <div className="grid-3 gap-3 mb-4">
+              <div className="form-group card p-3">
+                <label className="form-label font-bold inline-flex items-center gap-1">
+                  <IconCalendar size={16} />
+                  <span>Fecha efectiva:</span>
+                </label>
+                <input
+                  type="date"
+                  className="form-input"
+                  required
+                  value={assignmentEffectiveDate}
+                  onChange={(e) => setAssignmentEffectiveDate(e.target.value)}
+                />
+                <span className="text-xs text-muted mt-1">Fecha local de la granja (America/Lima)</span>
+              </div>
+
+              <div className="form-group card p-3" style={{ gridColumn: 'span 2' }}>
+                <label className="form-label font-bold">Motivo del cambio (queda en auditoría):</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={assignmentReason}
+                  onChange={(e) => setAssignmentReason(e.target.value)}
+                  placeholder="Ej. Sustitución por turno nocturno"
+                />
+                <span className="text-xs text-muted mt-1">
+                  Clave de reintento activa: {assignmentOperationKey.slice(0, 18)}… (ACC-04)
+                </span>
+              </div>
+            </div>
+
             <div className="card p-3 mb-4 bg-light">
               <label className="flex items-center gap-2 cursor-pointer mb-2">
                 <input
@@ -905,10 +1138,10 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
               </label>
             </div>
 
-            <button type="submit" className="btn btn-primary">
+            <button type="submit" className="btn btn-primary" disabled={assignmentSaving}>
               <span className="inline-flex items-center justify-center gap-2 leading-none">
                 <IconCheck size={16} />
-                <span>Guardar Asignación de Equipo</span>
+                <span>{assignmentSaving ? 'Guardando…' : 'Guardar Asignación de Equipo'}</span>
               </span>
             </button>
           </form>
@@ -920,7 +1153,8 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
         <div className="card p-4">
           <h3 className="font-bold text-lg mb-2">Historial de Asignaciones y Sustituciones (ADM-03)</h3>
           <p className="text-xs text-muted mb-4">
-            Auditoría histórica de cambios de personal por galpón con registro de vigencia, autor y asignación anterior.
+            Auditoría histórica de cambios de personal por galpón con registro de vigencia, motivo, autor y asignación anterior.
+            Las correcciones no sobrescriben el registro original: lo reemplazan dejando rastro completo (GES-03).
           </p>
 
           {history.length === 0 ? (
@@ -930,40 +1164,247 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Fecha y Hora</th>
                     <th>Galpón</th>
                     <th>Rol Modificado</th>
                     <th>Asignación Anterior</th>
                     <th>Nuevo Titular</th>
+                    <th>Vigencia</th>
+                    <th>Motivo</th>
                     <th>Autor del Cambio</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {history.map((h) => (
-                    <tr key={h.id}>
-                      <td className="font-mono text-xs">
-                        {new Date(h.valid_from).toLocaleString('es-PE')}
-                      </td>
+                  {history.map((h) => {
+                    const isCurrent = h.is_current === 1;
+                    return (
+                      <tr key={h.id}>
+                        <td>
+                          <strong>{h.barn_code}</strong> ({h.barn_name})
+                        </td>
+                        <td>
+                          <span className="badge badge-outline">
+                            {ROLE_LABEL[h.role] || h.role}
+                          </span>
+                        </td>
+                        <td>
+                          {h.previous_user_name ? (
+                            <span className="text-danger">{h.previous_user_name}</span>
+                          ) : (
+                            <span className="text-muted">(Sin titular previo)</span>
+                          )}
+                        </td>
+                        <td>
+                          <strong className="text-success">{h.new_user_name}</strong>
+                        </td>
+                        <td className="text-xs">
+                          <div className="font-mono">Desde: {formatDateTime(h.valid_from)}</div>
+                          <div className="font-mono text-muted">
+                            Hasta: {h.valid_until ? formatDateTime(h.valid_until) : 'Vigente'}
+                          </div>
+                          <div className="text-muted">Registrado: {formatDateTime(h.created_at)}</div>
+                        </td>
+                        <td className="text-xs">
+                          {h.reason ? h.reason : <span className="text-muted">Sin motivo registrado</span>}
+                        </td>
+                        <td>
+                          <span className="text-xs text-muted">{h.changed_by_name}</span>
+                        </td>
+                        <td>
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className={`badge ${isCurrent ? 'badge-success' : 'badge-outline'}`}>
+                              {isCurrent ? 'Vigente' : 'Histórico'}
+                            </span>
+                            {h.corrects_history_id !== null && (
+                              <span className="badge badge-warning">Corrección de #{h.corrects_history_id}</span>
+                            )}
+                            {h.superseded_by_id !== null && (
+                              <span className="text-xs text-muted">Reemplazado por #{h.superseded_by_id}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          {isCurrent ? (
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() => openCorrection(h)}
+                              title="Registrar corrección dejando historial"
+                            >
+                              <span className="inline-flex items-center justify-center gap-2 leading-none">
+                                <IconEdit size={14} />
+                                <span>Corregir</span>
+                              </span>
+                            </button>
+                          ) : (
+                            <span className="text-xs text-muted">Solo lectura</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Modal de corrección con historial */}
+          {correctionTarget && (
+            <div className="modal-backdrop">
+              <div className="modal-content card p-4">
+                <h4 className="text-lg font-bold mb-2">Corregir Asignación Vigente</h4>
+                <p className="text-xs text-muted mb-3">
+                  Galpón <strong>{correctionTarget.barn_code}</strong> · {ROLE_LABEL[correctionTarget.role]} · titular actual{' '}
+                  <strong>{correctionTarget.new_user_name}</strong>. La fila original se conserva como histórica (GES-03).
+                </p>
+
+                {correctionError && (
+                  <div className="banner-alert banner-alert-error mb-3" role="alert">
+                    <span className="inline-flex items-center justify-center gap-2 leading-none">
+                      <IconAlertCircle size={16} />
+                      <span>{correctionError}</span>
+                    </span>
+                  </div>
+                )}
+
+                <form onSubmit={handleCorrectTeam}>
+                  <div className="form-group mb-2">
+                    <label className="form-label text-sm">Titular Correcto:</label>
+                    <select
+                      className="form-select"
+                      required
+                      value={correctionUserId}
+                      onChange={(e) => setCorrectionUserId(Number(e.target.value))}
+                    >
+                      <option value="">Seleccione el titular correcto...</option>
+                      {correctionCandidates.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.username})
+                        </option>
+                      ))}
+                    </select>
+                    {correctionCandidates.length === 0 && (
+                      <span className="text-xs text-danger mt-1">
+                        No hay otros usuarios activos con ese perfil disponibles.
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="form-group mb-2">
+                    <label className="form-label text-sm inline-flex items-center gap-1">
+                      <IconCalendar size={14} />
+                      <span>Fecha efectiva de la corrección:</span>
+                    </label>
+                    <input
+                      type="date"
+                      className="form-input"
+                      required
+                      value={correctionEffectiveDate}
+                      onChange={(e) => setCorrectionEffectiveDate(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group mb-3">
+                    <label className="form-label text-sm">Motivo de la corrección (obligatorio):</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      required
+                      minLength={5}
+                      value={correctionReason}
+                      onChange={(e) => setCorrectionReason(e.target.value)}
+                      placeholder="Ej. Error de digitación en la asignación anterior"
+                    />
+                    <span className="text-xs text-muted mt-1">
+                      Clave de reintento activa: {correctionOperationKey.slice(0, 18)}… (ACC-04)
+                    </span>
+                  </div>
+
+                  <div className="flex justify-end gap-2 mt-4">
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      onClick={closeCorrection}
+                      disabled={correctionSaving}
+                    >
+                      Cancelar
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={correctionSaving}>
+                      <span className="inline-flex items-center justify-center gap-2 leading-none">
+                        <IconCheck size={16} />
+                        <span>{correctionSaving ? 'Guardando…' : 'Registrar Corrección'}</span>
+                      </span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 5. PESTAÑA: AUDITORÍA */}
+      {activeTab === 'auditoria' && (
+        <div className="card p-4">
+          <h3 className="font-bold text-lg mb-2">Auditoría de Eventos</h3>
+          <p className="text-xs text-muted mb-4">
+            Registro inmutable de altas, actualizaciones y correcciones con autor, motivo, fecha efectiva y datos previos/nuevos.
+            Solo el Administrador puede consultarlo (ACC-06).
+          </p>
+
+          {auditLog.length === 0 ? (
+            <p className="text-muted text-center p-4">No hay eventos de auditoría registrados aún.</p>
+          ) : (
+            <div className="table-responsive">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Registrado</th>
+                    <th>Fecha Efectiva</th>
+                    <th>Acción</th>
+                    <th>Galpón</th>
+                    <th>Autor</th>
+                    <th>Motivo</th>
+                    <th>Detalle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditLog.map((a) => (
+                    <tr key={a.id}>
+                      <td className="font-mono text-xs">{formatDateTime(a.recorded_at)}</td>
+                      <td className="font-mono text-xs">{formatDate(a.effective_date)}</td>
                       <td>
-                        <strong>{h.barn_code}</strong> ({h.barn_name})
-                      </td>
-                      <td>
-                        <span className="badge badge-outline">
-                          {h.role.toUpperCase()}
+                        <span className={`badge ${
+                          a.action === 'correct' ? 'badge-warning' :
+                          a.action === 'delete' ? 'badge-danger' : 'badge-outline'
+                        }`}>
+                          {ACTION_LABEL[a.action] || a.action}
                         </span>
                       </td>
-                      <td>
-                        {h.previous_user_name ? (
-                          <span className="text-danger">{h.previous_user_name}</span>
-                        ) : (
-                          <span className="text-muted">(Sin titular previo)</span>
-                        )}
+                      <td className="text-xs">
+                        {a.barn_code ? `${a.barn_code} (${a.barn_name || 'Sin nombre'})` : 'No aplica'}
                       </td>
-                      <td>
-                        <strong className="text-success">{h.new_user_name}</strong>
-                      </td>
-                      <td>
-                        <span className="text-xs text-muted">{h.changed_by_name}</span>
+                      <td className="text-xs">{a.actor_name}</td>
+                      <td className="text-xs">{a.reason || <span className="text-muted">Sin motivo</span>}</td>
+                      <td className="text-xs">
+                        <details>
+                          <summary className="cursor-pointer text-primary">Ver datos</summary>
+                          <div className="mt-2">
+                            <div className="font-bold">Anterior</div>
+                            <pre className="text-xs whitespace-pre-wrap break-all">
+                              {JSON.stringify(a.previous_data, null, 2)}
+                            </pre>
+                            <div className="font-bold mt-2">Nuevo</div>
+                            <pre className="text-xs whitespace-pre-wrap break-all">
+                              {JSON.stringify(a.new_data, null, 2)}
+                            </pre>
+                            <div className="text-muted mt-2">
+                              Entidad: {a.entity_type} #{a.entity_id}
+                              {a.operation_key ? ` · Clave: ${a.operation_key}` : ''}
+                            </div>
+                          </div>
+                        </details>
                       </td>
                     </tr>
                   ))}

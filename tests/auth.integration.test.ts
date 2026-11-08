@@ -26,7 +26,7 @@ describe('Autenticación, sesiones y primer administrador · T04', () => {
     await db.exec('PRAGMA foreign_keys = ON;');
 
     // Cargar y ejecutar las migraciones 0001 y 0002 en orden
-    const migrationFiles = ['0001_initial_schema.sql', '0002_administration_schema.sql'];
+    const migrationFiles = ['0001_initial_schema.sql', '0002_administration_schema.sql', '0003_events_audit_schema.sql'];
     for (const file of migrationFiles) {
       const schemaSql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
       const cleanSql = schemaSql
