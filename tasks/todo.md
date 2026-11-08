@@ -1,6 +1,6 @@
 # Control de ejecución
 
-Estado actual: Fases 2 y 3 completas; T12–T19 completadas; T20 en curso. La vinculación compra/venta–inventario y las anulaciones manuales ya están implementadas y desplegadas en staging. T20 sigue abierta porque las anulaciones de operaciones con origen de inventario deben ejecutarse desde su flujo de origen para mantener el stock, y esos flujos correctivos aún no están implementados. No iniciar T21 hasta completar T20. Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: Fases 2 y 3 completas; T12–T20 completadas. Siguiente: T21 (caja, abonos y costos por galpón). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -43,7 +43,7 @@ Estado actual: Fases 2 y 3 completas; T12–T19 completadas; T20 en curso. La vi
 ## 6. Finanzas
 
 - [x] T19 · Libro de ingresos y egresos · dependencias 15.
-- [ ] T20 · Compras, ventas y correcciones integradas · dependencias 10,17,19 (en curso; integración y reversión manual listas, faltan correcciones de compras/ventas enlazadas que mantengan inventario).
+- [x] T20 · Compras, ventas y correcciones integradas · dependencias 10,17,19.
 - [ ] T21 · Caja, abonos y costos por galpón · dependencias 20.
 - [ ] Cierre 6: Conciliar ventas, existencias, pagos y caja a dos cierres de mes, incluyendo una devolución y una corrección.
 
@@ -132,10 +132,10 @@ Estado actual: Fases 2 y 3 completas; T12–T19 completadas; T20 en curso. La vi
 | FIN-01 | T19 | Pendiente |
 | FIN-02 | T19 | Pendiente |
 | FIN-03 | T21 | Pendiente |
-| FIN-04 | T20 | Pendiente |
+| FIN-04 | T20 | Verificado: compras/ventas de animal y compras/devoluciones de alimento enlazan operación e inventario; consumo imputa costo sin crear otro egreso; reversas de origen mantienen vínculo y stock |
 | FIN-05 | T21 | Pendiente |
 | FIN-06 | T25 | Pendiente |
-| GES-01 | T20 | Pendiente |
+| GES-01 | T20 | Verificado: cancelaciones y devoluciones mantienen original, asiento de reversión, motivo, autor, fecha, idempotencia e inventario atómico; anulación financiera aislada de una fuente inventariable rechazada |
 | GES-02 | T21 | Pendiente |
 | GES-03 | T06 | Verificado en tests/events.integration.test.ts: la corrección de una asignación vigente conserva la fila original como histórica (is_current = 0, valid_until y superseded_by_id), crea la nueva fila como vigente y registra en audit_log autor, motivo, fecha efectiva y datos previos/nuevos |
 | GES-04 | T27 | Pendiente |
@@ -200,7 +200,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 | CA-02 | T12 | Verificado en `tests/animals.integration.test.ts`: duración versionada 116 días; servicio 23/01/2021 calcula 19/05/2021; al cerrarse el ciclo deja de salir entre pendientes |
 | CA-03 | T13 | Verificado en `tests/animals.integration.test.ts`: 8 vivos y 1 muerto produce 9 nacidos, 11,11 %; la camada se suma una vez y dos fichas conservan 8 cabezas en el total |
 | CA-04 | T10 | Verificado en tests/inventory.integration.test.ts y tests/animals.integration.test.ts: traslado colectivo 12→7/8→13, traslado individual, dos movimientos vinculados, historial y permisos por origen/destino |
-| CA-05 | T20 | Pendiente |
+| CA-05 | T20 | Verificado en `tests/animals.integration.test.ts`: reintentar la venta devuelve la misma salida; devolución posterior repone una cabeza y compensa ingreso/caja una sola vez; Operario recibe 403 |
 | CA-06 | T11 | Pendiente |
 | CA-07 | T16 | Verificado en `tests/feed.integration.test.ts`: 602 kg − 123 kg = 479 kg; proyección 21 días y faltante mensual 203,50 kg; la consulta no cambia saldo |
 | CA-08 | T17 | Verificado en `tests/animals.integration.test.ts`: tratamiento grupal, traslado posterior, historial conserva Galpón A y lote; venta bloqueada hasta vencimiento; una muerte = un movimiento y un evento |
@@ -225,7 +225,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 | CA-27 | T05 | Verificado en tests/admin.integration.test.ts: solo Administrador crea cuentas y galpones; intentos de responsable, operario y veterinario retornan 403 Forbidden y la DB queda inalterada |
 | CA-28 | T05 | Verificado en tests/admin.integration.test.ts: asignación de A y B a Usuario responsable; asignación de Operario y Veterinario; sustitución de Vet1 por Vet3 en Galpón A; Vet1 pierde acceso de inmediato ([]), Vet3 gana acceso ([Galpón A]), Responsable conserva [A, B]; historial registra autor y vigencia |
 | CA-29 | T26 | Pendiente |
-| CA-30 | T20 | Pendiente |
+| CA-30 | T20 | Verificado en `tests/feed.integration.test.ts`: compra S/ 500 (200 kg) y consumo S/ 120 (48 kg) conservan un egreso de S/ 500 y el movimiento de consumo valorizado en S/ 120; no se duplica caja |
 | CA-31 | T26 | Pendiente |
 | CA-32 | T26 | Pendiente |
 
@@ -233,7 +233,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 
 | Fecha | Tarea | Estado | Prueba ejecutada y resultado real | Evidencia / commit | Pendiente o decisión |
 |---|---|---|---|---|---|
-| 2026-11-08 | T20 | En curso | Implementados vínculos atómicos e idempotentes para compra/venta de animal y compra de alimento; consumo no duplica el egreso. Anulación de asientos manuales genera compensación auditable, marca el original y reintenta sin duplicar; anulación financiera directa de origen inventariable devuelve 409. Suite completa 81/81 en 14 archivos; integración alimentación/animales 20/20; typecheck, lint y build correctos. En staging, migración 0018 aplicada, columnas verificadas; Worker `82c528c5-a9f7-4a9a-94c0-3e983807566a`; `/finanzas` 200, API sin sesión 401. | migration 0018, `worker/animals.ts`, `worker/feed.ts`, `worker/finance.ts`, `worker/index.ts`, módulos de animales/alimentación/finanzas y pruebas de integración; commit `801b256` pusheado a `main`. | Incompleta: faltan rutas de devolución/corrección en los módulos de origen para ventas/compras enlazadas, con compensación de inventario y enlace del asiento inverso. T21 bloqueada por dependencia. Producción intacta. |
+| 2026-11-08 | T20 | Completada | Compras/ventas de animales y compras de alimento enlazan importe y movimiento en un batch idempotente. La devolución de una venta repone la ficha y una cabeza; devolver un animal comprado resta la cabeza y compensa el egreso; devolver alimento enlaza movimiento y reversión financiera si el lote está íntegro y no tuvo movimientos posteriores; lotes usados/no íntegros dan 409. Asientos manuales admiten anulación compensatoria; asientos de inventario no se anulan desde Finanzas. Consumo de alimento imputa costo una vez sin egreso adicional. Suite completa 81/81 (14 archivos), animales/alimento 20/20 y CA-30 1/1; typecheck, lint, build y diff-check correctos. Staging migraciones 0018–0019 aplicadas; columnas e índice de reversión verificados; Worker `ac3250f9-eafd-478d-88fe-6dafc5d760e5`; `/animales` y `/finanzas` 200, API sin sesión 401. Producción intacta. | `migrations/0018_trade_links.sql`, `migrations/0019_feed_purchase_reversals.sql`, `worker/animals.ts`, `worker/feed.ts`, `worker/finance.ts`, `worker/index.ts`, vistas de animales/alimento/finanzas y pruebas; commits `801b256` y commit T20 final pendiente. | Las devoluciones de alimento requieren lote completo sin consumos posteriores. Siguiente T21 (caja, abonos y costos por galpón). Producción sigue intacta. |
 | 2026-11-07 | T10 | Completada | Traslado grupal atómico con galpones, ubicaciones y lotes independientes en origen/destino, permisos en ambos extremos y reintento; caso 12→7/8→13. Traslado individual mueve ficha, historial de ubicación y libro en la misma operación; salida individual de venta/muerte guarda causa y movimiento enlazado y cierra ficha; conciliación física conserva saldo esperado, cantidad contada, delta, autor, motivo y ajuste; corrección conserva movimiento original, añade reversión y reemplazo enlazados, y previsualiza filas posteriores incompatibles. Inactivación de galpón con cabezas bloqueada; capacidad excesiva produce advertencia provisional; mortalidad excluye transferencias internas. Dos retiros concurrentes de 7 sobre 10 dejan uno exitoso y el otro en 409; falla forzada al insertar la recepción y se revierte el batch completo. Pruebas afectadas 31/31; suite 72/72; E2E 2/2; typecheck, lint y build correctos. Migraciones 0007–0008 y Worker staging versión `58d55da3-b1dd-497a-83a1-bdedf74956b3`; smoke `/animales`, `/inventario`, `/animal/T10-MOVE-01` 200 y API sin sesión 401. No se usó producción. | migrations/0007_transfer_and_stock_guard.sql, migrations/0008_animal_location_history.sql, worker/inventory.ts, worker/animals.ts, worker/admin.ts, worker/index.ts, src/components/ModuloInventario.tsx, src/components/ModuloAnimales.tsx, tests/inventory.integration.test.ts, tests/animals.integration.test.ts, tests/admin.integration.test.ts | Continúa T11 (pesajes y producción porcina). Decisión de capacidad sigue abierta; mientras tanto solo se muestra aviso y no se impide el traslado. |
 | 2026-11-07 | T11 | Completada | Suite completa 73/73; integración de animales 12/12; typecheck, lint y build correctos. Pesajes con hora y lote/ubicación históricos, orden cronológico, ganancia diaria sin tasa de intervalos de cero días y corrección inmutable auditada/idempotente. Se comprobó 44 kg del 20/06 cargado antes de 38 kg del 05/06; fecha/hora del mismo día; corrección conserva original. D1 staging migración 0009 y Worker `b97cc1e6-94c1-4fea-b2ea-0bd22fad9325`; smoke `/animales` y `/animal/T11-PESO` 200, API sin sesión 401. Commit `64c63af` pusheado a main. | migrations/0009_weight_measurement_order.sql, worker/animals.ts, src/components/ModuloAnimales.tsx, tests/animals.integration.test.ts | Sigue T12. No se cambió producción. |
 | 2026-11-07 | T12 | Completada | Suite completa 74/74; typecheck, lint y build correctos. Prueba de integración incluye 116 días 23/01/2021→19/05/2021 y 114 días 25/05/2026→16/09/2026; servicios sucesivos conservados, fecha manual con motivo, palpación, aborto idempotente, cierre retirado de pendientes, autorización por perfil y antecedente gestante sin servicio ficticio. Migración 0010 aplicada a staging; `/reproduccion` 200 HTML, API sin sesión 401; tablas de ciclos, servicios y eventos verificadas; versión Worker `65138982-20a1-4e0f-a4df-ce82c9333ed1`. | migrations/0010_reproduction_cycles.sql, worker/reproduction.ts, worker/index.ts, src/components/ModuloReproduccion.tsx, src/main.tsx, src/components/Navbar.tsx, tests/animals.integration.test.ts | Siguiente: T13 parto y camada atómicos. Producción sigue sin cambios. |

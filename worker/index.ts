@@ -63,6 +63,7 @@ import {
   registerAnimalWeight,
   correctAnimalWeight,
   registerAnimalExit,
+  registerAnimalSaleReturn,
 } from './animals';
 import {
   listReproductionCycles, createReproductionCycle, addReproductionService,
@@ -818,6 +819,13 @@ const worker = {
           if(body.exitType==='sale'&&!['administrador','responsable'].includes(session.user.role))return Response.json({error:'Solo el Administrador o Usuario responsable puede registrar ventas'},{status:403});
           const result = await registerAnimalExit(env.DB, session.user.id, key, body, scope);
           return Response.json({ ok: true, animal: result.animal, replayed: result.replayed }, { status: result.replayed ? 200 : 201 });
+        }
+
+        if (key && segments.length === 2 && segments[1] === 'sale-return' && request.method === 'POST') {
+          if(!['administrador','responsable'].includes(session.user.role))return Response.json({error:'Solo el Administrador o Usuario responsable puede devolver una venta'}, {status:403});
+          const body=await request.json() as Parameters<typeof registerAnimalSaleReturn>[3];const result=await registerAnimalSaleReturn(env.DB,session.user.id,key,body,scope);
+          if(result.animal?.code)await generateAnimalVaccineSchedules(env.DB,result.animal.code,session.user.id,scope);
+          return Response.json({ok:true,animal:result.animal,replayed:result.replayed},{status:result.replayed?200:201});
         }
 
         return Response.json({ error: 'Ruta de animales no encontrada' }, { status: 404 });
