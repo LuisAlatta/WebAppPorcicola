@@ -1,6 +1,6 @@
 # Control de ejecución
 
-Estado actual: Fase 2 completa (T01 a T07 y Cierre 2), T08–T11 completas. Siguiente: T12 (ciclos reproductivos). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: Fases 2 y 3 completas (T01–T11). Siguiente: T13 (parto y camada atómicos). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -27,7 +27,7 @@ Estado actual: Fase 2 completa (T01 a T07 y Cierre 2), T08–T11 completas. Sigu
 
 ## 4. Reproducción
 
-- [ ] T12 · Abrir y seguir ciclos reproductivos · dependencias 09,10.
+- [x] T12 · Abrir y seguir ciclos reproductivos · dependencias 09,10.
 - [ ] T13 · Registrar parto y camada de forma atómica · dependencias 12.
 - [ ] T14 · Destetar y calcular repeticiones · dependencias 13.
 - [ ] Cierre 4: Recorrer servicio → parto → identificación → destete. Conciliar animales y fechas en la ficha y en la agenda.
@@ -108,9 +108,9 @@ Estado actual: Fase 2 completa (T01 a T07 y Cierre 2), T08–T11 completas. Sigu
 | ALI-07 | T15 | Pendiente |
 | ANI-01 | T09 | Verificado en tests/animals.integration.test.ts: ficha con código, arete, alias, tipo, raza, sexo, nacimiento, pesos, estado, origen, galpón, etapa, ubicación, lote, genealogía y observaciones |
 | ANI-02 | T09 | Verificado en tests/animals.integration.test.ts: código permanente con ceros, historial de aretes, progenitores internos/externos, sexo compatible, fechas válidas y rechazo de ciclos |
-| ANI-03 | T09 | Parcial: ficha y búsqueda por código/arete muestran edad, pesos, estado, origen y ubicación; servicios, partos y métricas de camada se incorporarán con T12–T14 |
+| ANI-03 | T09, T12 | Parcial: ficha y búsqueda muestran edad, pesos, estado, origen y ubicación; el módulo de reproducción lista servicios y ciclos; partos y métricas de camada se incorporan con T13–T14 |
 | ANI-04 | T09 | Parcial: edad a la fecha, edad hasta salida y último peso derivado; la ubicación por movimientos se completa en T10 |
-| ANI-05 | T09 | Parcial: búsqueda por código/alias/arete y filtros de sexo, tipo, estado, etapa, galpón, ubicación y lote verificados; cronología incluye alta, pesos, aretes, tipo e inventario. Reproducción y clínica se añadirán en T12–T18 |
+| ANI-05 | T09, T12 | Parcial: filtros y cronología de alta, pesos, aretes, tipos e inventario verificados; reproducción tiene listado propio por rango; integrar todos los eventos a cronología y agregar clínica en T13–T18 |
 | ANI-06 | T09 | Verificado en tests/animals.integration.test.ts: tipos cerda/verraco/lechón/reemplazo, sexo propio, código textual, alias y pesos de nacimiento/destete opcionales |
 | ANI-07 | T09 | Verificado en tests/animals.integration.test.ts: filtros combinables, reemplazo disponible y cambio de tipo con vigencia sin alterar ID ni cabezas; se rechaza tipo incompatible con sexo |
 | ANI-08 | T09 | Verificado en tests/animals.integration.test.ts: desactivar/reactivar ficha exige motivo y no crea salida ni altera el inventario |
@@ -163,15 +163,15 @@ Estado actual: Fase 2 completa (T01 a T07 y Cierre 2), T08–T11 completas. Sigu
 | PRO-04 | T10 | Verificado en tests/inventory.integration.test.ts: movimientos de salida controlan causa; ventas/muertes de animales se sincronizan con ficha y saldo en un solo batch |
 | PRO-05 | T10 | Verificado en tests/admin.integration.test.ts: el estado inactivo se bloquea mientras el libro de inventario indique animales presentes |
 | PRO-06 | T11 | Pendiente |
-| REP-01 | T12 | Pendiente |
-| REP-02 | T12 | Pendiente |
-| REP-03 | T12 | Pendiente |
-| REP-04 | T12 | Pendiente |
-| REP-05 | T12 | Pendiente |
-| REP-06 | T12 | Pendiente |
+| REP-01 | T12 | Verificado en `tests/animals.integration.test.ts`: hembra, raza, verraco/raza o material externo, tipo, número y fecha de servicio, ubicación/lote histórico y aptitud |
+| REP-02 | T12 | Verificado en integración: palpación con fecha y estado fisiológico; fecha probable, restantes y antecedente de último parto visibles |
+| REP-03 | T12 | Verificado en integración: servicios y palpaciones enlazados a ciclo; repetición conserva servicios; aborto cierra ciclo; reintento conserva un evento |
+| REP-04 | T12 | Verificado en integración: fecha calculada desde parámetro versionado de Gestación, etiquetas por fecha local y exclusión de cierres de pendientes |
+| REP-05 | T12 | Verificado en integración: hembra y verraco deben estar presentes en fecha del evento; ciclo requiere referencia explícita o antecedente sin servicio ficticio |
+| REP-06 | T12 | Verificado en integración: 116 días 23/01/2021→19/05/2021; 114 días 25/05/2026→16/09/2026; fecha manual conserva origen y motivo |
 | REP-07 | T14 | Pendiente |
 | REP-08 | T14 | Pendiente |
-| REP-09 | T12 | Pendiente |
+| REP-09 | T12 | Verificado en integración: rango inclusivo por fecha de último servicio; antecedente usa fecha probable; lista conserva pareja, estados, servicios y fechas |
 | REP-10 | T18 | Pendiente |
 | RPT-01 | T24 | Pendiente |
 | RPT-02 | T24 | Pendiente |
@@ -197,7 +197,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 | Caso | Validación inicial | Resultado y evidencia |
 |---|---|---|
 | CA-01 | T09 | Verificado en tests/animals.integration.test.ts: alta repetida de 002 devuelve la misma ficha, conserva ceros, registra una entrada y encuentra el arete vigente; payload distinto 409 |
-| CA-02 | T12 | Pendiente |
+| CA-02 | T12 | Verificado en `tests/animals.integration.test.ts`: duración versionada 116 días; servicio 23/01/2021 calcula 19/05/2021; al cerrarse el ciclo deja de salir entre pendientes |
 | CA-03 | T13 | Pendiente |
 | CA-04 | T10 | Verificado en tests/inventory.integration.test.ts y tests/animals.integration.test.ts: traslado colectivo 12→7/8→13, traslado individual, dos movimientos vinculados, historial y permisos por origen/destino |
 | CA-05 | T20 | Pendiente |
@@ -211,7 +211,7 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 | CA-13 | T18 | Pendiente |
 | CA-14 | T14 | Pendiente |
 | CA-15 | T18 | Pendiente |
-| CA-16 | T12 | Pendiente |
+| CA-16 | T12 | Verificado en `tests/animals.integration.test.ts`: 114 días desde 25/05/2026 da 16/09/2026; edición manual 18/09 se identifica como manual y conserva el motivo |
 | CA-17 | T26 | Pendiente |
 | CA-18 | T26 | Pendiente |
 | CA-19 | T22 | Pendiente |
@@ -234,6 +234,8 @@ Los datos y resultados esperados están en la sección 12 de [requisitos](requis
 | Fecha | Tarea | Estado | Prueba ejecutada y resultado real | Evidencia / commit | Pendiente o decisión |
 |---|---|---|---|---|---|
 | 2026-11-07 | T10 | Completada | Traslado grupal atómico con galpones, ubicaciones y lotes independientes en origen/destino, permisos en ambos extremos y reintento; caso 12→7/8→13. Traslado individual mueve ficha, historial de ubicación y libro en la misma operación; salida individual de venta/muerte guarda causa y movimiento enlazado y cierra ficha; conciliación física conserva saldo esperado, cantidad contada, delta, autor, motivo y ajuste; corrección conserva movimiento original, añade reversión y reemplazo enlazados, y previsualiza filas posteriores incompatibles. Inactivación de galpón con cabezas bloqueada; capacidad excesiva produce advertencia provisional; mortalidad excluye transferencias internas. Dos retiros concurrentes de 7 sobre 10 dejan uno exitoso y el otro en 409; falla forzada al insertar la recepción y se revierte el batch completo. Pruebas afectadas 31/31; suite 72/72; E2E 2/2; typecheck, lint y build correctos. Migraciones 0007–0008 y Worker staging versión `58d55da3-b1dd-497a-83a1-bdedf74956b3`; smoke `/animales`, `/inventario`, `/animal/T10-MOVE-01` 200 y API sin sesión 401. No se usó producción. | migrations/0007_transfer_and_stock_guard.sql, migrations/0008_animal_location_history.sql, worker/inventory.ts, worker/animals.ts, worker/admin.ts, worker/index.ts, src/components/ModuloInventario.tsx, src/components/ModuloAnimales.tsx, tests/inventory.integration.test.ts, tests/animals.integration.test.ts, tests/admin.integration.test.ts | Continúa T11 (pesajes y producción porcina). Decisión de capacidad sigue abierta; mientras tanto solo se muestra aviso y no se impide el traslado. |
+| 2026-11-07 | T11 | Completada | Suite completa 73/73; integración de animales 12/12; typecheck, lint y build correctos. Pesajes con hora y lote/ubicación históricos, orden cronológico, ganancia diaria sin tasa de intervalos de cero días y corrección inmutable auditada/idempotente. Se comprobó 44 kg del 20/06 cargado antes de 38 kg del 05/06; fecha/hora del mismo día; corrección conserva original. D1 staging migración 0009 y Worker `b97cc1e6-94c1-4fea-b2ea-0bd22fad9325`; smoke `/animales` y `/animal/T11-PESO` 200, API sin sesión 401. Commit `64c63af` pusheado a main. | migrations/0009_weight_measurement_order.sql, worker/animals.ts, src/components/ModuloAnimales.tsx, tests/animals.integration.test.ts | Sigue T12. No se cambió producción. |
+| 2026-11-07 | T12 | Completada | Suite completa 74/74; typecheck, lint y build correctos. Prueba de integración incluye 116 días 23/01/2021→19/05/2021 y 114 días 25/05/2026→16/09/2026; servicios sucesivos conservados, fecha manual con motivo, palpación, aborto idempotente, cierre retirado de pendientes, autorización por perfil y antecedente gestante sin servicio ficticio. Migración 0010 aplicada a staging; `/reproduccion` 200 HTML, API sin sesión 401; tablas de ciclos, servicios y eventos verificadas; versión Worker `65138982-20a1-4e0f-a4df-ce82c9333ed1`. | migrations/0010_reproduction_cycles.sql, worker/reproduction.ts, worker/index.ts, src/components/ModuloReproduccion.tsx, src/main.tsx, src/components/Navbar.tsx, tests/animals.integration.test.ts | Siguiente: T13 parto y camada atómicos. Producción sigue sin cambios. |
 | 2026-11-07 | T09 | Completada | Fichas individuales con código permanente textual, arete inicial e historial de cambios, sexo/tipo/raza/alias, fechas y pesos, procedencia, aptitud, genealogía interna o externa, galpón/ubicación/lote y observaciones. Alta de nacimiento, compra o saldo inicial genera ficha, pesajes de origen y una sola cabeza en el libro dentro de la misma operación idempotente; vincular una cabeza de grupo solo reduce el saldo sin sumar otra. Ficha deriva edad y último peso, conserva historial de aretes/tipo/pesajes/movimientos y ofrece filtros combinables por código/alias/arete, tipo, sexo, estado, etapa, disponibilidad, galpón, ubicación y lote. Cambio de tipo mantiene ID y cabeza; tipos cerda/verraco validan sexo. Desactivar ficha requiere motivo y no registra venta/muerte. Alcance por galpón probado; sin asignaciones devuelve 404. 9/9 pruebas específicas; suite 64/64, integración 52/52, E2E 2/2, typecheck, lint, build y dry-run staging correctos. Migración 0006 aplicada y Worker desplegado en staging; smoke `/animales` y `/animal/002` 200 HTML, `/api/animals` 401; tablas verificadas en D1. | migrations/0006_animals_schema.sql, worker/animals.ts, worker/inventory.ts, worker/index.ts, src/components/ModuloAnimales.tsx, tests/animals.integration.test.ts; commit `f902675`; Worker staging versión `35816410-622a-40d9-b586-7eeea51fed93` | Reproducción y sanidad se integran a la cronología al completar T12–T18. La ficha informa ubicación de ingreso; traslados de ficha identificada y derivación histórica de ubicación corresponden a T10. Continuar con T10. |
 | 2026-11-07 | T08 | Completada | Libro inmutable de movimientos de cabezas (`inventory_movements`) con tipo excluyente (saldo inicial, compra, nacimiento, venta, muerte, traslado recibido/enviado y ajuste), fecha efectiva, galpón, ubicación, lote, etapa y sexo. Existencias a fecha de corte y resumen por etapa calculados desde la misma fuente; el detalle reconstruye el total del tablero. Validación cronológica impide saldos negativos, incluidas correcciones retroactivas (409). Idempotencia con clave de reintento (200 en replay, 409 con contenido distinto) y auditoría con autor, motivo y fecha efectiva. Traslados internos verificados cancelando el total de la granja; su API queda para T10. Permisos: veterinario solo lectura (403 al escribir), operario limitado a sus galpones (403 fuera de alcance). Interfaz `ModuloInventario` con fecha de corte, KPIs, resumen por etapa, saldos por grupo, desglose por sexo, formulario de movimiento y listado filtrable; rutas `/inventario` y `/configuracion` enlazadas, configuración visible solo para administrador. 8/8 pruebas nuevas y 55/55 en total, typecheck, lint y build correctos. Migración 0005 aplicada en staging y producción; ambos Workers desplegados. Verificación en vivo: producción `/api/inventory` 401 sin sesión y 200 autenticado con 2 galpones y 8 etapas; staging registró un saldo inicial de 2 cabezas y el snapshot pasó de 0 a 2 disponibles. | worker/inventory.ts, worker/index.ts, migrations/0005_inventory_schema.sql, tests/inventory.integration.test.ts, src/components/ModuloInventario.tsx, src/main.tsx, src/components/Navbar.tsx, src/types/index.ts | Siguiente: T09 (alta y consulta de animales) para separar identificados de no identificados. El desglose individual queda en 0 identificadas / todas sin identificar. |
 | 2026-11-07 | Despliegue | Completada | Migraciones 0001–0004 aplicadas en remoto a `webporcicola-staging` (0e990468-3530-4e3a-a1df-530721ce38d7) y `webporcicola-produccion` (1a6f4451-bde8-46cf-beae-ed4dd76d34c0); 12 tablas de aplicación verificadas en ambas. Administrador inicial insertado directo en D1 y bootstrap cerrado. Worker de producción desplegado con `npx wrangler deploy --config dist/web_porcicola/wrangler.json` (versión c7794b50-9355-4939-8917-7b3f5d304470). Verificación en vivo contra https://web-porcicola-produccion.luisalatta.workers.dev: `/` 200 text/html, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie de sesión y `/api/config` 200 autenticado con las semillas de T07. | wrangler.jsonc, migrations/0001-0004, dist/web_porcicola/wrangler.json | Cambiar la contraseña inicial débil desde el módulo de administración. |

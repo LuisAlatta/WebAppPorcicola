@@ -14,6 +14,7 @@ import {
   IconClock,
   IconScale,
   IconSettings,
+  IconCalendar,
 } from './icons';
 
 interface NavbarProps {
@@ -128,6 +129,17 @@ export function Navbar({
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconClipboard size={16} />
             <span>Animales</span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className={`nav-tab ${vistaActual === 'reproduccion' ? 'nav-tab-active' : ''}`}
+          onClick={() => onNavigate('reproduccion')}
+        >
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconCalendar size={16} />
+            <span>Reproducción</span>
           </span>
         </button>
 

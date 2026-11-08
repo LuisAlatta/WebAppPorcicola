@@ -64,6 +64,10 @@ import {
   correctAnimalWeight,
   registerAnimalExit,
 } from './animals';
+import {
+  listReproductionCycles, createReproductionCycle, addReproductionService,
+  recordReproductionEvent, updateReproductionCycle, createPregnantAntecedent,
+} from './reproduction';
 
 export interface Env {
   DB: D1Database;
@@ -515,7 +519,59 @@ const worker = {
       }
     }
 
-    // 8. FICHAS INDIVIDUALES DE ANIMALES (T09 · ANI-01..ANI-08, INV-04)
+    // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
+    if (path === '/api/reproduction/cycles' || path.startsWith('/api/reproduction/')) {
+      const token = getSessionToken(request);
+      if (!token) return Response.json({ error: 'No autenticado: falta sesión' }, { status: 401 });
+      const session = await validateSession(env.DB, token);
+      if (!session) return Response.json({ error: 'Sesión inválida, expirada o revocada' }, { status: 401 });
+      const isWrite = request.method !== 'GET';
+      if (isWrite && !['administrador', 'responsable', 'veterinario'].includes(session.user.role)) {
+        return Response.json({ error: 'Acceso denegado: el Operario solo puede consultar reproducción' }, { status: 403 });
+      }
+      const scope = session.user.role === 'administrador' ? { allowedBarnNames: null } : { allowedBarnNames: session.barns };
+      try {
+        if (path === '/api/reproduction/cycles' && request.method === 'GET') {
+          const result = await listReproductionCycles(env.DB, { from: url.searchParams.get('from') ?? undefined,
+            to: url.searchParams.get('to') ?? undefined, status: url.searchParams.get('status') ?? undefined }, scope);
+          return Response.json({ ok: true, ...result });
+        }
+        if (path === '/api/reproduction/cycles' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof createReproductionCycle>[2];
+          const result = await createReproductionCycle(env.DB, session.user.id, body, scope);
+          return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
+        }
+        if (path === '/api/reproduction/antecedents' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof createPregnantAntecedent>[2];
+          const result = await createPregnantAntecedent(env.DB, session.user.id, body, scope);
+          return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
+        }
+        const parts = path.split('/').filter(Boolean);
+        const cycleId = parts[3] ? decodeURIComponent(parts[3]) : '';
+        if (cycleId && parts.length === 4 && request.method === 'PUT') {
+          const body = await request.json() as Parameters<typeof updateReproductionCycle>[3];
+          const result = await updateReproductionCycle(env.DB, session.user.id, cycleId, body, scope);
+          return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 200 });
+        }
+        if (cycleId && parts.length === 5 && parts[4] === 'services' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof addReproductionService>[3];
+          const result = await addReproductionService(env.DB, session.user.id, cycleId, body, scope);
+          return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
+        }
+        if (cycleId && parts.length === 5 && parts[4] === 'events' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof recordReproductionEvent>[3];
+          const result = await recordReproductionEvent(env.DB, session.user.id, cycleId, body, scope);
+          return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
+        }
+        return Response.json({ error: 'Ruta de reproducción no encontrada' }, { status: 404 });
+      } catch (err) {
+        const message = (err as Error).message || String(err);
+        const status = err instanceof ApiError ? err.status : /UNIQUE constraint|uq_reproduction_open_cycle/.test(message) ? 409 : 400;
+        return Response.json({ error: message }, { status });
+      }
+    }
+
+    // 9. FICHAS INDIVIDUALES DE ANIMALES (T09 · ANI-01..ANI-08, INV-04)
     if (path === '/api/animals' || path.startsWith('/api/animals/')) {
       const token = getSessionToken(request);
       if (!token) {

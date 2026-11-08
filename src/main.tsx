@@ -10,6 +10,7 @@ import { ModuloAdministracion } from './components/ModuloAdministracion';
 import { ModuloConfiguracion } from './components/ModuloConfiguracion';
 import { ModuloInventario } from './components/ModuloInventario';
 import { ModuloAnimales } from './components/ModuloAnimales';
+import { ModuloReproduccion } from './components/ModuloReproduccion';
 import './style.css';
 
 function getInitialView(): Vista {
@@ -17,6 +18,7 @@ function getInitialView(): Vista {
     const path = window.location.pathname;
     if (path === '/listado') return 'listado';
     if (path === '/animales') return 'animales';
+    if (path === '/reproduccion') return 'reproduccion';
     if (path === '/alta' || path === '/formulario') return 'formulario';
     if (path === '/detalle' || path.startsWith('/animal/')) return 'detalle';
     if (path === '/inventario') return 'inventario';
@@ -74,6 +76,7 @@ function App() {
       let targetPath = '/';
       if (vista === 'listado') targetPath = '/listado';
       else if (vista === 'animales') targetPath = '/animales';
+      else if (vista === 'reproduccion') targetPath = '/reproduccion';
       else if (vista === 'formulario') targetPath = '/alta';
       else if (vista === 'detalle') targetPath = `/animal/${selectedAnimalId}`;
       else if (vista === 'inventario') targetPath = '/inventario';
@@ -142,6 +145,8 @@ function App() {
         return <ModuloInventario perfil={perfilActual} />;
       case 'animales':
         return <ModuloAnimales perfil={perfilActual} />;
+      case 'reproduccion':
+        return <ModuloReproduccion perfil={perfilActual} />;
       case 'configuracion':
         return <ModuloConfiguracion />;
       case 'administracion':

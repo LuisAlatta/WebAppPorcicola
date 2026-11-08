@@ -128,6 +128,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0007_transfer_and_stock_guard.sql',
       '0008_animal_location_history.sql',
       '0009_weight_measurement_order.sql',
+      '0010_reproduction_cycles.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -713,6 +714,91 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const desconocida = await api('/api/animals/NO-EXISTE');
     expect(desconocida.status).toBe(404);
   });
+  it('calcula ciclos con parámetro vigente, conserva servicios y retira cierres de pendientes', async () => {
+    await db.prepare(`INSERT INTO stage_versions
+      (code,name,sort_order,duration_days,effective_from,effective_to,status,created_at)
+      VALUES ('gestacion','Gestación histórica',5,116,'2021-01-01','2026-01-01','active','2021-01-01T00:00:00Z')`).run();
+    const oldSow = await create({ code: 'T12-116', animalType: 'cerda', sex: 'hembra', breed: 'Landrace',
+      birthDate: '2020-01-01', entryDate: '2021-01-01', entryStageCode: 'gestacion', locationCode: null,
+      originType: 'compra', operationKey: 'ani-t12-alta-116' });
+    expect(oldSow.status).toBe(201);
+    const service116 = { femaleCode: 'T12-116', serviceDate: '2021-01-23', serviceType: 'inseminacion_artificial',
+      materialSource: 'external', externalSource: 'Banco genético externo', operationKey: 'rep-t12-serv-116' };
+    const created116 = await api('/api/reproduction/cycles', { method: 'POST', body: JSON.stringify(service116) });
+    expect(created116.status, await created116.clone().text()).toBe(201);
+    const created116Body = await created116.json() as { createdCycleId: string; replayed: boolean };
+    expect(created116Body.replayed).toBe(false);
+    const replay116 = await api('/api/reproduction/cycles', { method: 'POST', body: JSON.stringify(service116) });
+    expect(replay116.status).toBe(200);
+    expect((await replay116.json() as { createdCycleId: string; replayed: boolean })).toMatchObject({ createdCycleId: created116Body.createdCycleId, replayed: true });
+    const oldList = await api('/api/reproduction/cycles?from=2021-01-23&to=2021-01-23&status=open');
+    expect(oldList.status).toBe(200);
+    const oldCycles = (await oldList.json() as { cycles: { probableFarrowingDate: string; gestationDays: number; services: Service[] }[] }).cycles;
+    expect(oldCycles).toHaveLength(1);
+    expect(oldCycles[0]).toMatchObject({ probableFarrowingDate: '2021-05-19', gestationDays: 116 });
+    const repeated = await api(`/api/reproduction/cycles/${created116Body.createdCycleId}/services`, { method: 'POST', body: JSON.stringify({
+      serviceDate: '2021-02-01', serviceType: 'inseminacion_artificial', materialSource: 'external', externalSource: 'Dosis externa',
+      operationKey: 'rep-t12-repeticion-1',
+    }) });
+    expect(repeated.status).toBe(201);
+    const repeatedBody = await repeated.json() as { cycle: { probableFarrowingDate: string; services: { serviceNumber: number }[] } };
+    expect(repeatedBody.cycle).toMatchObject({ probableFarrowingDate: '2021-05-28' });
+    expect(repeatedBody.cycle.services.map((service) => service.serviceNumber)).toEqual([1, 2]);
+
+    const sow114 = await create({ code: 'T12-114', animalType: 'cerda', sex: 'hembra', breed: 'Yorkshire',
+      birthDate: '2024-01-01', entryDate: '2026-01-01', entryStageCode: 'gestacion', locationCode: 'galpon_a',
+      originType: 'compra', operationKey: 'ani-t12-alta-114' });
+    expect(sow114.status).toBe(201);
+    const boar = await create({ code: 'T12-VERRACO', animalType: 'verraco', sex: 'macho', breed: 'Duroc',
+      birthDate: '2023-01-01', entryDate: '2026-01-01', entryStageCode: 'reproductor', locationCode: 'galpon_a',
+      originType: 'compra', operationKey: 'ani-t12-alta-verraco' });
+    expect(boar.status).toBe(201);
+    const service114 = { femaleCode: 'T12-114', serviceDate: '2026-05-25', serviceType: 'monta_natural',
+      materialSource: 'internal', sireCode: 'T12-VERRACO', operationKey: 'rep-t12-serv-114' };
+    const created114 = await api('/api/reproduction/cycles', { method: 'POST', body: JSON.stringify(service114) });
+    expect(created114.status).toBe(201);
+    const created114Body = await created114.json() as { createdCycleId: string };
+    const list114Response = await api('/api/reproduction/cycles?from=2026-05-25&to=2026-05-25');
+    const list114 = (await list114Response.json() as { cycles: { id: string; probableFarrowingDate: string; dueDateSource: string; dueLabel: string; services: { id: number; sireCode: string; sireBreed: string }[] }[] }).cycles;
+    expect(list114.find((cycle) => cycle.id === created114Body.createdCycleId)).toMatchObject({ probableFarrowingDate: '2026-09-16', dueDateSource: 'calculated', dueLabel: 'vencido' });
+    expect(list114[0].services[0]).toMatchObject({ sireCode: 'T12-VERRACO', sireBreed: 'Duroc' });
+    expect((await api('/api/reproduction/cycles', { method: 'POST', body: JSON.stringify({ ...service114, operationKey: 'rep-t12-second-cycle' }) })).status).toBe(409);
+
+    const edited = await api(`/api/reproduction/cycles/${created114Body.createdCycleId}`, { method: 'PUT', body: JSON.stringify({
+      dueDate: '2026-09-18', dueDateReason: 'Palpación y criterio veterinario', observations: 'Sin destete previo conocido', operationKey: 'rep-t12-manual-due',
+    }) });
+    expect(edited.status).toBe(200);
+    const palpationBody = { eventType: 'palpation', eventDate: '2026-06-20', physiologicalStatus: 'gestation',
+      serviceId: list114[0].services[0].id, operationKey: 'rep-t12-palpacion' };
+    const palpation = await api(`/api/reproduction/cycles/${created114Body.createdCycleId}/events`, { method: 'POST', body: JSON.stringify(palpationBody) });
+    expect(palpation.status).toBe(201);
+    const abortionBody = { eventType: 'abortion', eventDate: '2026-07-01', reason: 'Aborto registrado en prueba', operationKey: 'rep-t12-aborto' };
+    const abortion = await api(`/api/reproduction/cycles/${created114Body.createdCycleId}/events`, { method: 'POST', body: JSON.stringify(abortionBody) });
+    expect(abortion.status).toBe(201);
+    expect((await api(`/api/reproduction/cycles/${created114Body.createdCycleId}/events`, { method: 'POST', body: JSON.stringify(abortionBody) })).status).toBe(200);
+    const pending = await api('/api/reproduction/cycles?from=2026-05-25&to=2026-05-25&status=pending');
+    expect((await pending.json() as { cycles: { id: string }[] }).cycles.some((cycle) => cycle.id === created114Body.createdCycleId)).toBe(false);
+    const all = await api('/api/reproduction/cycles?from=2026-05-25&to=2026-05-25&status=aborted');
+    const closedCycle = (await all.json() as { cycles: { id: string; dueDateSource: string; events: { eventType: string }[]; services: { id: number }[] }[] }).cycles[0];
+    expect(closedCycle).toMatchObject({ id: created114Body.createdCycleId, dueDateSource: 'manual' });
+    expect(closedCycle.services).toHaveLength(1);
+    expect(closedCycle.events.map((event) => event.eventType)).toEqual(['palpation', 'abortion', 'manual_due_date']);
+    expect((await api(`/api/reproduction/cycles`, {}, operarioToken)).status).toBe(200);
+    const operarioWrite = await api('/api/reproduction/cycles', { method: 'POST', body: JSON.stringify(service114) }, operarioToken);
+    expect(operarioWrite.status).toBe(403);
+
+    const antecedentSow = await create({ code: 'T12-ANTEC', animalType: 'cerda', sex: 'hembra', birthDate: '2024-01-01',
+      entryDate: '2026-01-01', entryStageCode: 'gestacion', originType: 'compra', operationKey: 'ani-t12-alta-antec' });
+    expect(antecedentSow.status).toBe(201);
+    const antecedent = await api('/api/reproduction/antecedents', { method: 'POST', body: JSON.stringify({ femaleCode: 'T12-ANTEC',
+      serviceDate: '2026-10-01', dueDate: '2026-11-20', gestationDays: 114, lastFarrowingDate: '2026-05-01',
+      observations: 'Ingresó gestante; se verificó por palpación', operationKey: 'rep-t12-antecedente' }) });
+    expect(antecedent.status, await antecedent.clone().text()).toBe(201);
+    const antecList = await api('/api/reproduction/cycles?from=2026-11-20&to=2026-11-20&status=open');
+    const antecCycle = (await antecList.json() as { cycles: { femaleCode: string; antecedent: boolean; serviceAnchorDate: string | null; services: unknown[] }[] }).cycles[0];
+    expect(antecCycle).toMatchObject({ femaleCode: 'T12-ANTEC', antecedent: true, serviceAnchorDate: null, services: [] });
+  }, 15000);
+
   it('registra pesajes fuera de orden cronológico, calcula ganancias, conserva ubicación y corrige sin borrar el original', async () => {
     const created = await create({ code: 'T11-PESO', entryDate: '2026-06-01', operationKey: 'ani-t11-alta-peso' });
     expect(created.status).toBe(201);

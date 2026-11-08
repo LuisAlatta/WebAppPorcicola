@@ -1036,6 +1036,34 @@ body {
 .p-4 { padding: 1rem; }
 .p-6 { padding: 1.5rem; }
 
+.reproduction-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.reproduction-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.reproduction-cycle {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+.reproduction-due {
+  text-align: right;
+}
+.mt-2 { margin-top: 0.5rem; }
+.mt-3 { margin-top: 0.75rem; }
+@media (max-width: 640px) {
+  .reproduction-header { align-items: flex-start; }
+  .reproduction-due { width: 100%; text-align: left; }
+}
+
 /* Grid 3 columnas */
 .grid-3 {
   display: grid;
