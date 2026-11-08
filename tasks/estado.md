@@ -12,7 +12,7 @@ Actualizado el 8 de noviembre de 2026. Esta carpeta contiene el contexto necesar
 
 ## Estado real
 
-- **Fase 2 completa (T01–T07 y Cierre 2); Fase 3 completa (T08–T11); T12–T18 completadas. Siguiente: T19 (libro de ingresos y egresos).**
+- **Fase 2 completa (T01–T07 y Cierre 2); Fase 3 completa (T08–T11); T12–T19 completadas. Siguiente: T20 (compras, ventas y correcciones integradas).**
 - T10 completo: traslado colectivo con coordenadas distintas en origen/destino, dos movimientos del mismo grupo, autorización de ambos galpones, reintento idempotente y aviso de exceso de capacidad sin bloquear; traslado individual actualiza ficha, movimientos, galpón y ubicación histórica en un lote; venta/muerte individual actualiza salida, causa y saldo en el mismo lote; conteo físico conserva esperado, contado, diferencia, autor, motivo y ajuste enlazado; corrección grupal conserva original y enlaza reversión/cantidad corregida, previsualiza movimientos posteriores incompatibles y rechaza una segunda corrección; cierre de galpón con saldo ocupado se bloquea; revalidación atómica impide saldos negativos concurrentes y conserva el saldo ante fallo forzado entre origen/destino. Las transferencias internas no aumentan entradas/salidas ni el denominador de mortalidad.
 - Verificación T10: 31/31 pruebas de inventario, animales y administración; suite completa 72/72; E2E 2/2; typecheck, lint y build correctos. Cuenta Cloudflare confirmada como `newluisalattago@gmail.com` / `0acfa25b5f619f94d581b8cf882e2eec`. Migraciones 0007 y 0008 aplicadas solo en D1 staging; Worker staging versión `58d55da3-b1dd-497a-83a1-bdedf74956b3`; rutas `/inventario` y `/animales` 200, detalle `/animal/T10-MOVE-01` 200, `/api/inventory` y `/api/animals` 401 sin sesión. D1 staging no contiene animales de prueba. Producción no fue modificada.
 - Se implementó T08 (`worker/inventory.ts`, `migrations/0005_inventory_schema.sql` y `src/components/ModuloInventario.tsx`):
@@ -117,8 +117,15 @@ Actualizado el 8 de noviembre de 2026. Esta carpeta contiene el contexto necesar
   - Evidencia automatizada: reemplazo `T18-002`, nacido 06/06, con +60 días programa 05/08 una sola vez; regenerar no duplica; vacuna distinta en esa fecha permitida; duplicado igual rechazado; aplicación permanece con fecha y estado aplicado tras regenerar. CA-15: dos ediciones del ciclo reproductivo conservan una única vacuna pendiente. Suite completa 79/79, typecheck, lint y build correctos.
   - Staging: migración 0016 aplicada a `webporcicola-staging`; Worker `731250dc-e103-4a00-972c-e723d30badeb`; `/sanidad` 200; API de reglas/agenda 401 sin sesión. Producción no fue modificada.
   - Límite conocido para CA-20: el modelo actual permite corregir cantidades de una camada, no la fecha real del parto; queda para añadir corrección de fecha auditada y recalcular vacunas pendientes de ese origen. La fecha de nacimiento sí se reevalúa al actualizar la ficha y las dosis aplicadas se preservan.
+- **T19 · Libro de ingresos y egresos completada.** Requisitos FIN-01/02:
+  - Migración `0017_financial_ledger.sql` crea operaciones financieras y distribuciones por galpón, con snapshots de galpón/animal, lote, suministro, cantidad y autor. El libro registra ingresos/egresos, categoría, concepto, fecha, importe en unidades menores, moneda, contraparte, referencia y notas.
+  - Cada moneda se mantiene en código ISO de tres letras y escala provisional fija de dos decimales; los importes se parsean como texto decimal y se almacenan en enteros. Monedas distintas no se suman entre sí. Cada distribución debe ser positiva y la suma debe igualar el total.
+  - Escritura reservada a Administrador y Usuario responsable; Operario y Veterinario solo consultan. Usuario ve importes de sus galpones, no el total de una operación distribuida entre varios ni movimientos generales. Solo Administrador puede asignar a gasto general.
+  - UI `/finanzas` con formulario, varias distribuciones, asociación opcional a animal/lote/suministro, filtros y totales por dirección/moneda. El módulo se carga de forma diferida para mantener el paquete inicial bajo el umbral de 500 KB.
+  - Evidencia: distribución PEN 100 entre A (60) y B (40); Usuario asignado solo a A recibe solo PEN 60 y no ve el total ni el gasto general; reintento no duplica; suma incorrecta responde 400; Operario al escribir recibe 403; monedas PEN/USD aparecen como totales separados. Suite completa 80/80; typecheck, lint y build correctos sin advertencia de tamaño.
+  - Staging: migración 0017 aplicada; Worker `07d55de4-7971-4633-bccd-d9e2bfc5afe9`; `/finanzas` 200 y API sin sesión 401. Producción no modificada.
 - **Despliegue de producción activo:** https://web-porcicola-produccion.luisalatta.workers.dev (versión `77c622ca-fa59-454a-820b-802d92799d78`). Migraciones 0001–0005 aplicadas en remoto a staging y producción; administrador inicial creado directamente en D1 con el bootstrap ya cerrado. Verificado en vivo: `/` 200 HTML, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie, `/api/config` 200 autenticado y `/api/inventory` 401 sin sesión y 200 autenticado con 2 galpones y 8 etapas. Las rutas `/inventario` y `/configuracion` devuelven 200. La versión T09 no se desplegó en producción.
-- **Despliegue de staging activo:** https://web-porcicola-staging.luisalatta.workers.dev (versión actual `731250dc-e103-4a00-972c-e723d30badeb`), con su administrador inicial y galpones base. Migraciones 0001–0016 aplicadas; `/sanidad` 200; `/api/vaccines/rules` y `/api/vaccines/schedules` 401 sin sesión. Producción sigue con migraciones 0001–0005 y no fue modificada.
+- **Despliegue de staging activo:** https://web-porcicola-staging.luisalatta.workers.dev (versión actual `07d55de4-7971-4633-bccd-d9e2bfc5afe9`), con su administrador inicial y galpones base. Migraciones 0001–0017 aplicadas; `/finanzas` 200; APIs financieras 401 sin sesión. Producción sigue con migraciones 0001–0005 y no fue modificada.
 - Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`).
 - El commit previo verificado en GitHub Actions con éxito es `75c2c9f` (ejecución 42425588778).
 
@@ -145,8 +152,8 @@ Todavía faltan definir y configurar los secretos separados, dominio propio y cr
 
 ## Pasos concretos para continuar
 
-1. **Reproducir el estado.** Última evidencia: suite completa 79/79 antes del ajuste final de ubicación; después del ajuste, pruebas de fichas 17/17, `npm run typecheck` y `npm run lint` correctos. Repetir `npm test -- --maxWorkers=1` y `npm run build` al retomar.
-2. **Continuar con T19 (finanzas).** Revisar `plan.md`, FIN-01/02 y casos 18, 20, 29–32. Empezar por libro auditable de ingresos/egresos, moneda/precisión y separar caja de costo por galpón; integrar compras, ventas, pagos y correcciones en T20–T21.
+1. **Reproducir el estado.** Última evidencia: `npm test -- --maxWorkers=1` 80/80, `npm run typecheck`, `npm run lint` y `npm run build` correctos. Migraciones 0001–0017; T12–T19 completadas.
+2. **Continuar con T20 (compras, ventas y correcciones).** Revisar GES-01, FIN-04 y casos 05/30. Enlazar transacciones económicas con movimientos de inventario de cabezas y suministros, con reintentos y reversión atómica; conservar la separación entre compra/pago y consumo establecida en T19.
 
 ## Instrucción para continuar
 

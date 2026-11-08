@@ -69,6 +69,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
   let db: D1Database;
   let adminToken: string;
   let operarioToken: string;
+  let responsableToken: string;
   let veterinarioToken: string;
   let operarioSinGalponToken: string;
 
@@ -135,6 +136,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0014_feed_projections_and_turns.sql',
       '0015_health_events_and_withdrawals.sql',
       '0016_vaccine_rules_and_schedules.sql',
+      '0017_financial_ledger.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -180,6 +182,9 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     });
     expect(operarioRes.status).toBe(201);
 
+    const responsableRes = await api('/api/admin/users', { method: 'POST', body: JSON.stringify({ username: 'responsable.animales@granja.pe', name: 'Responsable de Galpón A', role: 'responsable', password: 'ClaveResponsable1!', barnIds: [1] }) });
+    expect(responsableRes.status).toBe(201);
+
     const vetRes = await api('/api/admin/users', {
       method: 'POST',
       body: JSON.stringify({
@@ -216,6 +221,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     };
 
     operarioToken = await login('operario.animales@granja.pe', 'ClaveOperarioAni1!');
+    responsableToken = await login('responsable.animales@granja.pe', 'ClaveResponsable1!');
     veterinarioToken = await login('veterinario.animales@granja.pe', 'ClaveVeterinarioAni1!');
     operarioSinGalponToken = await login('operario.sin.galpon@granja.pe', 'ClaveSinGalpon1!');
   });
@@ -1032,6 +1038,17 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const cycleEdit=await api(`/api/reproduction/cycles/${cycleId}`,{method:'PUT',body:JSON.stringify({observations:'Observación corregida 1',operationKey:'rep-t18-cycle-edit-1'})});expect(cycleEdit.status).toBe(200);
     const cycleEditAgain=await api(`/api/reproduction/cycles/${cycleId}`,{method:'PUT',body:JSON.stringify({observations:'Observación corregida 2',operationKey:'rep-t18-cycle-edit-2'})});expect(cycleEditAgain.status).toBe(200);
     const sowSchedule=await api('/api/vaccines/schedules?status=pending&from=2026-08-05&to=2026-08-05');const sowRows=(await sowSchedule.json() as {schedules:{animalCode:string}[]}).schedules.filter(row=>row.animalCode==='T18-CERDA');expect(sowRows).toHaveLength(1);
+  });
+
+  it('registra finanzas con distribución exacta, monedas separadas y alcance por galpón', async () => {
+    const payload={direction:'expense',category:'Alimento',concept:'Compra de prueba',operationDate:'2026-11-07',amount:'100.00',currencyCode:'PEN',counterparty:'Proveedor ficticio',reference:'FC-TEST-1',reason:'Prueba de distribución financiera',operationKey:'fin-t19-split',allocations:[{barnId:1,amount:'60.00',supplyCode:'ALIMENTO-1',quantity:20},{barnId:2,amount:'40.00',supplyCode:'ALIMENTO-1',quantity:10}]};
+    const created=await api('/api/finance/entries',{method:'POST',body:JSON.stringify(payload)});expect(created.status,await created.clone().text()).toBe(201);
+    const replay=await api('/api/finance/entries',{method:'POST',body:JSON.stringify(payload)});expect(replay.status).toBe(200);
+    const invalid=await api('/api/finance/entries',{method:'POST',body:JSON.stringify({...payload,operationKey:'fin-t19-invalid',allocations:[{barnId:1,amount:'60.00'},{barnId:2,amount:'39.99'}]})});expect(invalid.status).toBe(400);
+    const general=await api('/api/finance/entries',{method:'POST',body:JSON.stringify({...payload,amount:'5.00',currencyCode:'USD',concept:'Gasto general',operationKey:'fin-t19-general',allocations:[{barnId:null,amount:'5.00'}]})});expect(general.status).toBe(201);
+    const forbidden=await api('/api/finance/entries',{method:'POST',body:JSON.stringify({...payload,operationKey:'fin-t19-forbidden'})},operarioToken);expect(forbidden.status).toBe(403);
+    const scoped=await api('/api/finance/entries?from=2026-11-01&to=2026-11-07',{},responsableToken);expect(scoped.status).toBe(200);const scopedData=await scoped.json() as {entries:{amountMinor:number;entryTotalMinor:number|null;barnName:string}[];totals:{currencyCode:string;amountMinor:number}[]};expect(scopedData.entries).toHaveLength(1);expect(scopedData.entries[0]).toMatchObject({amountMinor:6000,entryTotalMinor:null,barnName:'Galpón A'});expect(scopedData.totals).toEqual([{direction:'expense',currencyCode:'PEN',amountMinor:6000}]);
+    const admin=await api('/api/finance/entries?from=2026-11-01&to=2026-11-07');expect(admin.status).toBe(200);const adminData=await admin.json() as {entries:{amountMinor:number;entryTotalMinor:number|null;barnName:string}[];totals:{currencyCode:string;amountMinor:number}[]};expect(adminData.entries).toHaveLength(3);expect(adminData.entries.filter(row=>row.entryTotalMinor===10000)).toHaveLength(2);expect(adminData.entries.some(row=>row.barnName==='General')).toBe(true);expect(adminData.totals.map(row=>row.currencyCode).sort()).toEqual(['PEN','USD']);
   });
 
 });

@@ -1,6 +1,6 @@
 # Control de ejecución
 
-Estado actual: Fases 2 y 3 completas; T12–T18 completadas. Siguiente: T19 (libro de ingresos y egresos). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: Fases 2 y 3 completas; T12–T19 completadas. Siguiente: T20 (compras, ventas y correcciones integradas). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -42,7 +42,7 @@ Estado actual: Fases 2 y 3 completas; T12–T18 completadas. Siguiente: T19 (lib
 
 ## 6. Finanzas
 
-- [ ] T19 · Libro de ingresos y egresos · dependencias 15.
+- [x] T19 · Libro de ingresos y egresos · dependencias 15.
 - [ ] T20 · Compras, ventas y correcciones integradas · dependencias 10,17,19.
 - [ ] T21 · Caja, abonos y costos por galpón · dependencias 20.
 - [ ] Cierre 6: Conciliar ventas, existencias, pagos y caja a dos cierres de mes, incluyendo una devolución y una corrección.

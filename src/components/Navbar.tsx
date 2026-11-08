@@ -15,6 +15,7 @@ import {
   IconScale,
   IconSettings,
   IconCalendar,
+  IconCoins,
 } from './icons';
 
 interface NavbarProps {
@@ -196,6 +197,10 @@ export function Navbar({
             <IconPlus size={16} />
             <span>Sanidad</span>
           </span>
+        </button>
+
+        <button type="button" className={`nav-tab ${vistaActual === 'finanzas' ? 'nav-tab-active' : ''}`} onClick={() => onNavigate('finanzas')}>
+          <span className="inline-flex items-center justify-center gap-2 leading-none"><IconCoins size={16}/><span>Finanzas</span></span>
         </button>
 
         {perfilActual === 'administrador' && (

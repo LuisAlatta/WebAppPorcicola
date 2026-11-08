@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Perfil, Vista, EstadoUI } from './types';
 import { Navbar } from './components/Navbar';
@@ -13,6 +13,7 @@ import { ModuloAnimales } from './components/ModuloAnimales';
 import { ModuloReproduccion } from './components/ModuloReproduccion';
 import { ModuloAlimentacion } from './components/ModuloAlimentacion';
 import { ModuloSanidad } from './components/ModuloSanidad';
+const ModuloFinanzas = lazy(() => import('./components/ModuloFinanzas').then(module => ({default:module.ModuloFinanzas})));
 import './style.css';
 
 function getInitialView(): Vista {
@@ -26,6 +27,7 @@ function getInitialView(): Vista {
     if (path === '/inventario') return 'inventario';
     if (path === '/alimentacion') return 'alimentacion';
     if (path === '/sanidad') return 'sanidad';
+    if (path === '/finanzas') return 'finanzas';
     if (path === '/configuracion' || path === '/config') return 'configuracion';
     if (path === '/administracion' || path === '/admin') return 'administracion';
     if (path === '/login') return 'login';
@@ -86,6 +88,7 @@ function App() {
       else if (vista === 'inventario') targetPath = '/inventario';
       else if (vista === 'alimentacion') targetPath = '/alimentacion';
       else if (vista === 'sanidad') targetPath = '/sanidad';
+      else if (vista === 'finanzas') targetPath = '/finanzas';
       else if (vista === 'configuracion') targetPath = '/configuracion';
       else if (vista === 'administracion') targetPath = '/administracion';
       else if (vista === 'login') targetPath = '/login';
@@ -153,6 +156,8 @@ function App() {
         return <ModuloAlimentacion perfil={perfilActual} />;
       case 'sanidad':
         return <ModuloSanidad perfil={perfilActual} />;
+      case 'finanzas':
+        return <Suspense fallback={<div className="module-container">Cargando finanzas…</div>}><ModuloFinanzas perfil={perfilActual} /></Suspense>;
       case 'animales':
         return <ModuloAnimales perfil={perfilActual} />;
       case 'reproduccion':

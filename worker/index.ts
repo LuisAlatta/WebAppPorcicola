@@ -73,6 +73,7 @@ import { correctLitter, recordFarrowing, recordLitterEvent } from './litters';
 import { createFeedWarehouse, getFeedInventory, getFeedProjection, listFeedMovements, listFeedWarehouses, registerFeedMovement } from './feed';
 import { createHealthEvent, listHealthEvents, listUpcomingHealthEvents, listWithdrawalAlerts } from './health';
 import { applyVaccineOccurrence, createManualVaccineSchedule, deactivateVaccineRule, generateAnimalVaccineSchedules, generateVaccineSchedules, listVaccineRules, listVaccineSchedules, saveVaccineRule } from './vaccines';
+import { createFinancialEntry, listFinancialEntries } from './finance';
 
 export interface Env {
   DB: D1Database;
@@ -522,6 +523,14 @@ const worker = {
         const status = err instanceof ApiError ? err.status : /guard_id|inventory_movements\.id/.test(message) ? 409 : 400;
         return Response.json({ error: message }, { status });
       }
+    }
+
+    // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
+    if(path==='/api/finance/entries'||path==='/api/finance/barns'){
+      const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});
+      const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
+      if(request.method!=='GET'&&!['administrador','responsable'].includes(session.user.role))return Response.json({error:'Solo el Administrador o Usuario responsable puede registrar operaciones financieras'},{status:403});
+      try{if(path==='/api/finance/barns'&&request.method==='GET'){const where=scope.allowedBarnNames===null?'status<>\'inactivo\'':`status<>'inactivo' AND name IN (${scope.allowedBarnNames?.map(()=>'?').join(',')||'NULL'})`;const barns=await env.DB.prepare(`SELECT id,name FROM barns WHERE ${where} ORDER BY name`).bind(...(scope.allowedBarnNames??[])).all<{id:number;name:string}>();return Response.json({ok:true,barns:barns.results??[]});}if(path==='/api/finance/entries'&&request.method==='GET')return Response.json({ok:true,...await listFinancialEntries(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),direction:url.searchParams.get('direction'),currencyCode:url.searchParams.get('currencyCode'),category:url.searchParams.get('category'),barnId:url.searchParams.get('barnId')},scope)});if(path==='/api/finance/entries'&&request.method==='POST'){const body=await request.json() as Parameters<typeof createFinancialEntry>[2];const result=await createFinancialEntry(env.DB,session.user.id,body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});}return Response.json({error:'Método no permitido'},{status:405});}catch(err){const message=(err as Error).message||String(err);const status=err instanceof ApiError?err.status:/UNIQUE constraint|financial_entries/.test(message)?409:400;return Response.json({error:message},{status});}
     }
 
     // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
