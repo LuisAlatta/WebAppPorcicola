@@ -5,6 +5,7 @@ import {
   IconList,
   IconPlus,
   IconPig,
+  IconClipboard,
   IconShield,
   IconLogOut,
   IconWifiOff,
@@ -116,6 +117,17 @@ export function Navbar({
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconList size={16} />
             <span>Listado</span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className={`nav-tab ${vistaActual === 'animales' ? 'nav-tab-active' : ''}`}
+          onClick={() => onNavigate('animales')}
+        >
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconClipboard size={16} />
+            <span>Animales</span>
           </span>
         </button>
 

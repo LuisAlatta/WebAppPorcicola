@@ -48,6 +48,14 @@ import {
   listInventoryMovements,
   registerMovement,
 } from './inventory';
+import {
+  listAnimals,
+  getAnimal,
+  createAnimal,
+  updateAnimal,
+  changeTag,
+  setAnimalAvailability,
+} from './animals';
 
 export interface Env {
   DB: D1Database;
@@ -472,7 +480,104 @@ const worker = {
       }
     }
 
-    // 8. MÓDULO EXCLUSIVO DE ADMINISTRACIÓN (T05 · ACC-06, ACC-07, ADM-01..04, CFG-06, CA-27, CA-28)
+    // 8. FICHAS INDIVIDUALES DE ANIMALES (T09 · ANI-01..ANI-08, INV-04)
+    if (path === '/api/animals' || path.startsWith('/api/animals/')) {
+      const token = getSessionToken(request);
+      if (!token) {
+        return Response.json({ error: 'No autenticado: falta sesión' }, { status: 401 });
+      }
+
+      const session = await validateSession(env.DB, token);
+      if (!session) {
+        return Response.json({ error: 'Sesión inválida, expirada o revocada' }, { status: 401 });
+      }
+
+      const isWrite = request.method !== 'GET';
+      if (isWrite && !['administrador', 'responsable', 'operario'].includes(session.user.role)) {
+        return Response.json(
+          { error: 'Acceso denegado: el perfil Veterinario solo puede consultar las fichas' },
+          { status: 403 },
+        );
+      }
+
+      const scope = session.user.role === 'administrador'
+        ? { allowedBarnNames: null }
+        : { allowedBarnNames: session.barns };
+
+      try {
+        if (path === '/api/animals' && request.method === 'GET') {
+          const barnIdParam = url.searchParams.get('barnId');
+          const result = await listAnimals(env.DB, {
+            q: url.searchParams.get('q'),
+            type: url.searchParams.get('type'),
+            sex: url.searchParams.get('sex'),
+            status: url.searchParams.get('status'),
+            stage: url.searchParams.get('stage'),
+            location: url.searchParams.get('location'),
+            lot: url.searchParams.get('lot'),
+            barnId: barnIdParam !== null ? parseInt(barnIdParam, 10) : undefined,
+            active: url.searchParams.get('active'),
+            includeExited: url.searchParams.get('includeExited') === '1',
+            limit: url.searchParams.get('limit') !== null
+              ? parseInt(url.searchParams.get('limit') as string, 10)
+              : undefined,
+            offset: url.searchParams.get('offset') !== null
+              ? parseInt(url.searchParams.get('offset') as string, 10)
+              : undefined,
+          }, scope);
+          return Response.json({ ok: true, ...result });
+        }
+
+        if (path === '/api/animals' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof createAnimal>[2];
+          const result = await createAnimal(env.DB, session.user.id, body, scope);
+          return Response.json(
+            { ok: true, animal: result.animal, replayed: result.replayed },
+            { status: result.replayed ? 200 : 201 },
+          );
+        }
+
+        const rest = path.slice('/api/animals/'.length);
+        const segments = rest.split('/').filter((segment) => segment.length > 0);
+        const key = segments[0] ? decodeURIComponent(segments[0]) : '';
+
+        if (key && segments.length === 1 && request.method === 'GET') {
+          const animal = await getAnimal(env.DB, key, scope);
+          return Response.json({ ok: true, animal });
+        }
+
+        if (key && segments.length === 1 && request.method === 'PUT') {
+          const body = await request.json() as Parameters<typeof updateAnimal>[3];
+          const result = await updateAnimal(env.DB, session.user.id, key, body, scope);
+          return Response.json({ ok: true, animal: result.animal, replayed: result.replayed });
+        }
+
+        if (key && segments.length === 2 && segments[1] === 'tags' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof changeTag>[3];
+          const result = await changeTag(env.DB, session.user.id, key, body, scope);
+          return Response.json({ ok: true, animal: result.animal, replayed: result.replayed });
+        }
+
+        if (key && segments.length === 2 && segments[1] === 'deactivate' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof setAnimalAvailability>[4];
+          const result = await setAnimalAvailability(env.DB, session.user.id, key, false, body, scope);
+          return Response.json({ ok: true, animal: result.animal, replayed: result.replayed });
+        }
+
+        if (key && segments.length === 2 && segments[1] === 'reactivate' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof setAnimalAvailability>[4];
+          const result = await setAnimalAvailability(env.DB, session.user.id, key, true, body, scope);
+          return Response.json({ ok: true, animal: result.animal, replayed: result.replayed });
+        }
+
+        return Response.json({ error: 'Ruta de animales no encontrada' }, { status: 404 });
+      } catch (err) {
+        const status = err instanceof ApiError ? err.status : 400;
+        return Response.json({ error: (err as Error).message || String(err) }, { status });
+      }
+    }
+
+    // 9. MÓDULO EXCLUSIVO DE ADMINISTRACIÓN (T05 · ACC-06, ACC-07, ADM-01..04, CFG-06, CA-27, CA-28)
     if (path.startsWith('/api/admin/')) {
       const token = getSessionToken(request);
       if (!token) {

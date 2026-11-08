@@ -103,6 +103,7 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
       '0003_events_audit_schema.sql',
       '0004_farm_config_schema.sql',
       '0005_inventory_schema.sql',
+      '0006_animals_schema.sql',
     ];
 
     for (const file of migrationFiles) {

@@ -352,6 +352,52 @@ export async function getInventorySnapshot(
     };
   });
 
+  // Desglose individual (INV-04): las fichas vigentes del mismo grupo explican
+  // cuántas cabezas están identificadas y cuántas siguen sin arete.
+  const identifiedScope = barnFilterSql(barnIds, 'a.barn_id');
+  const identifiedRows = await db.prepare(`
+    SELECT a.barn_id, a.location_code, a.lot_code,
+      a.current_stage_code AS stage_code, a.sex, COUNT(*) AS identified
+    FROM animals a
+    WHERE a.entry_date <= ? AND (a.exit_date IS NULL OR a.exit_date > ?)${identifiedScope.sql}
+    GROUP BY a.barn_id, a.location_code, a.lot_code, a.current_stage_code, a.sex
+  `).bind(asOf, asOf, ...identifiedScope.params).all<Row>();
+
+  const bucketKey = (
+    barnId: number,
+    location: string | null,
+    lot: string | null,
+    stage: string,
+    sex: string,
+  ) => `${barnId}|${location ?? ''}|${lot ?? ''}|${stage}|${sex}`;
+
+  const identifiedMap = new Map<string, number>();
+  for (const row of identifiedRows.results ?? []) {
+    const key = bucketKey(
+      Number(row.barn_id),
+      row.location_code === null || row.location_code === undefined ? null : String(row.location_code),
+      row.lot_code === null || row.lot_code === undefined ? null : String(row.lot_code),
+      String(row.stage_code),
+      String(row.sex),
+    );
+    identifiedMap.set(key, Number(row.identified));
+  }
+
+  for (const balance of balances) {
+    const identified = Math.min(
+      balance.heads,
+      identifiedMap.get(bucketKey(
+        balance.barnId,
+        balance.locationCode,
+        balance.lotCode,
+        balance.stageCode,
+        balance.sex,
+      )) ?? 0,
+    );
+    balance.identified = identified;
+    balance.unidentified = Math.max(balance.heads - identified, 0);
+  }
+
   const summaryScope = barnFilterSql(barnIds);
   const summaryRows = await db.prepare(`
     SELECT

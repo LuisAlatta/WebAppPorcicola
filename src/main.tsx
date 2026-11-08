@@ -6,16 +6,17 @@ import { BocetoLogin } from './components/BocetoLogin';
 import { BocetoDashboard } from './components/BocetoDashboard';
 import { BocetoListado } from './components/BocetoListado';
 import { BocetoFormulario } from './components/BocetoFormulario';
-import { BocetoDetalle } from './components/BocetoDetalle';
 import { ModuloAdministracion } from './components/ModuloAdministracion';
 import { ModuloConfiguracion } from './components/ModuloConfiguracion';
 import { ModuloInventario } from './components/ModuloInventario';
+import { ModuloAnimales } from './components/ModuloAnimales';
 import './style.css';
 
 function getInitialView(): Vista {
   if (typeof window !== 'undefined') {
     const path = window.location.pathname;
-    if (path === '/animales' || path === '/listado') return 'listado';
+    if (path === '/listado') return 'listado';
+    if (path === '/animales') return 'animales';
     if (path === '/alta' || path === '/formulario') return 'formulario';
     if (path === '/detalle' || path.startsWith('/animal/')) return 'detalle';
     if (path === '/inventario') return 'inventario';
@@ -31,7 +32,15 @@ function App() {
   const [vistaActual, setVistaActual] = useState<Vista>(getInitialView);
   const [perfilActual, setPerfilActual] = useState<Perfil>('responsable');
   const [estadoUI, setEstadoUI] = useState<EstadoUI>('normal');
-  const [selectedAnimalId, setSelectedAnimalId] = useState<string>('002');
+  const [selectedAnimalId, setSelectedAnimalId] = useState<string>(() => {
+    const match = typeof window !== 'undefined' ? window.location.pathname.match(/^\/animal\/(.+)$/) : null;
+    if (!match) return '002';
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return '002';
+    }
+  });
   const [estaAutenticado, setEstaAutenticado] = useState<boolean>(true);
   const [usuarioActual, setUsuarioActual] = useState<string>('encargado@granja.pe');
 
@@ -63,7 +72,8 @@ function App() {
     setVistaActual(vista);
     if (typeof window !== 'undefined' && window.history) {
       let targetPath = '/';
-      if (vista === 'listado') targetPath = '/animales';
+      if (vista === 'listado') targetPath = '/listado';
+      else if (vista === 'animales') targetPath = '/animales';
       else if (vista === 'formulario') targetPath = '/alta';
       else if (vista === 'detalle') targetPath = `/animal/${selectedAnimalId}`;
       else if (vista === 'inventario') targetPath = '/inventario';
@@ -127,14 +137,11 @@ function App() {
           />
         );
       case 'detalle':
-        return (
-          <BocetoDetalle
-            animalId={selectedAnimalId}
-            onNavigate={handleNavigate}
-          />
-        );
+        return <ModuloAnimales perfil={perfilActual} initialAnimalKey={selectedAnimalId} />;
       case 'inventario':
         return <ModuloInventario perfil={perfilActual} />;
+      case 'animales':
+        return <ModuloAnimales perfil={perfilActual} />;
       case 'configuracion':
         return <ModuloConfiguracion />;
       case 'administracion':

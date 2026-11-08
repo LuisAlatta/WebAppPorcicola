@@ -6,6 +6,7 @@ export type Vista =
   | 'listado'
   | 'formulario'
   | 'detalle'
+  | 'animales'
   | 'inventario'
   | 'configuracion'
   | 'administracion';

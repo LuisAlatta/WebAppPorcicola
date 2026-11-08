@@ -1,0 +1,1531 @@
+import {
+  ApiError,
+  commitOperation,
+  createOperationClaim,
+  currentFarmDate,
+  isValidDateString,
+  lookupExistingOperation,
+  normalizeReason,
+  type AuditRecordInput,
+} from './events';
+import { getConfigSnapshot, type ConfigSnapshot } from './config';
+
+/**
+ * Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)
+ *
+ * El código es el identificador permanente y se conserva como texto para no
+ * perder ceros iniciales. Los aretes se versionan aparte. La genealogía admite
+ * progenitores internos o externos y rechaza parentescos circulares. El alta de
+ * un animal nacido o comprado genera una única entrada al inventario dentro de
+ * la misma operación idempotente; el alta de un animal que ya estaba en un
+ * grupo no suma cabezas y solo lo identifica dentro del saldo existente.
+ */
+
+export const ANIMAL_TYPES = ['cerda', 'verraco', 'lechon', 'reemplazo'] as const;
+export type AnimalType = (typeof ANIMAL_TYPES)[number];
+
+export const ANIMAL_STATUSES = ['activo', 'vendido', 'descartado', 'muerto'] as const;
+export type AnimalStatus = (typeof ANIMAL_STATUSES)[number];
+
+export const ORIGIN_TYPES = ['nacimiento', 'compra', 'interna', 'inicial'] as const;
+export type OriginType = (typeof ORIGIN_TYPES)[number];
+
+export const SEXES = ['macho', 'hembra', 'pendiente'] as const;
+export type Sex = (typeof SEXES)[number];
+
+const TYPE_LABEL: Record<AnimalType, string> = {
+  cerda: 'Cerda',
+  verraco: 'Verraco',
+  lechon: 'Lechón',
+  reemplazo: 'Reemplazo',
+};
+
+const STATUS_LABEL: Record<AnimalStatus, string> = {
+  activo: 'Activo',
+  vendido: 'Vendido',
+  descartado: 'Descartado',
+  muerto: 'Muerto',
+};
+
+const ORIGIN_LABEL: Record<OriginType, string> = {
+  nacimiento: 'Nacimiento',
+  compra: 'Compra',
+  interna: 'Ya estaba en la granja',
+  inicial: 'Saldo inicial',
+};
+
+const SEX_LABEL: Record<Sex, string> = {
+  macho: 'Macho',
+  hembra: 'Hembra',
+  pendiente: 'Pendiente de sexado',
+};
+
+const ORIGIN_MOVEMENT: Record<OriginType, 'birth' | 'purchase' | 'initial' | null> = {
+  nacimiento: 'birth',
+  compra: 'purchase',
+  inicial: 'initial',
+  interna: null,
+};
+
+export interface ScopeOptions {
+  /** Nombres de galpones autorizados; null o undefined significa toda la granja. */
+  allowedBarnNames?: string[] | null;
+}
+
+interface Row {
+  [key: string]: unknown;
+}
+
+export interface AnimalListItem {
+  id: number;
+  code: string;
+  currentTag: string;
+  alias: string | null;
+  animalType: AnimalType;
+  animalTypeLabel: string;
+  sex: Sex;
+  sexLabel: string;
+  breed: string | null;
+  status: AnimalStatus;
+  statusLabel: string;
+  isActive: boolean;
+  birthDate: string | null;
+  ageDays: number | null;
+  ageLabel: string | null;
+  currentWeightKg: number | null;
+  currentWeightDate: string | null;
+  birthWeightKg: number | null;
+  weaningDate: string | null;
+  weaningWeightKg: number | null;
+  aptitude: string | null;
+  barnId: number;
+  barnCode: string;
+  barnName: string;
+  stageCode: string;
+  stageName: string;
+  locationCode: string | null;
+  locationName: string | null;
+  lotCode: string | null;
+  lotName: string | null;
+  entryDate: string;
+  exitDate: string | null;
+  exitType: string | null;
+}
+
+export interface TagHistoryItem {
+  id: number;
+  tag: string;
+  validFrom: string;
+  validTo: string | null;
+  isCurrent: boolean;
+}
+
+export interface TypeHistoryItem {
+  id: number;
+  animalType: AnimalType;
+  animalTypeLabel: string;
+  validFrom: string;
+  validTo: string | null;
+  isCurrent: boolean;
+  reason: string | null;
+}
+
+export interface WeightItem {
+  id: number;
+  weighedOn: string;
+  weightKg: number;
+  stageCode: string | null;
+  note: string | null;
+}
+
+export interface ParentSummary {
+  id: number | null;
+  code: string | null;
+  alias: string | null;
+  external: string | null;
+}
+
+export interface ChronologyItem {
+  date: string;
+  kind: 'alta' | 'pesaje' | 'arete' | 'tipo' | 'inventario';
+  title: string;
+  detail: string;
+  id: number | null;
+}
+
+export interface AnimalDetail extends AnimalListItem {
+  observations: string | null;
+  originType: OriginType;
+  originLabel: string;
+  originDetail: string | null;
+  entryStageCode: string;
+  mother: ParentSummary | null;
+  father: ParentSummary | null;
+  tags: TagHistoryItem[];
+  typeHistory: TypeHistoryItem[];
+  weights: WeightItem[];
+  chronology: ChronologyItem[];
+  ageReference: string;
+}
+
+export interface AnimalOptions {
+  barns: { id: number; code: string; name: string }[];
+  stages: { code: string; name: string }[];
+  locations: { code: string; name: string; locationType: string }[];
+  lots: { code: string; name: string }[];
+  aptitudes: { code: string; name: string }[];
+  types: { code: string; name: string }[];
+  sexes: { code: string; name: string }[];
+  statuses: { code: string; name: string }[];
+  origins: { code: string; name: string }[];
+}
+
+export interface AnimalListResult {
+  animals: AnimalListItem[];
+  total: number;
+  options: AnimalOptions;
+}
+
+function today(): string {
+  return currentFarmDate();
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function requireText(value: unknown, field: string, maxLength = 120): string {
+  const parsed = typeof value === 'string' ? value.trim() : '';
+  if (parsed.length === 0) throw new ApiError(400, `${field} es obligatorio`);
+  if (parsed.length > maxLength) throw new ApiError(400, `${field} no puede superar ${maxLength} caracteres`);
+  return parsed;
+}
+
+function optionalText(value: unknown, maxLength = 300): string | null {
+  if (value === null || value === undefined) return null;
+  const parsed = String(value).trim();
+  if (parsed.length === 0) return null;
+  if (parsed.length > maxLength) throw new ApiError(400, `El texto no puede superar ${maxLength} caracteres`);
+  return parsed;
+}
+
+function optionalCode(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const parsed = String(value).trim();
+  return parsed.length === 0 ? null : parsed;
+}
+
+function parseDate(value: unknown, field: string): string {
+  if (!isValidDateString(value)) throw new ApiError(400, `${field} inválida: use el formato AAAA-MM-DD`);
+  return value;
+}
+
+function optionalDate(value: unknown, field: string): string | null {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  return parseDate(value, field);
+}
+
+function optionalWeight(value: unknown, field: string, allowZero: boolean): number | null {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) throw new ApiError(400, `${field} debe ser un número`);
+  if (allowZero ? parsed < 0 : parsed <= 0) {
+    throw new ApiError(400, allowZero ? `${field} no puede ser negativo` : `${field} debe ser mayor que cero`);
+  }
+  if (parsed > 500) throw new ApiError(400, `${field} no puede superar 500 kg`);
+  return round2(parsed);
+}
+
+function optionalId(value: unknown, field: string): number | null {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new ApiError(400, `${field} inválido`);
+  return parsed;
+}
+
+function daysBetween(from: string, to: string): number {
+  const start = Date.parse(`${from}T00:00:00.000Z`);
+  const end = Date.parse(`${to}T00:00:00.000Z`);
+  return Math.floor((end - start) / 86_400_000);
+}
+
+function ageLabel(days: number | null): string | null {
+  if (days === null) return null;
+  if (days < 0) return 'Fecha futura';
+  if (days < 60) return `${days} día${days === 1 ? '' : 's'}`;
+  const years = Math.floor(days / 365);
+  const months = Math.floor((days % 365) / 30);
+  const rest = days - years * 365 - months * 30;
+  const parts: string[] = [];
+  if (years > 0) parts.push(`${years} año${years === 1 ? '' : 's'}`);
+  if (months > 0) parts.push(`${months} mes${months === 1 ? '' : 'es'}`);
+  if (parts.length === 0) parts.push(`${rest} día${rest === 1 ? '' : 's'}`);
+  return parts.join(', ');
+}
+
+function animalRowBase(row: Row, maps: ConfigMaps, asOf: string): AnimalListItem {
+  const birthDate = row.birth_date === null || row.birth_date === undefined ? null : String(row.birth_date);
+  const reference = row.exit_date ? String(row.exit_date) : asOf;
+  const ageDays = birthDate ? daysBetween(birthDate, reference) : null;
+  const weight = row.current_weight === null || row.current_weight === undefined
+    ? null
+    : Number(row.current_weight);
+  const type = String(row.animal_type) as AnimalType;
+  const status = String(row.status) as AnimalStatus;
+  const sex = String(row.sex) as Sex;
+
+  return {
+    id: Number(row.id),
+    code: String(row.code),
+    currentTag: String(row.current_tag ?? row.code),
+    alias: row.alias === null || row.alias === undefined ? null : String(row.alias),
+    animalType: type,
+    animalTypeLabel: TYPE_LABEL[type] ?? type,
+    sex,
+    sexLabel: SEX_LABEL[sex] ?? sex,
+    breed: row.breed === null || row.breed === undefined ? null : String(row.breed),
+    status,
+    statusLabel: STATUS_LABEL[status] ?? status,
+    isActive: Number(row.is_active) === 1,
+    birthDate,
+    ageDays,
+    ageLabel: ageLabel(ageDays),
+    currentWeightKg: weight,
+    currentWeightDate: row.current_weight_date === null || row.current_weight_date === undefined
+      ? null
+      : String(row.current_weight_date),
+    birthWeightKg: row.birth_weight_kg === null || row.birth_weight_kg === undefined
+      ? null
+      : Number(row.birth_weight_kg),
+    weaningDate: row.weaning_date === null || row.weaning_date === undefined
+      ? null
+      : String(row.weaning_date),
+    weaningWeightKg: row.weaning_weight_kg === null || row.weaning_weight_kg === undefined
+      ? null
+      : Number(row.weaning_weight_kg),
+    aptitude: row.aptitude === null || row.aptitude === undefined ? null : String(row.aptitude),
+    barnId: Number(row.barn_id),
+    barnCode: String(row.barn_code ?? ''),
+    barnName: String(row.barn_name ?? ''),
+    stageCode: String(row.current_stage_code),
+    stageName: maps.stages.get(String(row.current_stage_code)) ?? String(row.current_stage_code),
+    locationCode: row.location_code === null || row.location_code === undefined ? null : String(row.location_code),
+    locationName: row.location_code === null || row.location_code === undefined
+      ? null
+      : maps.locations.get(String(row.location_code)) ?? String(row.location_code),
+    lotCode: row.lot_code === null || row.lot_code === undefined ? null : String(row.lot_code),
+    lotName: row.lot_code === null || row.lot_code === undefined
+      ? null
+      : maps.lots.get(String(row.lot_code)) ?? String(row.lot_code),
+    entryDate: String(row.entry_date),
+    exitDate: row.exit_date === null || row.exit_date === undefined ? null : String(row.exit_date),
+    exitType: row.exit_type === null || row.exit_type === undefined ? null : String(row.exit_type),
+  };
+}
+
+interface ConfigMaps {
+  stages: Map<string, string>;
+  locations: Map<string, string>;
+  lots: Map<string, string>;
+}
+
+function configMaps(config: ConfigSnapshot): ConfigMaps {
+  return {
+    stages: new Map(config.stages.map((stage) => [stage.code, stage.name])),
+    locations: new Map(config.locations.map((location) => [location.code, location.name])),
+    lots: new Map(config.lots.map((lot) => [lot.code, lot.name])),
+  };
+}
+
+function catalogItems(config: ConfigSnapshot, key: string): { code: string; name: string }[] {
+  const catalog = config.catalogs.find((item) => item.key === key);
+  return (catalog?.items ?? []).map((item) => ({ code: item.code, name: item.name }));
+}
+
+async function resolveBarnScope(db: D1Database, scope: ScopeOptions): Promise<number[] | null> {
+  if (!scope.allowedBarnNames) return null;
+  if (scope.allowedBarnNames.length === 0) return [];
+  const placeholders = scope.allowedBarnNames.map(() => '?').join(', ');
+  const res = await db.prepare(`SELECT id FROM barns WHERE name IN (${placeholders})`)
+    .bind(...scope.allowedBarnNames)
+    .all<{ id: number }>();
+  return (res.results ?? []).map((row) => Number(row.id));
+}
+
+function scopeSql(barnIds: number[] | null, column: string): { sql: string; params: unknown[] } {
+  if (barnIds === null) return { sql: '', params: [] };
+  if (barnIds.length === 0) return { sql: ' AND 1 = 0', params: [] };
+  return {
+    sql: ` AND ${column} IN (${barnIds.map(() => '?').join(', ')})`,
+    params: barnIds,
+  };
+}
+
+function assertBarnAllowed(barnIds: number[] | null, barnId: number): void {
+  if (barnIds === null) return;
+  if (!barnIds.includes(barnId)) {
+    throw new ApiError(403, 'Acceso denegado: no tiene asignado el galpón indicado');
+  }
+}
+
+async function buildOptions(db: D1Database, config: ConfigSnapshot, barnIds: number[] | null): Promise<AnimalOptions> {
+  const scope = scopeSql(barnIds, 'b.id');
+  const barnRows = await db.prepare(`
+    SELECT b.id, b.code, b.name FROM barns b
+    WHERE 1 = 1${scope.sql}
+    ORDER BY b.code
+  `).bind(...scope.params).all<{ id: number; code: string; name: string }>();
+
+  return {
+    barns: (barnRows.results ?? []).map((barn) => ({
+      id: Number(barn.id),
+      code: String(barn.code),
+      name: String(barn.name),
+    })),
+    stages: config.stages.map((stage) => ({ code: stage.code, name: stage.name })),
+    locations: config.locations.map((location) => ({
+      code: location.code,
+      name: location.name,
+      locationType: location.locationType,
+    })),
+    lots: config.lots.map((lot) => ({ code: lot.code, name: lot.name })),
+    aptitudes: catalogItems(config, 'aptitud'),
+    types: ANIMAL_TYPES.map((code) => ({ code, name: TYPE_LABEL[code] })),
+    sexes: SEXES.map((code) => ({ code, name: SEX_LABEL[code] })),
+    statuses: ANIMAL_STATUSES.map((code) => ({ code, name: STATUS_LABEL[code] })),
+    origins: ORIGIN_TYPES.map((code) => ({ code, name: ORIGIN_LABEL[code] })),
+  };
+}
+
+const SELECT_COLUMNS = `
+  a.*, b.code AS barn_code, b.name AS barn_name,
+  t.tag AS current_tag,
+  aw.weight_kg AS current_weight, aw.weighed_on AS current_weight_date,
+  m.code AS mother_code, f.code AS father_code
+`;
+
+function selectFrom(): string {
+  return `
+    SELECT ${SELECT_COLUMNS}
+    FROM animals a
+    INNER JOIN barns b ON b.id = a.barn_id
+    LEFT JOIN animal_tags t ON t.animal_id = a.id AND t.is_current = 1
+    LEFT JOIN animal_weights aw ON aw.id = (
+      SELECT w.id FROM animal_weights w
+      WHERE w.animal_id = a.id AND w.weighed_on <= ?
+      ORDER BY w.weighed_on DESC, w.id DESC
+      LIMIT 1
+    )
+    LEFT JOIN animals m ON m.id = a.mother_id
+    LEFT JOIN animals f ON f.id = a.father_id
+  `;
+}
+
+export interface ListAnimalFilters {
+  q?: string | null;
+  type?: string | null;
+  sex?: string | null;
+  status?: string | null;
+  stage?: string | null;
+  location?: string | null;
+  lot?: string | null;
+  barnId?: number | null;
+  active?: string | null;
+  includeExited?: boolean;
+  limit?: number | null;
+  offset?: number | null;
+}
+
+/** Padrón de animales con búsqueda por código, alias o arete y filtros combinables. */
+export async function listAnimals(
+  db: D1Database,
+  filters: ListAnimalFilters,
+  scope: ScopeOptions = {},
+): Promise<AnimalListResult> {
+  const asOf = today();
+  const [config, barnIds] = await Promise.all([
+    getConfigSnapshot(db, asOf),
+    resolveBarnScope(db, scope),
+  ]);
+  const maps = configMaps(config);
+
+  const where: string[] = ['1 = 1'];
+  const params: unknown[] = [];
+
+  const searchingPhysicalExits = filters.status === 'vendido' || filters.status === 'muerto';
+  if (!filters.includeExited && !searchingPhysicalExits) where.push('a.exit_date IS NULL');
+
+  const q = optionalCode(filters.q);
+  if (q) {
+    where.push(`(
+      a.code LIKE ?
+      OR a.alias LIKE ?
+      OR EXISTS (SELECT 1 FROM animal_tags at WHERE at.animal_id = a.id AND at.tag LIKE ?)
+    )`);
+    const like = `%${q}%`;
+    params.push(like, like, like);
+  }
+
+  if (filters.type) {
+    if (!ANIMAL_TYPES.includes(filters.type as AnimalType)) throw new ApiError(400, 'Tipo de animal inválido');
+    where.push('a.animal_type = ?');
+    params.push(filters.type);
+  }
+  if (filters.sex) {
+    if (!SEXES.includes(filters.sex as Sex)) throw new ApiError(400, 'Sexo inválido');
+    where.push('a.sex = ?');
+    params.push(filters.sex);
+  }
+  if (filters.status) {
+    if (!ANIMAL_STATUSES.includes(filters.status as AnimalStatus)) throw new ApiError(400, 'Estado inválido');
+    where.push('a.status = ?');
+    params.push(filters.status);
+  }
+  if (filters.active === '1' || filters.active === '0') {
+    where.push('a.is_active = ?');
+    params.push(Number(filters.active));
+  }
+  if (filters.stage) {
+    where.push('a.current_stage_code = ?');
+    params.push(filters.stage);
+  }
+  if (filters.location) {
+    where.push('a.location_code = ?');
+    params.push(filters.location);
+  }
+  if (filters.lot) {
+    where.push('a.lot_code = ?');
+    params.push(filters.lot);
+  }
+  if (filters.barnId !== null && filters.barnId !== undefined) {
+    assertBarnAllowed(barnIds, Number(filters.barnId));
+    where.push('a.barn_id = ?');
+    params.push(Number(filters.barnId));
+  }
+
+  const scopeFilter = scopeSql(barnIds, 'a.barn_id');
+  const limit = Math.min(Math.max(Number(filters.limit) || 200, 1), 500);
+  const offset = Math.max(Number(filters.offset) || 0, 0);
+
+  const rows = await db.prepare(`
+    ${selectFrom()}
+    WHERE ${where.join(' AND ')}${scopeFilter.sql}
+    ORDER BY a.code COLLATE NOCASE
+    LIMIT ? OFFSET ?
+  `).bind(asOf, ...params, ...scopeFilter.params, limit, offset).all<Row>();
+
+  const countRow = await db.prepare(`
+    SELECT COUNT(*) AS total FROM animals a
+    WHERE ${where.join(' AND ')}${scopeFilter.sql}
+  `).bind(...params, ...scopeFilter.params).first<{ total: number }>();
+
+  return {
+    animals: (rows.results ?? []).map((row) => animalRowBase(row, maps, asOf)),
+    total: Number(countRow?.total ?? 0),
+    options: await buildOptions(db, config, barnIds),
+  };
+}
+
+async function fetchAnimalRow(
+  db: D1Database,
+  key: string,
+  barnIds: number[] | null,
+): Promise<Row | null> {
+  const scope = scopeSql(barnIds, 'a.barn_id');
+  const asOf = today();
+
+  const byCode = await db.prepare(`
+    ${selectFrom()}
+    WHERE a.code = ?${scope.sql}
+  `).bind(asOf, key, ...scope.params).first<Row>();
+  if (byCode) return byCode;
+
+  if (!/^\d+$/.test(key)) return null;
+  const byId = await db.prepare(`
+    ${selectFrom()}
+    WHERE a.id = ?${scope.sql}
+  `).bind(asOf, Number(key), ...scope.params).first<Row>();
+  return byId ?? null;
+}
+
+function parentSummary(row: Row, prefix: 'mother' | 'father'): ParentSummary | null {
+  const id = row[`${prefix}_id`];
+  const external = row[`${prefix}_external`];
+  if (id === null || id === undefined) {
+    if (external === null || external === undefined) return null;
+    return { id: null, code: null, alias: null, external: String(external) };
+  }
+  return {
+    id: Number(id),
+    code: row[`${prefix}_code`] === null || row[`${prefix}_code`] === undefined ? null : String(row[`${prefix}_code`]),
+    alias: row[`${prefix}_alias`] === null || row[`${prefix}_alias`] === undefined ? null : String(row[`${prefix}_alias`]),
+    external: null,
+  };
+}
+
+/** Ficha completa con aretes, tipos, pesos y cronología. */
+export async function getAnimal(
+  db: D1Database,
+  key: string,
+  scope: ScopeOptions = {},
+): Promise<AnimalDetail> {
+  const asOf = today();
+  const [config, barnIds] = await Promise.all([
+    getConfigSnapshot(db, asOf),
+    resolveBarnScope(db, scope),
+  ]);
+
+  if (barnIds !== null && barnIds.length === 0) {
+    throw new ApiError(404, 'Animal no encontrado');
+  }
+
+  const row = await fetchAnimalRow(db, key, barnIds);
+  if (!row) throw new ApiError(404, 'Animal no encontrado');
+
+  // Trae madre y padre con sus alias para la ficha.
+  const parents = await db.prepare(`
+    SELECT id, code, alias FROM animals WHERE id IN (?, ?)
+  `).bind(
+    Number(row.mother_id ?? 0),
+    Number(row.father_id ?? 0),
+  ).all<{ id: number; code: string; alias: string | null }>();
+  const parentMap = new Map((parents.results ?? []).map((parent) => [Number(parent.id), parent]));
+  if (row.mother_id !== null && row.mother_id !== undefined) {
+    const mother = parentMap.get(Number(row.mother_id));
+    if (mother) row.mother_code = mother.code;
+  }
+  if (row.father_id !== null && row.father_id !== undefined) {
+    const father = parentMap.get(Number(row.father_id));
+    if (father) row.father_code = father.code;
+  }
+
+  const maps = configMaps(config);
+  const base = animalRowBase(row, maps, asOf);
+  const id = base.id;
+
+  const [tagRows, typeRows, weightRows, movementRows] = await Promise.all([
+    db.prepare(`
+      SELECT id, tag, valid_from, valid_to, is_current FROM animal_tags
+      WHERE animal_id = ? ORDER BY valid_from ASC, id ASC
+    `).bind(id).all<Row>(),
+    db.prepare(`
+      SELECT id, animal_type, valid_from, valid_to, is_current, reason FROM animal_type_history
+      WHERE animal_id = ? ORDER BY valid_from ASC, id ASC
+    `).bind(id).all<Row>(),
+    db.prepare(`
+      SELECT id, weighed_on, weight_kg, stage_code, note FROM animal_weights
+      WHERE animal_id = ? ORDER BY weighed_on ASC, id ASC
+    `).bind(id).all<Row>(),
+    db.prepare(`
+      SELECT id, movement_type, effective_date, quantity FROM inventory_movements
+      WHERE animal_id = ? ORDER BY effective_date ASC, id ASC
+    `).bind(id).all<Row>(),
+  ]);
+
+  const tags: TagHistoryItem[] = (tagRows.results ?? []).map((tag) => ({
+    id: Number(tag.id),
+    tag: String(tag.tag),
+    validFrom: String(tag.valid_from),
+    validTo: tag.valid_to === null || tag.valid_to === undefined ? null : String(tag.valid_to),
+    isCurrent: Number(tag.is_current) === 1,
+  }));
+
+  const typeHistory: TypeHistoryItem[] = (typeRows.results ?? []).map((item) => {
+    const type = String(item.animal_type) as AnimalType;
+    return {
+      id: Number(item.id),
+      animalType: type,
+      animalTypeLabel: TYPE_LABEL[type] ?? type,
+      validFrom: String(item.valid_from),
+      validTo: item.valid_to === null || item.valid_to === undefined ? null : String(item.valid_to),
+      isCurrent: Number(item.is_current) === 1,
+      reason: item.reason === null || item.reason === undefined ? null : String(item.reason),
+    };
+  });
+
+  const weights: WeightItem[] = (weightRows.results ?? []).map((weight) => ({
+    id: Number(weight.id),
+    weighedOn: String(weight.weighed_on),
+    weightKg: Number(weight.weight_kg),
+    stageCode: weight.stage_code === null || weight.stage_code === undefined ? null : String(weight.stage_code),
+    note: weight.note === null || weight.note === undefined ? null : String(weight.note),
+  }));
+
+  const chronology: ChronologyItem[] = [
+    {
+      date: base.entryDate,
+      kind: 'alta',
+      title: 'Alta en la granja',
+      detail: `${base.barnName} · ${base.stageName}${base.locationName ? ` · ${base.locationName}` : ''}`,
+      id: null,
+    },
+  ];
+  for (const tag of tags) {
+    chronology.push({
+      date: tag.validFrom,
+      kind: 'arete',
+      title: `Arete ${tag.tag}`,
+      detail: tag.validTo ? `Vigente hasta ${tag.validTo}` : 'Vigente',
+      id: tag.id,
+    });
+  }
+  for (const item of typeHistory) {
+    chronology.push({
+      date: item.validFrom,
+      kind: 'tipo',
+      title: `Tipo: ${item.animalTypeLabel}`,
+      detail: item.reason ?? (item.validTo ? `Vigente hasta ${item.validTo}` : 'Vigente'),
+      id: item.id,
+    });
+  }
+  for (const weight of weights) {
+    chronology.push({
+      date: weight.weighedOn,
+      kind: 'pesaje',
+      title: `Pesaje ${weight.weightKg} kg`,
+      detail: weight.note ?? 'Pesaje individual',
+      id: weight.id,
+    });
+  }
+  for (const movement of movementRows.results ?? []) {
+    const type = String(movement.movement_type);
+    chronology.push({
+      date: String(movement.effective_date),
+      kind: 'inventario',
+      title: `Inventario: ${type}`,
+      detail: `${Number(movement.quantity) > 0 ? '+' : '−'}${Math.abs(Number(movement.quantity))} cabezas`,
+      id: Number(movement.id),
+    });
+  }
+  chronology.sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+    return String(b.id ?? 0).localeCompare(String(a.id ?? 0));
+  });
+
+  const originType = String(row.origin_type) as OriginType;
+
+  return {
+    ...base,
+    observations: row.observations === null || row.observations === undefined ? null : String(row.observations),
+    originType,
+    originLabel: ORIGIN_LABEL[originType] ?? originType,
+    originDetail: row.origin_detail === null || row.origin_detail === undefined ? null : String(row.origin_detail),
+    entryStageCode: String(row.entry_stage_code),
+    mother: parentSummary(row, 'mother'),
+    father: parentSummary(row, 'father'),
+    tags,
+    typeHistory,
+    weights,
+    chronology,
+    ageReference: base.exitDate ?? asOf,
+  };
+}
+
+export interface CreateAnimalInput {
+  code?: string;
+  alias?: string | null;
+  animalType?: string;
+  sex?: string;
+  breed?: string | null;
+  birthDate?: string | null;
+  birthWeightKg?: number | string | null;
+  weaningDate?: string | null;
+  weaningWeightKg?: number | string | null;
+  aptitude?: string | null;
+  motherId?: number | string | null;
+  fatherId?: number | string | null;
+  motherExternal?: string | null;
+  fatherExternal?: string | null;
+  originType?: string;
+  originDetail?: string | null;
+  entryDate?: string;
+  entryStageCode?: string;
+  barnId?: number | string;
+  locationCode?: string | null;
+  lotCode?: string | null;
+  observations?: string | null;
+  reason?: string;
+  operationKey?: string;
+}
+
+interface ParentInput {
+  id: number | null;
+  external: string | null;
+  row: { id: number; code: string; sex: string; birth_date: string | null; barn_id: number } | null;
+}
+
+async function resolveParent(
+  db: D1Database,
+  idValue: unknown,
+  externalValue: unknown,
+  field: 'madre' | 'padre',
+  expectedSex: 'hembra' | 'macho',
+  barnIds: number[] | null,
+): Promise<ParentInput> {
+  const id = optionalId(idValue, `ID de ${field}`);
+  const external = optionalText(externalValue, 60);
+  if (id !== null && external !== null) {
+    throw new ApiError(400, `Indique ${field} interna o externa, no ambas`);
+  }
+  if (id === null) return { id: null, external, row: null };
+
+  const row = await db.prepare(`
+    SELECT id, code, sex, birth_date, barn_id FROM animals WHERE id = ?
+  `).bind(id).first<{ id: number; code: string; sex: string; birth_date: string | null; barn_id: number }>();
+  if (!row) throw new ApiError(404, `La ${field} indicada no existe`);
+  assertBarnAllowed(barnIds, Number(row.barn_id));
+  if (String(row.sex) !== expectedSex) {
+    throw new ApiError(400, `La ${field} debe ser de sexo ${expectedSex === 'hembra' ? 'hembra' : 'macho'}`);
+  }
+  return { id, external: null, row };
+}
+
+async function assertNoCycle(
+  db: D1Database,
+  animalId: number | null,
+  motherId: number | null,
+  fatherId: number | null,
+): Promise<void> {
+  if (motherId === null && fatherId === null) return;
+  const res = await db.prepare('SELECT id, mother_id, father_id FROM animals')
+    .all<{ id: number; mother_id: number | null; father_id: number | null }>();
+  const parents = new Map<number, { mother: number | null; father: number | null }>();
+  for (const row of res.results ?? []) {
+    parents.set(Number(row.id), {
+      mother: row.mother_id === null ? null : Number(row.mother_id),
+      father: row.father_id === null ? null : Number(row.father_id),
+    });
+  }
+
+  const stack = [motherId, fatherId].filter((value): value is number => value !== null);
+  const seen = new Set<number>();
+  while (stack.length > 0) {
+    const current = stack.pop() as number;
+    if (animalId !== null && current === animalId) {
+      throw new ApiError(400, 'La genealogía no puede formar un ciclo');
+    }
+    if (seen.has(current)) continue;
+    seen.add(current);
+    const parent = parents.get(current);
+    if (!parent) continue;
+    if (parent.mother !== null) stack.push(parent.mother);
+    if (parent.father !== null) stack.push(parent.father);
+  }
+}
+
+function assertParentDates(
+  childBirthDate: string | null,
+  mother: ParentInput,
+  father: ParentInput,
+): void {
+  if (!childBirthDate) return;
+  for (const [label, parent] of [['madre', mother], ['padre', father]] as const) {
+    const birth = parent.row?.birth_date;
+    if (birth && birth >= childBirthDate) {
+      throw new ApiError(400, `La fecha de nacimiento de la ${label} debe ser anterior a la del animal`);
+    }
+  }
+}
+
+async function unidentifiedHeads(
+  db: D1Database,
+  barnId: number,
+  locationCode: string | null,
+  lotCode: string | null,
+  stageCode: string,
+  sex: Sex,
+  date: string,
+): Promise<number> {
+  const headsRow = await db.prepare(`
+    SELECT COALESCE(SUM(
+      CASE WHEN movement_type IN ('sale', 'death', 'transfer_out')
+        THEN -quantity ELSE quantity END
+    ), 0) AS heads
+    FROM inventory_movements
+    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
+      AND effective_date <= ?
+  `).bind(barnId, locationCode, lotCode, stageCode, sex, date).first<{ heads: number }>();
+
+  const identifiedRow = await db.prepare(`
+    SELECT COUNT(*) AS total FROM animals
+    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND current_stage_code = ? AND sex = ?
+      AND entry_date <= ? AND (exit_date IS NULL OR exit_date > ?)
+  `).bind(barnId, locationCode, lotCode, stageCode, sex, date, date).first<{ total: number }>();
+
+  return Number(headsRow?.heads ?? 0) - Number(identifiedRow?.total ?? 0);
+}
+
+/** Alta de ficha individual con una sola entrada al inventario. */
+export async function createAnimal(
+  db: D1Database,
+  actorUserId: number,
+  input: CreateAnimalInput,
+  scope: ScopeOptions = {},
+): Promise<{ animal: AnimalDetail; replayed: boolean }> {
+  const code = requireText(input.code, 'Código del animal', 40);
+  if (/\s/.test(code)) throw new ApiError(400, 'El código no puede contener espacios');
+
+  const animalType = String(input.animalType ?? '') as AnimalType;
+  if (!ANIMAL_TYPES.includes(animalType)) throw new ApiError(400, 'Tipo de animal inválido');
+
+  const sex = String(input.sex ?? '') as Sex;
+  if (!SEXES.includes(sex)) throw new ApiError(400, 'Sexo inválido: use macho, hembra o pendiente');
+  if (animalType === 'cerda' && sex !== 'hembra') throw new ApiError(400, 'Una cerda debe registrarse como hembra');
+  if (animalType === 'verraco' && sex !== 'macho') throw new ApiError(400, 'Un verraco debe registrarse como macho');
+
+  const originType = String(input.originType ?? 'compra') as OriginType;
+  if (!ORIGIN_TYPES.includes(originType)) throw new ApiError(400, 'Procedencia inválida');
+
+  const entryDate = input.entryDate ? parseDate(input.entryDate, 'Fecha de ingreso') : today();
+  if (entryDate > today()) throw new ApiError(400, 'La fecha de ingreso no puede ser futura');
+
+  const birthDate = optionalDate(input.birthDate, 'Fecha de nacimiento');
+  if (birthDate && birthDate > entryDate) {
+    throw new ApiError(400, 'La fecha de nacimiento no puede ser posterior al ingreso');
+  }
+  const weaningDate = optionalDate(input.weaningDate, 'Fecha de destete');
+  if (weaningDate) {
+    if (weaningDate > today()) throw new ApiError(400, 'La fecha de destete no puede ser futura');
+    if (birthDate && weaningDate < birthDate) {
+      throw new ApiError(400, 'La fecha de destete no puede ser anterior al nacimiento');
+    }
+  }
+
+  const birthWeightKg = optionalWeight(input.birthWeightKg, 'Peso al nacer', true);
+  const weaningWeightKg = optionalWeight(input.weaningWeightKg, 'Peso al destete', false);
+  if (weaningWeightKg !== null && weaningDate === null) {
+    throw new ApiError(400, 'Indique la fecha de destete junto con su peso');
+  }
+
+  const barnId = Number(input.barnId);
+  if (!Number.isInteger(barnId) || barnId <= 0) throw new ApiError(400, 'Galpón inválido');
+  const stageCode = requireText(input.entryStageCode, 'Etapa de ingreso', 60);
+  const locationCode = optionalCode(input.locationCode);
+  const lotCode = optionalCode(input.lotCode);
+  const alias = optionalText(input.alias, 80);
+  const breed = optionalText(input.breed, 80);
+  const aptitude = optionalCode(input.aptitude);
+  const originDetail = optionalText(input.originDetail, 160);
+  const observations = optionalText(input.observations, 500);
+  const motherExternal = optionalText(input.motherExternal, 60);
+  const fatherExternal = optionalText(input.fatherExternal, 60);
+  const motherId = optionalId(input.motherId, 'ID de madre');
+  const fatherId = optionalId(input.fatherId, 'ID de padre');
+
+  if (motherId !== null && motherExternal !== null) {
+    throw new ApiError(400, 'Indique la madre interna o externa, no ambas');
+  }
+  if (fatherId !== null && fatherExternal !== null) {
+    throw new ApiError(400, 'Indique el padre interno o externo, no ambos');
+  }
+
+  const reason = normalizeReason(input.reason, { required: true, fallback: 'Alta de animal' });
+
+  const payload = {
+    code,
+    alias,
+    animalType,
+    sex,
+    breed,
+    birthDate,
+    birthWeightKg,
+    weaningDate,
+    weaningWeightKg,
+    aptitude,
+    motherId,
+    fatherId,
+    motherExternal,
+    fatherExternal,
+    originType,
+    originDetail,
+    entryDate,
+    entryStageCode: stageCode,
+    barnId,
+    locationCode,
+    lotCode,
+    observations,
+  };
+
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) {
+    const stored = replay.result as { code?: string } | null;
+    const animal = await getAnimal(db, stored?.code ?? code, scope);
+    return { animal, replayed: true };
+  }
+
+  const barnIds = await resolveBarnScope(db, scope);
+  assertBarnAllowed(barnIds, barnId);
+
+  const barn = await db.prepare('SELECT id, code, name FROM barns WHERE id = ?').bind(barnId)
+    .first<{ id: number; code: string; name: string }>();
+  if (!barn) throw new ApiError(404, 'El galpón indicado no existe');
+
+  const config = await getConfigSnapshot(db, entryDate);
+  if (!config.stages.some((stage) => stage.code === stageCode)) {
+    throw new ApiError(400, 'La etapa no está vigente en la fecha de ingreso');
+  }
+  if (locationCode && !config.locations.some((location) => location.code === locationCode)) {
+    throw new ApiError(400, 'La ubicación no está vigente en la fecha de ingreso');
+  }
+  if (lotCode && !config.lots.some((lot) => lot.code === lotCode)) {
+    throw new ApiError(400, 'El lote no está vigente en la fecha de ingreso');
+  }
+  if (aptitude && !catalogItems(config, 'aptitud').some((item) => item.code === aptitude)) {
+    throw new ApiError(400, 'La aptitud no está vigente en la fecha de ingreso');
+  }
+
+  const duplicate = await db.prepare('SELECT id FROM animals WHERE code = ?').bind(code).first();
+  if (duplicate) throw new ApiError(409, `Ya existe un animal con el código ${code}`);
+
+  const mother = await resolveParent(db, motherId, motherExternal, 'madre', 'hembra', barnIds);
+  const father = await resolveParent(db, fatherId, fatherExternal, 'padre', 'macho', barnIds);
+  if (mother.id !== null && father.id !== null && mother.id === father.id) {
+    throw new ApiError(400, 'La madre y el padre no pueden ser el mismo animal');
+  }
+  assertParentDates(birthDate, mother, father);
+  await assertNoCycle(db, null, mother.id, father.id);
+
+  if (originType === 'interna') {
+    const available = await unidentifiedHeads(
+      db, barnId, locationCode, lotCode, stageCode, sex, entryDate,
+    );
+    if (available < 1) {
+      throw new ApiError(409, 'No hay cabezas sin identificar en ese grupo para vincular la ficha');
+    }
+  }
+
+  const idRow = await db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM animals')
+    .first<{ next_id: number }>();
+  const animalId = Number(idRow?.next_id ?? 1);
+  const createdAt = new Date().toISOString();
+
+  const statements: D1PreparedStatement[] = [
+    db.prepare(`
+      INSERT INTO animals (
+        id, code, alias, animal_type, sex, breed, birth_date, birth_weight_kg,
+        weaning_date, weaning_weight_kg, status, aptitude, mother_id, father_id,
+        mother_external, father_external, origin_type, origin_detail, entry_date,
+        entry_stage_code, current_stage_code, barn_id, location_code, lot_code,
+        observations, is_active, created_by_user_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+    `).bind(
+      animalId, code, alias, animalType, sex, breed, birthDate, birthWeightKg,
+      weaningDate, weaningWeightKg, aptitude, mother.id, father.id,
+      mother.external, father.external, originType, originDetail, entryDate,
+      stageCode, stageCode, barnId, locationCode, lotCode,
+      observations, actorUserId, createdAt, createdAt,
+    ),
+    db.prepare(`
+      INSERT INTO animal_tags (animal_id, tag, valid_from, valid_to, is_current, created_by_user_id, created_at)
+      VALUES (?, ?, ?, NULL, 1, ?, ?)
+    `).bind(animalId, code, entryDate, actorUserId, createdAt),
+    db.prepare(`
+      INSERT INTO animal_type_history (
+        animal_id, animal_type, valid_from, valid_to, is_current, reason, created_by_user_id, created_at
+      ) VALUES (?, ?, ?, NULL, 1, ?, ?, ?)
+    `).bind(animalId, animalType, entryDate, 'Alta del animal', actorUserId, createdAt),
+  ];
+
+  if (birthWeightKg !== null && birthDate !== null) {
+    statements.push(db.prepare(`
+      INSERT INTO animal_weights (
+        animal_id, weighed_on, weight_kg, stage_code, barn_id, location_code, lot_code,
+        note, recorded_by_user_id, created_at
+      ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'Peso al nacer', ?, ?)
+    `).bind(animalId, birthDate, birthWeightKg, barnId, locationCode, lotCode, actorUserId, createdAt));
+  }
+  if (weaningWeightKg !== null && weaningDate !== null) {
+    statements.push(db.prepare(`
+      INSERT INTO animal_weights (
+        animal_id, weighed_on, weight_kg, stage_code, barn_id, location_code, lot_code,
+        note, recorded_by_user_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Peso al destete', ?, ?)
+    `).bind(animalId, weaningDate, weaningWeightKg, stageCode, barnId, locationCode, lotCode, actorUserId, createdAt));
+  }
+
+  const movementType = ORIGIN_MOVEMENT[originType];
+  let movementId: number | null = null;
+  if (movementType !== null) {
+    const movementIdRow = await db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM inventory_movements')
+      .first<{ next_id: number }>();
+    movementId = Number(movementIdRow?.next_id ?? 1);
+    statements.push(db.prepare(`
+      INSERT INTO inventory_movements (
+        id, operation_log_id, movement_type, effective_date, barn_id, location_code, lot_code,
+        stage_code, sex, quantity, cause_code, transfer_group_id, notes, animal_id,
+        created_by_user_id, created_at
+      ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 1, NULL, NULL, ?, ?, ?, ?)
+    `).bind(
+      movementId, movementType, entryDate, barnId, locationCode, lotCode,
+      stageCode, sex, `Alta individual ${code}`, animalId, actorUserId, createdAt,
+    ));
+  }
+
+  const result = { animalId, code };
+  const claim = await createOperationClaim({
+    operationKey: input.operationKey,
+    operationType: 'animal.create',
+    authorUserId: actorUserId,
+    entityType: 'animal',
+    entityId: animalId,
+    barnId,
+    effectiveDate: entryDate,
+    payload,
+    result,
+  });
+
+  const audits: AuditRecordInput[] = [{
+    entityType: 'animal',
+    entityId: animalId,
+    action: 'create',
+    actorUserId,
+    barnId,
+    reason,
+    previousData: null,
+    newData: {
+      code, animalType, sex, birthDate, originType, entryDate, stageCode,
+      locationCode, lotCode, motherId: mother.id, fatherId: father.id,
+    },
+    effectiveDate: entryDate,
+    recordedAt: claim.recordedAt,
+  }];
+
+  if (movementId !== null) {
+    audits.push({
+      entityType: 'inventory_movement',
+      entityId: movementId,
+      action: 'create',
+      actorUserId,
+      barnId,
+      reason,
+      previousData: null,
+      newData: { animalId, movementType, quantity: 1, effectiveDate: entryDate },
+      effectiveDate: entryDate,
+      recordedAt: claim.recordedAt,
+    });
+  }
+
+  await commitOperation(db, claim, statements, audits);
+
+  const animal = await getAnimal(db, code, scope);
+  return { animal, replayed: false };
+}
+
+export interface UpdateAnimalInput {
+  alias?: string | null;
+  animalType?: string;
+  breed?: string | null;
+  birthDate?: string | null;
+  birthWeightKg?: number | string | null;
+  weaningDate?: string | null;
+  weaningWeightKg?: number | string | null;
+  aptitude?: string | null;
+  motherId?: number | string | null;
+  fatherId?: number | string | null;
+  motherExternal?: string | null;
+  fatherExternal?: string | null;
+  observations?: string | null;
+  effectiveDate?: string;
+  reason?: string;
+  operationKey?: string;
+}
+
+/** Edición de datos descriptivos. El código y la ubicación física son inmutables aquí. */
+export async function updateAnimal(
+  db: D1Database,
+  actorUserId: number,
+  key: string,
+  input: UpdateAnimalInput,
+  scope: ScopeOptions = {},
+): Promise<{ animal: AnimalDetail; replayed: boolean }> {
+  const barnIds = await resolveBarnScope(db, scope);
+  if (barnIds !== null && barnIds.length === 0) throw new ApiError(404, 'Animal no encontrado');
+
+  const row = await fetchAnimalRow(db, key, barnIds);
+  if (!row) throw new ApiError(404, 'Animal no encontrado');
+
+  const currentId = Number(row.id);
+  const currentType = String(row.animal_type) as AnimalType;
+  const animalType = input.animalType === undefined ? currentType : String(input.animalType) as AnimalType;
+  if (!ANIMAL_TYPES.includes(animalType)) throw new ApiError(400, 'Tipo de animal inválido');
+  if (animalType === 'cerda' && row.sex !== 'hembra') {
+    throw new ApiError(400, 'Una cerda debe registrarse como hembra');
+  }
+  if (animalType === 'verraco' && row.sex !== 'macho') {
+    throw new ApiError(400, 'Un verraco debe registrarse como macho');
+  }
+
+  const alias = input.alias === undefined
+    ? (row.alias === null || row.alias === undefined ? null : String(row.alias))
+    : optionalText(input.alias, 80);
+  const breed = input.breed === undefined
+    ? (row.breed === null || row.breed === undefined ? null : String(row.breed))
+    : optionalText(input.breed, 80);
+  const observations = input.observations === undefined
+    ? (row.observations === null || row.observations === undefined ? null : String(row.observations))
+    : optionalText(input.observations, 500);
+  const aptitude = input.aptitude === undefined
+    ? (row.aptitude === null || row.aptitude === undefined ? null : String(row.aptitude))
+    : optionalCode(input.aptitude);
+
+  const birthDate = input.birthDate === undefined
+    ? (row.birth_date === null || row.birth_date === undefined ? null : String(row.birth_date))
+    : optionalDate(input.birthDate, 'Fecha de nacimiento');
+  if (birthDate && birthDate > String(row.entry_date)) {
+    throw new ApiError(400, 'La fecha de nacimiento no puede ser posterior al ingreso');
+  }
+
+  const weaningDate = input.weaningDate === undefined
+    ? (row.weaning_date === null || row.weaning_date === undefined ? null : String(row.weaning_date))
+    : optionalDate(input.weaningDate, 'Fecha de destete');
+  if (weaningDate && weaningDate > today()) throw new ApiError(400, 'La fecha de destete no puede ser futura');
+  if (weaningDate && birthDate && weaningDate < birthDate) {
+    throw new ApiError(400, 'La fecha de destete no puede ser anterior al nacimiento');
+  }
+
+  const birthWeightKg = input.birthWeightKg === undefined
+    ? (row.birth_weight_kg === null || row.birth_weight_kg === undefined ? null : Number(row.birth_weight_kg))
+    : optionalWeight(input.birthWeightKg, 'Peso al nacer', true);
+  const weaningWeightKg = input.weaningWeightKg === undefined
+    ? (row.weaning_weight_kg === null || row.weaning_weight_kg === undefined ? null : Number(row.weaning_weight_kg))
+    : optionalWeight(input.weaningWeightKg, 'Peso al destete', false);
+  if (weaningWeightKg !== null && weaningDate === null) {
+    throw new ApiError(400, 'Indique la fecha de destete junto con su peso');
+  }
+
+  const motherId = input.motherId === undefined
+    ? (row.mother_id === null || row.mother_id === undefined ? null : Number(row.mother_id))
+    : optionalId(input.motherId, 'ID de madre');
+  const fatherId = input.fatherId === undefined
+    ? (row.father_id === null || row.father_id === undefined ? null : Number(row.father_id))
+    : optionalId(input.fatherId, 'ID de padre');
+  const motherExternal = input.motherExternal === undefined
+    ? (row.mother_external === null || row.mother_external === undefined ? null : String(row.mother_external))
+    : optionalText(input.motherExternal, 60);
+  const fatherExternal = input.fatherExternal === undefined
+    ? (row.father_external === null || row.father_external === undefined ? null : String(row.father_external))
+    : optionalText(input.fatherExternal, 60);
+
+  if (motherId !== null && motherExternal !== null) {
+    throw new ApiError(400, 'Indique la madre interna o externa, no ambas');
+  }
+  if (fatherId !== null && fatherExternal !== null) {
+    throw new ApiError(400, 'Indique el padre interno o externo, no ambos');
+  }
+  if (motherId === currentId || fatherId === currentId) {
+    throw new ApiError(400, 'Un animal no puede ser su propio progenitor');
+  }
+
+  const effectiveDate = input.effectiveDate ? parseDate(input.effectiveDate, 'Fecha efectiva') : today();
+  if (effectiveDate > today()) throw new ApiError(400, 'La fecha efectiva no puede ser futura');
+
+  const typeChanged = animalType !== currentType;
+  const reason = normalizeReason(input.reason, {
+    required: typeChanged,
+    fallback: 'Edición de ficha',
+  });
+
+  const payload = {
+    key,
+    alias,
+    animalType,
+    breed,
+    birthDate,
+    birthWeightKg,
+    weaningDate,
+    weaningWeightKg,
+    aptitude,
+    motherId,
+    fatherId,
+    motherExternal,
+    fatherExternal,
+    observations,
+    effectiveDate,
+  };
+
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) {
+    return { animal: await getAnimal(db, key, scope), replayed: true };
+  }
+
+  if (!exitedCheck(row)) {
+    // Ficha dada de baja: solo se permite editar datos descriptivos, nunca reabrir.
+    if (typeChanged) throw new ApiError(400, 'No se puede cambiar el tipo de una ficha cerrada');
+  }
+
+  const mother = await resolveParent(db, motherId, motherExternal, 'madre', 'hembra', barnIds);
+  const father = await resolveParent(db, fatherId, fatherExternal, 'padre', 'macho', barnIds);
+  if (mother.id !== null && father.id !== null && mother.id === father.id) {
+    throw new ApiError(400, 'La madre y el padre no pueden ser el mismo animal');
+  }
+  assertParentDates(birthDate, mother, father);
+  await assertNoCycle(db, currentId, mother.id, father.id);
+
+  const config = await getConfigSnapshot(db, effectiveDate);
+  if (aptitude && !catalogItems(config, 'aptitud').some((item) => item.code === aptitude)) {
+    throw new ApiError(400, 'La aptitud no está vigente en la fecha indicada');
+  }
+
+  const updatedAt = new Date().toISOString();
+  const statements: D1PreparedStatement[] = [
+    db.prepare(`
+      UPDATE animals SET
+        alias = ?, animal_type = ?, breed = ?, birth_date = ?, birth_weight_kg = ?,
+        weaning_date = ?, weaning_weight_kg = ?, aptitude = ?, mother_id = ?, father_id = ?,
+        mother_external = ?, father_external = ?, observations = ?, updated_at = ?
+      WHERE id = ?
+    `).bind(
+      alias, animalType, breed, birthDate, birthWeightKg,
+      weaningDate, weaningWeightKg, aptitude, mother.id, father.id,
+      mother.external, father.external, observations, updatedAt, currentId,
+    ),
+  ];
+
+  if (typeChanged) {
+    statements.push(
+      db.prepare(`
+        UPDATE animal_type_history SET valid_to = ?, is_current = 0
+        WHERE animal_id = ? AND is_current = 1
+      `).bind(effectiveDate, currentId),
+      db.prepare(`
+        INSERT INTO animal_type_history (
+          animal_id, animal_type, valid_from, valid_to, is_current, reason, created_by_user_id, created_at
+        ) VALUES (?, ?, ?, NULL, 1, ?, ?, ?)
+      `).bind(currentId, animalType, effectiveDate, reason, actorUserId, updatedAt),
+    );
+  }
+
+  // Corregir un peso descriptivo deja su pesaje en la serie histórica para que
+  // el peso actual siga derivándose del último pesaje válido por fecha.
+  const previousBirthDate = row.birth_date === null || row.birth_date === undefined ? null : String(row.birth_date);
+  const previousBirthWeight = row.birth_weight_kg === null || row.birth_weight_kg === undefined
+    ? null
+    : Number(row.birth_weight_kg);
+  const previousWeaningDate = row.weaning_date === null || row.weaning_date === undefined ? null : String(row.weaning_date);
+  const previousWeaningWeight = row.weaning_weight_kg === null || row.weaning_weight_kg === undefined
+    ? null
+    : Number(row.weaning_weight_kg);
+
+  if (birthWeightKg !== null && birthDate !== null
+    && (birthWeightKg !== previousBirthWeight || birthDate !== previousBirthDate)) {
+    statements.push(db.prepare(`
+      INSERT INTO animal_weights (
+        animal_id, weighed_on, weight_kg, stage_code, barn_id, location_code, lot_code,
+        note, recorded_by_user_id, created_at
+      ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'Peso al nacer corregido', ?, ?)
+    `).bind(
+      currentId, birthDate, birthWeightKg, Number(row.barn_id),
+      row.location_code ?? null, row.lot_code ?? null, actorUserId, updatedAt,
+    ));
+  }
+  if (weaningWeightKg !== null && weaningDate !== null
+    && (weaningWeightKg !== previousWeaningWeight || weaningDate !== previousWeaningDate)) {
+    statements.push(db.prepare(`
+      INSERT INTO animal_weights (
+        animal_id, weighed_on, weight_kg, stage_code, barn_id, location_code, lot_code,
+        note, recorded_by_user_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Peso al destete corregido', ?, ?)
+    `).bind(
+      currentId, weaningDate, weaningWeightKg, String(row.current_stage_code),
+      Number(row.barn_id), row.location_code ?? null, row.lot_code ?? null, actorUserId, updatedAt,
+    ));
+  }
+
+  const claim = await createOperationClaim({
+    operationKey: input.operationKey,
+    operationType: 'animal.update',
+    authorUserId: actorUserId,
+    entityType: 'animal',
+    entityId: currentId,
+    barnId: Number(row.barn_id),
+    effectiveDate,
+    payload,
+    result: { animalId: currentId, code: row.code },
+  });
+
+  await commitOperation(db, claim, statements, [{
+    entityType: 'animal',
+    entityId: currentId,
+    action: typeChanged ? 'correct' : 'update',
+    actorUserId,
+    barnId: Number(row.barn_id),
+    reason,
+    previousData: {
+      alias: row.alias ?? null,
+      animalType: currentType,
+      breed: row.breed ?? null,
+      birthDate: row.birth_date ?? null,
+      aptitude: row.aptitude ?? null,
+      motherId: row.mother_id ?? null,
+      fatherId: row.father_id ?? null,
+      observations: row.observations ?? null,
+    },
+    newData: {
+      alias, animalType, breed, birthDate, aptitude,
+      motherId: mother.id, fatherId: father.id, observations,
+    },
+    effectiveDate,
+    recordedAt: claim.recordedAt,
+  }]);
+
+  return { animal: await getAnimal(db, key, scope), replayed: false };
+}
+
+function exitedCheck(row: Row): boolean {
+  return row.exit_date === null || row.exit_date === undefined;
+}
+
+export interface ChangeTagInput {
+  tag?: string;
+  effectiveDate?: string;
+  reason?: string;
+  operationKey?: string;
+}
+
+/** Cambia el arete conservando el anterior con su fecha de vigencia (ANI-02). */
+export async function changeTag(
+  db: D1Database,
+  actorUserId: number,
+  key: string,
+  input: ChangeTagInput,
+  scope: ScopeOptions = {},
+): Promise<{ animal: AnimalDetail; replayed: boolean }> {
+  const tag = requireText(input.tag, 'Número de arete', 40);
+  if (/\s/.test(tag)) throw new ApiError(400, 'El arete no puede contener espacios');
+  const effectiveDate = input.effectiveDate ? parseDate(input.effectiveDate, 'Fecha del cambio') : today();
+  if (effectiveDate > today()) throw new ApiError(400, 'La fecha del cambio no puede ser futura');
+  const reason = normalizeReason(input.reason, { required: true, fallback: 'Cambio de arete' });
+
+  const payload = { key, tag, effectiveDate };
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) {
+    return { animal: await getAnimal(db, key, scope), replayed: true };
+  }
+
+  const barnIds = await resolveBarnScope(db, scope);
+  if (barnIds !== null && barnIds.length === 0) throw new ApiError(404, 'Animal no encontrado');
+  const row = await fetchAnimalRow(db, key, barnIds);
+  if (!row) throw new ApiError(404, 'Animal no encontrado');
+  const animalId = Number(row.id);
+
+  const currentTagRow = await db.prepare(`
+    SELECT id, tag, valid_from FROM animal_tags WHERE animal_id = ? AND is_current = 1
+  `).bind(animalId).first<{ id: number; tag: string; valid_from: string }>();
+  if (!currentTagRow) throw new ApiError(409, 'La ficha no tiene un arete vigente');
+  if (String(currentTagRow.tag) === tag) throw new ApiError(400, 'El arete indicado ya está vigente');
+  if (effectiveDate < String(currentTagRow.valid_from)) {
+    throw new ApiError(400, 'La fecha del cambio no puede ser anterior al arete vigente');
+  }
+
+  const inUse = await db.prepare('SELECT id FROM animal_tags WHERE tag = ? AND is_current = 1')
+    .bind(tag).first();
+  if (inUse) throw new ApiError(409, `El arete ${tag} ya está asignado a otro animal`);
+
+  const createdAt = new Date().toISOString();
+  const claim = await createOperationClaim({
+    operationKey: input.operationKey,
+    operationType: 'animal.tag',
+    authorUserId: actorUserId,
+    entityType: 'animal',
+    entityId: animalId,
+    barnId: Number(row.barn_id),
+    effectiveDate,
+    payload,
+    result: { animalId, code: row.code, tag },
+  });
+
+  await commitOperation(db, claim, [
+    db.prepare(`
+      UPDATE animal_tags SET valid_to = ?, is_current = 0
+      WHERE animal_id = ? AND is_current = 1
+    `).bind(effectiveDate, animalId),
+    db.prepare(`
+      INSERT INTO animal_tags (animal_id, tag, valid_from, valid_to, is_current, created_by_user_id, created_at)
+      VALUES (?, ?, ?, NULL, 1, ?, ?)
+    `).bind(animalId, tag, effectiveDate, actorUserId, createdAt),
+  ], [{
+    entityType: 'animal',
+    entityId: animalId,
+    action: 'update',
+    actorUserId,
+    barnId: Number(row.barn_id),
+    reason,
+    previousData: { tag: currentTagRow.tag, validFrom: currentTagRow.valid_from },
+    newData: { tag, validFrom: effectiveDate },
+    effectiveDate,
+    recordedAt: claim.recordedAt,
+  }]);
+
+  return { animal: await getAnimal(db, key, scope), replayed: false };
+}
+
+export interface ToggleAvailabilityInput {
+  reason?: string;
+  operationKey?: string;
+}
+
+/**
+ * Desactiva la disponibilidad de una ficha (ANI-08). No registra venta ni muerte
+ * y no altera el inventario físico: solo la retira de las selecciones nuevas.
+ */
+export async function setAnimalAvailability(
+  db: D1Database,
+  actorUserId: number,
+  key: string,
+  active: boolean,
+  input: ToggleAvailabilityInput,
+  scope: ScopeOptions = {},
+): Promise<{ animal: AnimalDetail; replayed: boolean }> {
+  const reason = normalizeReason(input.reason, { required: true, fallback: active ? 'Reactivación de ficha' : 'Desactivación de ficha' });
+  const payload = { key, active };
+
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) {
+    return { animal: await getAnimal(db, key, scope), replayed: true };
+  }
+
+  const barnIds = await resolveBarnScope(db, scope);
+  if (barnIds !== null && barnIds.length === 0) throw new ApiError(404, 'Animal no encontrado');
+  const row = await fetchAnimalRow(db, key, barnIds);
+  if (!row) throw new ApiError(404, 'Animal no encontrado');
+  if (!exitedCheck(row)) throw new ApiError(409, 'La ficha está cerrada por una salida física');
+
+  const animalId = Number(row.id);
+  const isActive = Number(row.is_active) === 1;
+  if (isActive === active) {
+    throw new ApiError(400, active ? 'La ficha ya está activa' : 'La ficha ya está desactivada');
+  }
+
+  const now = new Date().toISOString();
+  const claim = await createOperationClaim({
+    operationKey: input.operationKey,
+    operationType: active ? 'animal.reactivate' : 'animal.deactivate',
+    authorUserId: actorUserId,
+    entityType: 'animal',
+    entityId: animalId,
+    barnId: Number(row.barn_id),
+    effectiveDate: today(),
+    payload,
+    result: { animalId, code: row.code, active },
+  });
+
+  await commitOperation(db, claim, [
+    db.prepare(`
+      UPDATE animals SET is_active = ?, deactivated_at = ?, deactivation_reason = ?, updated_at = ?
+      WHERE id = ?
+    `).bind(active ? 1 : 0, active ? null : now, active ? null : reason, now, animalId),
+  ], [{
+    entityType: 'animal',
+    entityId: animalId,
+    action: 'update',
+    actorUserId,
+    barnId: Number(row.barn_id),
+    reason,
+    previousData: { isActive },
+    newData: { isActive: active, deactivationReason: active ? null : reason },
+    effectiveDate: today(),
+    recordedAt: claim.recordedAt,
+  }]);
+
+  return { animal: await getAnimal(db, key, scope), replayed: false };
+}
