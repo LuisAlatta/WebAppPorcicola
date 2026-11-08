@@ -1,6 +1,6 @@
 # Plan de desarrollo y puesta en marcha · Gestión porcina
 
-**Punto de partida.** La carpeta contiene las referencias del cliente y esta planificación. La aplicación todavía debe implementarse. La entrega incluye PWA Android, escritorio, cuatro perfiles, producción porcina, alertas, finanzas, reportes personalizados y exportaciones PDF/XLSX.
+**Punto de partida.** El estado implementado y la siguiente tarea abierta se mantienen en [estado.md](estado.md) y [todo.md](todo.md). La entrega completa incluye PWA Android, escritorio, cuatro perfiles, producción porcina, alertas, finanzas, reportes personalizados y exportaciones PDF/XLSX.
 
 **Orden de lectura para comenzar o retomar:** [Estado y guía para retomar](estado.md), [requisitos y casos de aceptación](requisitos.md), este plan y [lista de ejecución](todo.md). La especificación local contiene los 111 requisitos, los 32 casos y las referencias temporales de los videos. Usarla como referencia estable; registrar cualquier cambio de alcance con fecha y casos afectados. La sección 13 contiene decisiones abiertas. La gestión financiera y las exportaciones forman parte del alcance confirmado aunque esa sección histórica plantee en qué entrega incorporarlas.
 

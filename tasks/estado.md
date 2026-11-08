@@ -12,7 +12,7 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
 
 ## Estado real
 
-- **Fase 2 completa: T01 a T07 y Cierre 2. T08 completa (inventario individual y colectivo). Siguiente: T09 (Dar de alta y consultar animales).**
+- **Fase 2 completa: T01 a T07 y Cierre 2. T08 completa (inventario individual y colectivo). T09 completa (fichas individuales). Siguiente: T10 (traslados, bajas, conciliación y correcciones).**
 - Se implementó T08 (`worker/inventory.ts`, `migrations/0005_inventory_schema.sql` y `src/components/ModuloInventario.tsx`):
   - Libro inmutable de movimientos de cabezas con tipo excluyente: saldo inicial, compra, nacimiento, venta, muerte, traslado recibido, traslado enviado y ajuste. Cada fila guarda fecha efectiva, galpón, ubicación, lote, etapa, sexo (incluido pendiente de sexado), cantidad, causa y notas.
   - Existencias a fecha de corte y resumen por etapa calculados desde el mismo libro; el detalle de saldos reconstruye exactamente el total del tablero.
@@ -48,9 +48,18 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
   - Matriz de acceso directo: responsable, operario y veterinario reciben 403 en listar/crear cuentas, listar/eliminar galpones, consultar auditoría y escribir configuración, sin efectos secundarios.
   - Revocación inmediata: desactivar una cuenta revoca sus sesiones, invalida `/api/auth/me` y `/api/data/resumen`, y reactivarla no revive el token anterior. El cambio de rol se refleja en la sesión existente y el logout revoca el token en el acto.
   - Total final: 47 pruebas en 11 archivos, todas pasando, con typecheck, lint y build correctos.
-- T08 agregó 8 pruebas de integración de inventario: total final 55 pruebas en 12 archivos, todas pasando.
-- **Despliegue de producción activo:** https://web-porcicola-produccion.luisalatta.workers.dev (versión `77c622ca-fa59-454a-820b-802d92799d78`). Migraciones 0001–0005 aplicadas en remoto a staging y producción; administrador inicial creado directamente en D1 con el bootstrap ya cerrado. Verificado en vivo: `/` 200 HTML, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie, `/api/config` 200 autenticado y `/api/inventory` 401 sin sesión y 200 autenticado con 2 galpones y 8 etapas. Las rutas `/inventario` y `/configuracion` devuelven 200.
-- **Despliegue de staging activo:** https://web-porcicola-staging.luisalatta.workers.dev (versión `e4291fb4-5db6-4e4f-b3d5-afdb940c0bde`), con su propio administrador inicial y los mismos galpones base. Verificación en vivo equivalente más el registro real de un saldo inicial de 2 cabezas: el snapshot pasó de 0 a 2 disponibles y el movimiento quedó auditado.
+- T08 agregó 8 pruebas de integración de inventario: 55 pruebas en 12 archivos en ese hito.
+- T09 implementado en `worker/animals.ts`, `migrations/0006_animals_schema.sql` y `src/components/ModuloAnimales.tsx`:
+  - Alta y consulta individual con código textual único, arete vigente e historial de aretes, tipo con vigencia, alias, raza, sexo, nacimiento, pesos opcionales, etapa, aptitud, procedencia, galpón, ubicación, lote, observaciones y genealogía interna/externa.
+  - Las altas por nacimiento, compra o saldo inicial escriben ficha, pesajes conocidos y una cabeza de inventario dentro de la operación idempotente; un animal ya contado en un grupo consume una cabeza sin crear una entrada adicional. El snapshot histórico separa cabezas identificadas y no identificadas, incluso cuando el animal salió después de la fecha consultada.
+  - Búsqueda por código, alias o arete y filtros combinables por tipo, sexo, estado, etapa, galpón, ubicación, lote y disponibilidad. Los registros vendidos o muertos se pueden consultar al filtrar su estado.
+  - Validación de progenitores y ciclos; edición de tipo no cambia el ID ni el inventario y valida compatibilidad cerda/verraco con sexo. Desactivar/reactivar ficha pide motivo y no representa una venta o muerte.
+  - Cronología actualmente incluye alta, pesos, cambios de arete/tipo y movimientos de inventario. Servicios/partos/crías y eventos clínicos se integrarán al cerrar T12–T18; los traslados individuales y la ubicación derivada de movimientos se completan en T10.
+  - 9/9 pruebas específicas; suite `npm test -- --maxWorkers=1`: 64/64; `npm run test:integration`: 52/52; `npm run test:e2e`: 2/2; typecheck, lint, build staging y dry-run correctos. La suite serial evita los timeouts de inicialización de Miniflare observados al competir varias bases en paralelo.
+  - Migración 0006 aplicada y Worker staging publicado. Verificación en vivo: `/animales` y `/animal/002` devuelven 200 HTML; `/api/animals` devuelve 401 sin sesión; tablas `animals`, `animal_tags` y `animal_weights` existen en D1. Versión staging: `35816410-622a-40d9-b586-7eeea51fed93`.
+  - Commit `f902675` (`se implementaron fichas de animales`) en `main`, push confirmado. T09 no está desplegado en producción; el despliegue final corresponde a T31.
+- **Despliegue de producción activo:** https://web-porcicola-produccion.luisalatta.workers.dev (versión `77c622ca-fa59-454a-820b-802d92799d78`). Migraciones 0001–0005 aplicadas en remoto a staging y producción; administrador inicial creado directamente en D1 con el bootstrap ya cerrado. Verificado en vivo: `/` 200 HTML, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie, `/api/config` 200 autenticado y `/api/inventory` 401 sin sesión y 200 autenticado con 2 galpones y 8 etapas. Las rutas `/inventario` y `/configuracion` devuelven 200. La versión T09 no se desplegó en producción.
+- **Despliegue de staging activo:** https://web-porcicola-staging.luisalatta.workers.dev (versión actual `35816410-622a-40d9-b586-7eeea51fed93`), con su administrador inicial y galpones base. Migraciones 0001–0006 aplicadas; pruebas T09: `/animales` y `/animal/002` 200 HTML, `/api/animals` 401 sin sesión y tablas del módulo presentes en D1.
 - Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`).
 - El commit previo verificado en GitHub Actions con éxito es `75c2c9f` (ejecución 42425588778).
 
@@ -73,13 +82,13 @@ Las configuraciones están en `wrangler.jsonc`:
 
 Ambas bases fueron creadas por separado. La de producción estaba vacía al crearla. La configuración por defecto no declara un binding D1. El plugin de Vite selecciona un entorno nombrado con `CLOUDFLARE_ENV=staging` o `CLOUDFLARE_ENV=production`; los datos locales y remotos son independientes. En PowerShell, para compilar staging, ejecutar `$env:CLOUDFLARE_ENV='staging'; npm run build`. Confirmar que los bindings generados corresponden al entorno deseado antes de operar.
 
-Todavía faltan definir y configurar los secretos separados, dominio propio y cron. Los Workers de producción y staging están desplegados y verificados en `https://web-porcicola-produccion.luisalatta.workers.dev` y `https://web-porcicola-staging.luisalatta.workers.dev`; las cinco migraciones están aplicadas en ambas bases. El administrador inicial de cada entorno se insertó directo en su D1 para que `/api/auth/bootstrap` quedara cerrado antes de publicar. Cambiar la contraseña inicial débil desde el módulo de administración. No usar datos reales para pruebas ni escribir en la base de producción para comprobar una función. No poner secretos en archivos rastreados ni en el registro de avance.
+Todavía faltan definir y configurar los secretos separados, dominio propio y cron. Los Workers de producción y staging están desplegados y verificados en `https://web-porcicola-produccion.luisalatta.workers.dev` y `https://web-porcicola-staging.luisalatta.workers.dev`; staging tiene las migraciones 0001–0006 y producción 0001–0005. El administrador inicial de cada entorno se insertó directo en su D1 para que `/api/auth/bootstrap` quedara cerrado antes de publicar. Cambiar la contraseña inicial débil desde el módulo de administración. No usar datos reales para pruebas ni escribir en la base de producción para comprobar una función. No poner secretos en archivos rastreados ni en el registro de avance.
 
 ## Pasos concretos para continuar
 
-1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. 55 pruebas deben pasar.
-2. **Continuar con T09 (Dar de alta y consultar animales).** Fichas individuales con arete, trazabilidad por evento y desglose identificados/no identificados dentro de los grupos de inventario, reutilizando el libro de movimientos de T08.
+1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test -- --maxWorkers=1`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. Evidencia local actual: suite 64/64, integración 52/52 y E2E 2/2.
+2. **Continuar con T10 (Transferir, dar de baja, conciliar y corregir).** Integrar traslados, ventas, muertes, recuentos físicos y correcciones al libro y fichas. Reproducir primero el estado actual de staging; no usar producción para pruebas.
 
 ## Instrucción para continuar
 
-Lee esta carpeta, revisa el estado del repositorio y retoma T09. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.
+Lee esta carpeta, revisa el estado del repositorio y retoma T10. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.
