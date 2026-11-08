@@ -134,9 +134,17 @@ export interface TypeHistoryItem {
 export interface WeightItem {
   id: number;
   weighedOn: string;
+  weighedTime: string;
   weightKg: number;
   stageCode: string | null;
   note: string | null;
+  barnId: number | null;
+  locationCode: string | null;
+  lotCode: string | null;
+  corrected: boolean;
+  correctsWeightId: number | null;
+  gainKg: number | null;
+  gainDays: number | null;
 }
 
 export interface ParentSummary {
@@ -418,7 +426,8 @@ function selectFrom(): string {
     LEFT JOIN animal_weights aw ON aw.id = (
       SELECT w.id FROM animal_weights w
       WHERE w.animal_id = a.id AND w.weighed_on <= ?
-      ORDER BY w.weighed_on DESC, w.id DESC
+        AND NOT EXISTS (SELECT 1 FROM animal_weights replacement WHERE replacement.corrects_weight_id = w.id)
+      ORDER BY w.weighed_on DESC, w.weighed_time DESC, w.id DESC
       LIMIT 1
     )
     LEFT JOIN animals m ON m.id = a.mother_id
@@ -618,8 +627,8 @@ export async function getAnimal(
       WHERE animal_id = ? ORDER BY valid_from ASC, id ASC
     `).bind(id).all<Row>(),
     db.prepare(`
-      SELECT id, weighed_on, weight_kg, stage_code, note FROM animal_weights
-      WHERE animal_id = ? ORDER BY weighed_on ASC, id ASC
+      SELECT id, weighed_on, weighed_time, weight_kg, stage_code, barn_id, location_code, lot_code, note, corrects_weight_id
+      FROM animal_weights WHERE animal_id = ? ORDER BY weighed_on ASC, weighed_time ASC, id ASC
     `).bind(id).all<Row>(),
     db.prepare(`
       SELECT id, movement_type, effective_date, quantity FROM inventory_movements
@@ -648,13 +657,42 @@ export async function getAnimal(
     };
   });
 
-  const weights: WeightItem[] = (weightRows.results ?? []).map((weight) => ({
-    id: Number(weight.id),
-    weighedOn: String(weight.weighed_on),
-    weightKg: Number(weight.weight_kg),
-    stageCode: weight.stage_code === null || weight.stage_code === undefined ? null : String(weight.stage_code),
-    note: weight.note === null || weight.note === undefined ? null : String(weight.note),
-  }));
+  const weightRowsList = weightRows.results ?? [];
+  const replacedWeightIds = new Set(weightRowsList
+    .map((weight) => weight.corrects_weight_id === null || weight.corrects_weight_id === undefined ? null : Number(weight.corrects_weight_id))
+    .filter((weightId): weightId is number => weightId !== null));
+  const validWeightRows = weightRowsList.filter((weight) => !replacedWeightIds.has(Number(weight.id)));
+  let previous: { id: number; date: string; time: string; kg: number } | null = null;
+  const validWeightMetrics = new Map<number, { gainKg: number | null; gainDays: number | null }>();
+  for (const weight of validWeightRows) {
+    const current = { id: Number(weight.id), date: String(weight.weighed_on), time: String(weight.weighed_time ?? '12:00'), kg: Number(weight.weight_kg) };
+    let gainKg: number | null = null; let gainDays: number | null = null;
+    if (previous) {
+      const days = Math.round((Date.parse(`${current.date}T00:00:00Z`) - Date.parse(`${previous.date}T00:00:00Z`)) / 86400000);
+      if (days > 0) { gainKg = Math.round((current.kg - previous.kg) * 100) / 100; gainDays = days; }
+    }
+    validWeightMetrics.set(current.id, { gainKg, gainDays });
+    previous = current;
+  }
+  const weights: WeightItem[] = weightRowsList.map((weight) => {
+    const id = Number(weight.id);
+    const metrics = validWeightMetrics.get(id);
+    return {
+      id,
+      weighedOn: String(weight.weighed_on),
+      weighedTime: String(weight.weighed_time ?? '12:00'),
+      weightKg: Number(weight.weight_kg),
+      stageCode: weight.stage_code === null || weight.stage_code === undefined ? null : String(weight.stage_code),
+      note: weight.note === null || weight.note === undefined ? null : String(weight.note),
+      barnId: weight.barn_id === null || weight.barn_id === undefined ? null : Number(weight.barn_id),
+      locationCode: weight.location_code === null || weight.location_code === undefined ? null : String(weight.location_code),
+      lotCode: weight.lot_code === null || weight.lot_code === undefined ? null : String(weight.lot_code),
+      corrected: replacedWeightIds.has(id),
+      correctsWeightId: weight.corrects_weight_id === null || weight.corrects_weight_id === undefined ? null : Number(weight.corrects_weight_id),
+      gainKg: metrics?.gainKg ?? null,
+      gainDays: metrics?.gainDays ?? null,
+    };
+  });
 
   const chronology: ChronologyItem[] = [
     {
@@ -1466,6 +1504,101 @@ export async function changeTag(
     recordedAt: claim.recordedAt,
   }]);
 
+  return { animal: await getAnimal(db, key, scope), replayed: false };
+}
+
+export interface RegisterWeightInput {
+  weighedOn?: unknown;
+  weighedTime?: unknown;
+  weightKg?: unknown;
+  stageCode?: unknown;
+  note?: unknown;
+  operationKey?: string;
+}
+
+export interface CorrectWeightInput extends RegisterWeightInput {
+  reason?: unknown;
+}
+
+function parseWeightTime(value: unknown): string {
+  const time = typeof value === 'string' ? value.trim() : '';
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new ApiError(400, 'Hora inválida: use HH:MM');
+  return time;
+}
+
+async function animalWeightContext(db: D1Database, key: string, weighedOn: string, scope: ScopeOptions) {
+  const barnIds = await resolveBarnScope(db, scope);
+  if (barnIds !== null && barnIds.length === 0) throw new ApiError(404, 'Animal no encontrado');
+  const row = await fetchAnimalRow(db, key, barnIds);
+  if (!row) throw new ApiError(404, 'Animal no encontrado');
+  if (weighedOn < String(row.entry_date) || (row.exit_date && weighedOn > String(row.exit_date))) {
+    throw new ApiError(400, 'La fecha del pesaje debe estar entre el ingreso y la salida del animal');
+  }
+  const location = await db.prepare(`SELECT barn_id, location_code, lot_code, stage_code FROM animal_location_history
+    WHERE animal_id = ? AND valid_from <= ? AND (valid_until IS NULL OR valid_until > ?)
+    ORDER BY valid_from DESC, id DESC LIMIT 1`).bind(Number(row.id), weighedOn, weighedOn).first<Row>();
+  if (!location) throw new ApiError(409, 'No existe ubicación histórica para esa fecha');
+  const barnId = Number(location.barn_id);
+  if (barnIds !== null && !barnIds.includes(barnId)) throw new ApiError(403, 'No tiene acceso al galpón donde estaba el animal en la fecha del pesaje');
+  return { row, barnId, locationCode: location.location_code === null ? null : String(location.location_code),
+    lotCode: location.lot_code === null ? null : String(location.lot_code), stageAtDate: String(location.stage_code) };
+}
+
+export async function registerAnimalWeight(db: D1Database, actorUserId: number, key: string,
+  input: RegisterWeightInput, scope: ScopeOptions = {}): Promise<{ animal: AnimalDetail; replayed: boolean }> {
+  const weighedOn = parseDate(input.weighedOn, 'Fecha del pesaje');
+  if (weighedOn > today()) throw new ApiError(400, 'La fecha del pesaje no puede ser futura');
+  const weighedTime = parseWeightTime(input.weighedTime);
+  const weightKg = optionalWeight(input.weightKg, 'Peso', false)!;
+  const note = optionalText(input.note);
+  const context = await animalWeightContext(db, key, weighedOn, scope);
+  const stageCode = optionalCode(input.stageCode) ?? context.stageAtDate;
+  const config = await getConfigSnapshot(db, weighedOn);
+  if (!config.stages.some((stage) => stage.code === stageCode)) throw new ApiError(400, 'La etapa no estaba vigente en la fecha del pesaje');
+  const payload = { key, weighedOn, weighedTime, weightKg, stageCode, note, barnId: context.barnId,
+    locationCode: context.locationCode, lotCode: context.lotCode };
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) return { animal: await getAnimal(db, key, scope), replayed: true };
+  const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'animal.weight',
+    authorUserId: actorUserId, entityType: 'animal', entityId: Number(context.row.id), barnId: context.barnId,
+    effectiveDate: weighedOn, payload, result: { animalId: Number(context.row.id), weighedOn, weighedTime, weightKg } });
+  await commitOperation(db, claim, [db.prepare(`INSERT INTO animal_weights
+    (animal_id, weighed_on, weighed_time, weight_kg, stage_code, barn_id, location_code, lot_code, note, recorded_by_user_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(Number(context.row.id), weighedOn, weighedTime, weightKg, stageCode, context.barnId, context.locationCode,
+      context.lotCode, note, actorUserId, claim.recordedAt)], [{ entityType: 'animal', entityId: Number(context.row.id),
+      action: 'create', actorUserId, barnId: context.barnId, reason: 'Registro de pesaje', previousData: null,
+      newData: payload, effectiveDate: weighedOn, recordedAt: claim.recordedAt }]);
+  return { animal: await getAnimal(db, key, scope), replayed: false };
+}
+
+export async function correctAnimalWeight(db: D1Database, actorUserId: number, key: string, weightId: number,
+  input: CorrectWeightInput, scope: ScopeOptions = {}): Promise<{ animal: AnimalDetail; replayed: boolean }> {
+  const reason = normalizeReason(input.reason, { required: true, fallback: 'Corrección de pesaje' });
+  const original = await db.prepare(`SELECT w.* FROM animal_weights w JOIN animals a ON a.id = w.animal_id
+    WHERE w.id = ? AND a.code = ?`).bind(weightId, key).first<Row>();
+  if (!original) throw new ApiError(404, 'Pesaje no encontrado');
+  const weighedOn = String(original.weighed_on);
+  const context = await animalWeightContext(db, key, weighedOn, scope);
+  const weightKg = optionalWeight(input.weightKg, 'Peso corregido', false)!;
+  const note = optionalText(input.note) ?? String(original.note ?? '');
+  const payload = { key, weightId, weightKg, note, reason };
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) return { animal: await getAnimal(db, key, scope), replayed: true };
+  const replaced = await db.prepare('SELECT id FROM animal_weights WHERE corrects_weight_id = ?').bind(weightId).first();
+  if (replaced) throw new ApiError(409, 'Este pesaje ya fue corregido');
+  const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'animal.weight.correction',
+    authorUserId: actorUserId, entityType: 'animal_weight', entityId: weightId, barnId: context.barnId,
+    effectiveDate: weighedOn, payload, result: { animalId: Number(context.row.id), weightId, weightKg } });
+  await commitOperation(db, claim, [db.prepare(`INSERT INTO animal_weights
+    (animal_id, weighed_on, weighed_time, weight_kg, stage_code, barn_id, location_code, lot_code, note,
+      corrects_weight_id, recorded_by_user_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(Number(context.row.id), weighedOn, String(original.weighed_time ?? '12:00'), weightKg, original.stage_code,
+      original.barn_id, original.location_code, original.lot_code, note, weightId, actorUserId, claim.recordedAt)],
+  [{ entityType: 'animal_weight', entityId: weightId, action: 'update', actorUserId, barnId: context.barnId,
+    reason, previousData: { weightKg: Number(original.weight_kg) }, newData: { weightKg, correctsWeightId: weightId },
+    effectiveDate: weighedOn, recordedAt: claim.recordedAt }]);
   return { animal: await getAnimal(db, key, scope), replayed: false };
 }
 

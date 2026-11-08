@@ -60,8 +60,17 @@ Actualizado el 7 de noviembre de 2026. Esta carpeta contiene el contexto necesar
   - 9/9 pruebas específicas; suite `npm test -- --maxWorkers=1`: 64/64; `npm run test:integration`: 52/52; `npm run test:e2e`: 2/2; typecheck, lint, build staging y dry-run correctos. La suite serial evita los timeouts de inicialización de Miniflare observados al competir varias bases en paralelo.
   - Migración 0006 aplicada y Worker staging publicado. Verificación en vivo: `/animales` y `/animal/002` devuelven 200 HTML; `/api/animals` devuelve 401 sin sesión; tablas `animals`, `animal_tags` y `animal_weights` existen en D1. Versión staging: `35816410-622a-40d9-b586-7eeea51fed93`.
   - Commit `f902675` (`se implementaron fichas de animales`) en `main`, push confirmado. T09 no está desplegado en producción; el despliegue final corresponde a T31.
+- **T11 · Producción y pesajes completada.** Requisitos PRO-01, PRO-02, PRO-03, PRO-06 y CA-06:
+  - Se agregó `migrations/0009_weight_measurement_order.sql`: hora explícita (por compatibilidad, registros previos reciben 12:00), vínculo a la medición corregida e índice único para evitar dos correcciones del mismo pesaje.
+  - La ficha muestra y registra fecha, hora, peso, etapa, observación y ubicación histórica (galpón, ubicación y lote tomados del historial a la fecha del pesaje). Admite carga tardía y ordena cronológicamente; el peso actual proviene de la medición válida más reciente.
+  - La ganancia compara mediciones válidas consecutivas del mismo animal y presenta kg, días y kg/día. No calcula tasa diaria entre dos registros del mismo día.
+  - Correcciones agregan una medición enlazada y auditoría con autor y motivo; el valor original queda visible como corregido. Claves repetidas devuelven el resultado existente y la ficha/lista refleja el dato corregido.
+  - Rutas: `POST /api/animals/:key/weights` y `POST /api/animals/:key/weights/:weightId/correction`; veterinario conserva solo lectura. Se valida peso positivo, fecha/hora, etapa vigente, fechas de permanencia del animal y acceso al galpón histórico.
+  - Evidencia: `npm test -- --maxWorkers=1` 73/73 en 13 archivos; `npm run typecheck`, `npm run lint` y `npm run build` correctos. Integración específica de animales 12/12. Caso de aceptación: 44 kg del 20/06 cargado antes de 38 kg del 05/06 mantiene 44 kg actual; mediciones del mismo día a las 08:00 y 16:00 quedan ordenadas y sin tasa diaria; corrección a 45 kg mantiene el original y reintentar la misma clave no duplica.
+  - Despliegue de staging: migración 0009 aplicada a `webporcicola-staging`, columnas verificadas por `pragma_table_info`; Worker `web-porcicola-staging` versión `b97cc1e6-94c1-4fea-b2ea-0bd22fad9325`. `/animales` y `/animal/T11-PESO` devuelven 200 HTML; API sin sesión devuelve 401. No se usaron datos de prueba en D1 remoto ni se tocó producción.
+  - Aún pendiente para fases futuras: panel productivo agregado y reportes personalizados (T24–T26); el flujo individual y la serie de pesos están listos.
 - **Despliegue de producción activo:** https://web-porcicola-produccion.luisalatta.workers.dev (versión `77c622ca-fa59-454a-820b-802d92799d78`). Migraciones 0001–0005 aplicadas en remoto a staging y producción; administrador inicial creado directamente en D1 con el bootstrap ya cerrado. Verificado en vivo: `/` 200 HTML, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie, `/api/config` 200 autenticado y `/api/inventory` 401 sin sesión y 200 autenticado con 2 galpones y 8 etapas. Las rutas `/inventario` y `/configuracion` devuelven 200. La versión T09 no se desplegó en producción.
-- **Despliegue de staging activo:** https://web-porcicola-staging.luisalatta.workers.dev (versión actual `35816410-622a-40d9-b586-7eeea51fed93`), con su administrador inicial y galpones base. Migraciones 0001–0006 aplicadas; pruebas T09: `/animales` y `/animal/002` 200 HTML, `/api/animals` 401 sin sesión y tablas del módulo presentes en D1.
+- **Despliegue de staging activo:** https://web-porcicola-staging.luisalatta.workers.dev (versión actual `b97cc1e6-94c1-4fea-b2ea-0bd22fad9325`), con su administrador inicial y galpones base. Migraciones 0001–0009 aplicadas; `/animales` y `/animal/T11-PESO` 200 HTML, `/api/animals/T11-PESO/weights` 401 sin sesión y columnas de T11 presentes en D1.
 - Cero vulnerabilidades en dependencias de producción (`npm audit --omit=dev`).
 - El commit previo verificado en GitHub Actions con éxito es `75c2c9f` (ejecución 42425588778).
 
@@ -88,9 +97,9 @@ Todavía faltan definir y configurar los secretos separados, dominio propio y cr
 
 ## Pasos concretos para continuar
 
-1. **Reproducir el estado.** Ejecutar `npm run typecheck`, `npm run lint`, `npm test -- --maxWorkers=1`, `npm run test:integration`, `npm run test:e2e` y `npm run build`. Evidencia local actual: suite 72/72 y E2E 2/2; typecheck, lint y build correctos.
-2. **Continuar con T11 (Registrar producción y pesajes).** Revisar `plan.md` y requisitos PRO-01, PRO-02, PRO-03 y PRO-06; implementar pesajes con orden temporal, lotes y correcciones históricas.
+1. **Reproducir el estado.** Última evidencia: `npm test -- --maxWorkers=1` 73/73; `npm run typecheck`, `npm run lint` y `npm run build` correctos. Las pruebas de T11 incluyen la migración 0009.
+2. **Continuar con T12 (ciclos reproductivos).** Revisar `plan.md` y requisitos REP-01 a REP-06, REP-09 y CA-02/CA-16. No marcar la tarea hasta verificar cálculos de fecha probable, carga y cierre de ciclo.
 
 ## Instrucción para continuar
 
-Lee esta carpeta, revisa el estado del repositorio y retoma T10. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.
+Lee esta carpeta, revisa el estado del repositorio y retoma T12. Implementa y verifica el trabajo pendiente, registra evidencia, haz commit y push y continúa con las siguientes tareas del plan. No despliegues en producción hasta T31. Si necesitas una decisión de la granja, anota su impacto y avanza con el trabajo independiente.

@@ -48,7 +48,9 @@ interface AnimalDetail extends AnimalSummary {
   father: { id: number | null; code: string | null; external: string | null } | null;
   tags: { tag: string; validFrom: string; validTo: string | null; isCurrent: boolean }[];
   typeHistory: { animalType: string; validFrom: string; isCurrent: boolean }[];
-  weights: { weighedOn: string; weightKg: number; note: string | null }[];
+  weights: { id: number; weighedOn: string; weighedTime: string; weightKg: number; note: string | null;
+    stageCode: string | null; barnId: number | null; locationCode: string | null; lotCode: string | null;
+    corrected: boolean; correctsWeightId: number | null; gainKg: number | null; gainDays: number | null }[];
   chronology: { date: string; kind: string; title: string }[];
 }
 
@@ -125,6 +127,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0006_animals_schema.sql',
       '0007_transfer_and_stock_guard.sql',
       '0008_animal_location_history.sql',
+      '0009_weight_measurement_order.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -710,4 +713,53 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const desconocida = await api('/api/animals/NO-EXISTE');
     expect(desconocida.status).toBe(404);
   });
+  it('registra pesajes fuera de orden cronológico, calcula ganancias, conserva ubicación y corrige sin borrar el original', async () => {
+    const created = await create({ code: 'T11-PESO', entryDate: '2026-06-01', operationKey: 'ani-t11-alta-peso' });
+    expect(created.status).toBe(201);
+    const later = { weighedOn: '2026-06-20', weighedTime: '10:00', weightKg: 44, operationKey: 'ani-t11-peso-44' };
+    const lateFirst = await api('/api/animals/T11-PESO/weights', { method: 'POST', body: JSON.stringify(later) });
+    expect(lateFirst.status).toBe(201);
+    const earlier = await api('/api/animals/T11-PESO/weights', { method: 'POST', body: JSON.stringify({
+      weighedOn: '2026-06-05', weighedTime: '08:00', weightKg: 38, operationKey: 'ani-t11-peso-38',
+    }) });
+    expect(earlier.status).toBe(201);
+    let detailResponse = await api('/api/animals/T11-PESO');
+    let detail = (await detailResponse.json() as { animal: AnimalDetail & { currentWeightKg: number } }).animal;
+    expect(detail.currentWeightKg).toBe(44);
+    expect(detail.currentWeightDate).toBe('2026-06-20');
+    expect(detail.weights.find((weight) => weight.weighedOn === '2026-06-20')).toMatchObject({ gainKg: 6, gainDays: 15, lotCode: null });
+
+    const sameDayA = await api('/api/animals/T11-PESO/weights', { method: 'POST', body: JSON.stringify({
+      weighedOn: '2026-06-21', weighedTime: '08:00', weightKg: 45, operationKey: 'ani-t11-mismo-08',
+    }) });
+    const sameDayB = await api('/api/animals/T11-PESO/weights', { method: 'POST', body: JSON.stringify({
+      weighedOn: '2026-06-21', weighedTime: '16:00', weightKg: 46, operationKey: 'ani-t11-mismo-16',
+    }) });
+    expect(sameDayA.status).toBe(201);
+    expect(sameDayB.status).toBe(201);
+    detailResponse = await api('/api/animals/T11-PESO');
+    detail = (await detailResponse.json() as { animal: AnimalDetail & { currentWeightKg: number } }).animal;
+    expect(detail.currentWeightKg).toBe(46);
+    expect(detail.weights.filter((weight) => weight.weighedOn === '2026-06-21').map((weight) => weight.weighedTime)).toEqual(['08:00', '16:00']);
+    expect(detail.weights.find((weight) => weight.weighedTime === '16:00' && weight.weighedOn === '2026-06-21')).toMatchObject({ gainDays: null, gainKg: null });
+
+    const weight44 = detail.weights.find((weight) => weight.weighedOn === '2026-06-20')!;
+    const correctionBody = { weightKg: 45, reason: 'Báscula recalibrada', operationKey: 'ani-t11-corr-44' };
+    const corrected = await api(`/api/animals/T11-PESO/weights/${weight44.id}/correction`, { method: 'POST', body: JSON.stringify(correctionBody) });
+    expect(corrected.status).toBe(201);
+    const retry = await api(`/api/animals/T11-PESO/weights/${weight44.id}/correction`, { method: 'POST', body: JSON.stringify(correctionBody) });
+    expect(retry.status).toBe(200);
+    detailResponse = await api('/api/animals/T11-PESO');
+    detail = (await detailResponse.json() as { animal: AnimalDetail & { currentWeightKg: number } }).animal;
+    expect(detail.currentWeightKg).toBe(46);
+    expect(detail.weights.find((weight) => weight.id === weight44.id)?.corrected).toBe(true);
+    expect(detail.weights.find((weight) => weight.correctsWeightId === weight44.id)?.weightKg).toBe(45);
+    expect(await db.prepare('SELECT COUNT(*) AS n FROM animal_weights WHERE animal_id = ?').bind(detail.id).first<{ n: number }>()).toMatchObject({ n: 5 });
+
+    const zero = await api('/api/animals/T11-PESO/weights', { method: 'POST', body: JSON.stringify({
+      weighedOn: '2026-06-22', weighedTime: '12:00', weightKg: 0, operationKey: 'ani-t11-peso-cero',
+    }) });
+    expect(zero.status).toBe(400);
+  });
+
 });

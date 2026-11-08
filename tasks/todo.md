@@ -1,6 +1,6 @@
 # Control de ejecución
 
-Estado actual: Fase 2 completa (T01 a T07 y Cierre 2), T08–T10 completas. Siguiente: T11 (producción y pesajes). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: Fase 2 completa (T01 a T07 y Cierre 2), T08–T11 completas. Siguiente: T12 (ciclos reproductivos). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -22,7 +22,7 @@ Estado actual: Fase 2 completa (T01 a T07 y Cierre 2), T08–T10 completas. Sigu
 - [x] T08 · Abrir inventario individual y colectivo · dependencias 07.
 - [x] T09 · Dar de alta y consultar animales · dependencias 08.
 - [x] T10 · Transferir, dar de baja, conciliar y corregir · dependencias 09.
-- [ ] T11 · Registrar producción y pesajes · dependencias 09,10.
+- [x] T11 · Registrar producción y pesajes · dependencias 09,10.
 - [ ] Cierre 3: Reconstruir el saldo a dos fechas desde el historial. Comparar la suma de grupos e identificados con la ocupación. Probar dos escritores y un reintento.
 
 ## 4. Reproducción

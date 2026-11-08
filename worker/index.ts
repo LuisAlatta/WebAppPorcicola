@@ -60,6 +60,8 @@ import {
   changeTag,
   setAnimalAvailability,
   transferAnimal,
+  registerAnimalWeight,
+  correctAnimalWeight,
   registerAnimalExit,
 } from './animals';
 
@@ -589,6 +591,20 @@ const worker = {
           const body = await request.json() as Parameters<typeof changeTag>[3];
           const result = await changeTag(env.DB, session.user.id, key, body, scope);
           return Response.json({ ok: true, animal: result.animal, replayed: result.replayed });
+        }
+
+        if (key && segments.length === 2 && segments[1] === 'weights' && request.method === 'POST') {
+          const body = await request.json() as Parameters<typeof registerAnimalWeight>[3];
+          const result = await registerAnimalWeight(env.DB, session.user.id, key, body, scope);
+          return Response.json({ ok: true, animal: result.animal, replayed: result.replayed }, { status: result.replayed ? 200 : 201 });
+        }
+
+        if (key && segments.length === 4 && segments[1] === 'weights' && segments[3] === 'correction' && request.method === 'POST') {
+          const weightId = Number(segments[2]);
+          if (!Number.isInteger(weightId) || weightId <= 0) throw new ApiError(400, 'Pesaje inválido');
+          const body = await request.json() as Parameters<typeof correctAnimalWeight>[4];
+          const result = await correctAnimalWeight(env.DB, session.user.id, key, weightId, body, scope);
+          return Response.json({ ok: true, animal: result.animal, replayed: result.replayed }, { status: result.replayed ? 200 : 201 });
         }
 
         if (key && segments.length === 2 && segments[1] === 'deactivate' && request.method === 'POST') {

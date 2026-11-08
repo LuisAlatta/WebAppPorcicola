@@ -81,9 +81,17 @@ interface TypeHistoryItem {
 interface WeightItem {
   id: number;
   weighedOn: string;
+  weighedTime: string;
   weightKg: number;
   stageCode: string | null;
   note: string | null;
+  barnId: number | null;
+  locationCode: string | null;
+  lotCode: string | null;
+  corrected: boolean;
+  correctsWeightId: number | null;
+  gainKg: number | null;
+  gainDays: number | null;
 }
 
 interface ParentSummary {
@@ -282,6 +290,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const [physicalActionError, setPhysicalActionError] = useState<string | null>(null);
   const [transferOperationKey, setTransferOperationKey] = useState(() => newOperationKey('ani-transfer'));
   const [exitOperationKey, setExitOperationKey] = useState(() => newOperationKey('ani-exit'));
+  const [weightOperationKey, setWeightOperationKey] = useState(() => newOperationKey('ani-pesaje'));
+  const [weightForm, setWeightForm] = useState({ weighedOn: farmToday(), weighedTime: '12:00', weightKg: '', stageCode: '', note: '' });
+  const [weightError, setWeightError] = useState<string | null>(null);
+  const [weightCorrection, setWeightCorrection] = useState<{ id: number; kg: string; reason: string; operationKey: string } | null>(null);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -685,6 +697,35 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
       setSuccess(`La ficha ${body.animal.code} y el movimiento de ${exitForm.exitType === 'death' ? 'muerte' : 'venta'} quedaron registrados juntos.`);
       await loadList();
     } catch { setPhysicalActionError('No se pudo confirmar la salida. Reintente con el mismo formulario.'); }
+    finally { setBusy(false); }
+  };
+
+  const handleWeightSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!detail) return;
+    setWeightError(null); setBusy(true);
+    try {
+      const res = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/weights`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...weightForm, weightKg: Number(weightForm.weightKg), stageCode: weightForm.stageCode || detail.stageCode, operationKey: weightOperationKey }) });
+      const body = await res.json() as { error?: string; animal?: AnimalDetail };
+      if (!res.ok || !body.animal) { setWeightError(body.error ?? 'No se pudo registrar el pesaje.'); return; }
+      setDetail(body.animal); setWeightOperationKey(newOperationKey('ani-pesaje'));
+      setWeightForm((prev) => ({ ...prev, weightKg: '', note: '' })); setSuccess('Pesaje registrado con la ubicación histórica del animal.'); await loadList();
+    } catch { setWeightError('No se pudo confirmar el pesaje. Reintente con la misma operación.'); }
+    finally { setBusy(false); }
+  };
+
+  const handleWeightCorrection = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!detail || !weightCorrection) return;
+    setWeightError(null); setBusy(true);
+    try {
+      const res = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/weights/${weightCorrection.id}/correction`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weightKg: Number(weightCorrection.kg), reason: weightCorrection.reason, operationKey: weightCorrection.operationKey }) });
+      const body = await res.json() as { error?: string; animal?: AnimalDetail };
+      if (!res.ok || !body.animal) { setWeightError(body.error ?? 'No se pudo corregir el pesaje.'); return; }
+      setDetail(body.animal); setWeightCorrection(null); setSuccess('Corrección guardada; el pesaje original permanece en el historial.'); await loadList();
+    } catch { setWeightError('No se pudo confirmar la corrección.'); }
     finally { setBusy(false); }
   };
 
@@ -1612,8 +1653,21 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
             <div className="card">
               <div className="card-header-clean mb-2">
                 <span className="section-title">Pesajes</span>
-                <span className="text-xs text-muted">El peso actual es el último por fecha</span>
+                <span className="text-xs text-muted">Ordenados por fecha y hora; ubicación preservada</span>
               </div>
+              {weightError && <div className="alert alert-error" role="alert">{weightError}</div>}
+              {!soloLectura && detail.exitDate === null && <form onSubmit={handleWeightSave} className="form-stack mb-4">
+                <div className="grid-3">
+                  <div className="form-group"><label className="form-label" htmlFor="ani-weight-date">Fecha</label><input id="ani-weight-date" className="form-input" type="date" value={weightForm.weighedOn} onChange={(event) => setWeightForm((prev) => ({ ...prev, weighedOn: event.target.value }))} required /></div>
+                  <div className="form-group"><label className="form-label" htmlFor="ani-weight-time">Hora</label><input id="ani-weight-time" className="form-input" type="time" value={weightForm.weighedTime} onChange={(event) => setWeightForm((prev) => ({ ...prev, weighedTime: event.target.value }))} required /></div>
+                  <div className="form-group"><label className="form-label" htmlFor="ani-weight-kg">Peso (kg)</label><input id="ani-weight-kg" className="form-input" type="number" min="0.01" max="500" step="0.01" value={weightForm.weightKg} onChange={(event) => setWeightForm((prev) => ({ ...prev, weightKg: event.target.value }))} required /></div>
+                </div>
+                <div className="grid-2">
+                  <div className="form-group"><label className="form-label" htmlFor="ani-weight-stage">Etapa</label><select id="ani-weight-stage" className="form-select" value={weightForm.stageCode || detail.stageCode} onChange={(event) => setWeightForm((prev) => ({ ...prev, stageCode: event.target.value }))}>{(options?.stages ?? []).map((stage) => <option key={stage.code} value={stage.code}>{stage.name}</option>)}</select></div>
+                  <div className="form-group"><label className="form-label" htmlFor="ani-weight-note">Nota</label><input id="ani-weight-note" className="form-input" value={weightForm.note} onChange={(event) => setWeightForm((prev) => ({ ...prev, note: event.target.value }))} maxLength={300} /></div>
+                </div>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>Registrar pesaje</button>
+              </form>}
               {detail.weights.length === 0 ? (
                 <p className="text-sm text-muted">Sin pesajes registrados.</p>
               ) : (
@@ -1622,17 +1676,25 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                     <thead>
                       <tr>
                         <th>Fecha</th>
+                        <th>Hora</th>
                         <th>Peso</th>
+                        <th>Ganancia desde anterior</th>
+                        <th>Ubicación histórica</th>
                         <th>Nota</th>
+                        {!soloLectura && <th>Acción</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {detail.weights.map((weight) => (
-                        <tr key={weight.id}>
+                        <React.Fragment key={weight.id}><tr>
                           <td>{weight.weighedOn}</td>
+                          <td>{weight.weighedTime}</td>
                           <td className="font-semibold">{weight.weightKg} kg</td>
+                          <td>{weight.corrected ? 'Corregido (ver registro nuevo)' : weight.gainDays === null ? '—' : `${weight.gainKg} kg / ${weight.gainDays} días (${(Number(weight.gainKg) / weight.gainDays).toFixed(2)} kg/día)`}</td>
+                          <td>{[weight.barnId ? data?.options.barns.find((barn) => barn.id === weight.barnId)?.name : null, weight.locationCode, weight.lotCode].filter(Boolean).join(' · ') || '—'}</td>
                           <td>{weight.note ?? '—'}</td>
-                        </tr>
+                          {!soloLectura && <td>{!weight.corrected && detail.exitDate === null && <button type="button" className="btn btn-outline btn-sm" onClick={() => setWeightCorrection({ id: weight.id, kg: String(weight.weightKg), reason: '', operationKey: newOperationKey('ani-pesaje-corr') })}>Corregir</button>}</td>}
+                        </tr>{weightCorrection?.id === weight.id && <tr><td colSpan={7}><form onSubmit={handleWeightCorrection} className="form-stack"><div className="grid-2"><div className="form-group"><label className="form-label">Peso corregido (kg)</label><input className="form-input" type="number" min="0.01" max="500" step="0.01" value={weightCorrection.kg} onChange={(event) => setWeightCorrection((prev) => prev ? { ...prev, kg: event.target.value } : prev)} required /></div><div className="form-group"><label className="form-label">Motivo de corrección</label><input className="form-input" value={weightCorrection.reason} onChange={(event) => setWeightCorrection((prev) => prev ? { ...prev, reason: event.target.value } : prev)} required maxLength={300} /></div></div><div className="form-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>Guardar corrección</button><button type="button" className="btn btn-outline btn-sm" onClick={() => setWeightCorrection(null)}>Cancelar</button></div></form></td></tr>}</React.Fragment>
                       ))}
                     </tbody>
                   </table>
