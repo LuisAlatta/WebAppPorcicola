@@ -76,6 +76,7 @@ import { createHealthEvent, listHealthEvents, listUpcomingHealthEvents, listWith
 import { applyVaccineOccurrence, createManualVaccineSchedule, deactivateVaccineRule, generateAnimalVaccineSchedules, generateVaccineSchedules, listVaccineRules, listVaccineSchedules, saveVaccineRule, updateVaccineOccurrence } from './vaccines';
 import { createFinancialEntry, createFinancialOpeningBalance, createFinancialSettlement, listFinancialCashflow, listFinancialEntries, reverseFinancialEntry } from './finance';
 import { attendAlert, createManualAlert, listAlertNotificationHistory, listAlerts, listEscalationRules, listNotifications, markNotificationRead, reconcileAlerts, saveEscalationRule } from './alerts';
+import { listReportCatalog, reportBirths, reportWeights, validateReportParams } from './reports';
 
 export interface Env {
   DB: D1Database;
@@ -436,6 +437,12 @@ const worker = {
         const status = err instanceof ApiError ? err.status : 400;
         return Response.json({ error: message }, { status });
       }
+    }
+
+    // 7.5 Reportes · T24. Catálogo permitido y consultas agregadas.
+    if(path==='/api/reports/catalog'||path==='/api/reports/weights'||path==='/api/reports/births'){
+      const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});if(request.method!=='GET')return Response.json({error:'Los reportes son consultas de solo lectura'},{status:405});const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
+      try{validateReportParams(url.searchParams,path==='/api/reports/catalog'?[]:path==='/api/reports/weights'?['from','to','barnId','stageCode','locationCode','lotCode','animalCode']:['from','to','barnId','locationCode','lotCode','motherCode']);if(path==='/api/reports/catalog')return Response.json({ok:true,...listReportCatalog(session.user.role as Parameters<typeof listReportCatalog>[0])});if(path==='/api/reports/weights')return Response.json({ok:true,...await reportWeights(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),barnId:url.searchParams.get('barnId'),stageCode:url.searchParams.get('stageCode'),locationCode:url.searchParams.get('locationCode'),lotCode:url.searchParams.get('lotCode'),animalCode:url.searchParams.get('animalCode')},scope)});return Response.json({ok:true,...await reportBirths(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),barnId:url.searchParams.get('barnId'),locationCode:url.searchParams.get('locationCode'),lotCode:url.searchParams.get('lotCode'),motherCode:url.searchParams.get('motherCode')},scope)});}catch(err){const message=(err as Error).message||String(err);const status=err instanceof ApiError?err.status:400;return Response.json({error:message},{status});}
     }
 
     // 7. INVENTARIO INDIVIDUAL Y COLECTIVO (T08 · INV-01..INV-03)
