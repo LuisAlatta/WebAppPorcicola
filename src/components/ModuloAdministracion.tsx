@@ -1112,25 +1112,25 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
             </div>
 
             <div className="card p-3 mb-4 bg-light">
-              <label className="flex items-center gap-2 cursor-pointer mb-2">
+              <label className="checkbox-label mb-2">
                 <input
                   type="checkbox"
                   checked={autoActivate}
                   onChange={(e) => setAutoActivate(e.target.checked)}
                 />
-                <span className="text-sm font-bold">
-                  Poner galpón en estado Operativo si el equipo está completo (ADM-02).
+                <span className="text-sm font-semibold">
+                  Poner galpón en estado Operativo si el equipo está completo.
                 </span>
               </label>
 
-              <label className="flex items-center gap-2 cursor-pointer text-xs text-muted">
+              <label className="checkbox-label text-xs text-muted">
                 <input
                   type="checkbox"
                   checked={deactivatePrevResp}
                   onChange={(e) => setDeactivatePrevResp(e.target.checked)}
                 />
                 <span>
-                  Si el responsable anterior pierde su último galpón, desactivar su cuenta atómicamente (ADM-03).
+                  Si el responsable anterior pierde su último galpón, desactivar su cuenta automáticamente.
                 </span>
               </label>
             </div>
