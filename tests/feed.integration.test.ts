@@ -11,7 +11,7 @@ describe('Almacenes y suministros · T15',()=>{
  const post=(payload:Record<string,unknown>)=>api('/api/feed/movements',{method:'POST',body:JSON.stringify(payload)});
  beforeAll(async()=>{
   db=await runtime.getD1Database('DB');await db.exec('PRAGMA foreign_keys=ON;');
-  for(const file of ['0001_initial_schema.sql','0002_administration_schema.sql','0003_events_audit_schema.sql','0004_farm_config_schema.sql','0005_inventory_schema.sql','0006_animals_schema.sql','0007_transfer_and_stock_guard.sql','0008_animal_location_history.sql','0009_weight_measurement_order.sql','0010_reproduction_cycles.sql','0011_litters_and_farrowing.sql','0012_weaning_events_and_cycles.sql','0013_feed_warehouses_and_ledger.sql','0014_feed_projections_and_turns.sql']){
+  for(const file of ['0001_initial_schema.sql','0002_administration_schema.sql','0003_events_audit_schema.sql','0004_farm_config_schema.sql','0005_inventory_schema.sql','0006_animals_schema.sql','0007_transfer_and_stock_guard.sql','0008_animal_location_history.sql','0009_weight_measurement_order.sql','0010_reproduction_cycles.sql','0011_litters_and_farrowing.sql','0012_weaning_events_and_cycles.sql','0013_feed_warehouses_and_ledger.sql','0014_feed_projections_and_turns.sql','0015_health_events_and_withdrawals.sql','0016_vaccine_rules_and_schedules.sql','0017_financial_ledger.sql','0018_trade_links.sql']){
    const sql=await readFile(new URL(`../migrations/${file}`,import.meta.url),'utf8');for(const statement of sql.split('\n').map(x=>x.trim()).filter(x=>!x.startsWith('--')).join(' ').split(';').map(x=>x.trim()).filter(Boolean))await db.exec(`${statement};`);
   }
   const res=await worker.fetch(new Request('http://localhost/api/auth/bootstrap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin.feed@granja.pe',password:'PasswordFeed2026!',name:'Admin Alimentación'})}),{DB:db});expect(res.status).toBe(201);token=((await res.json()) as {token:string}).token;
@@ -20,8 +20,10 @@ describe('Almacenes y suministros · T15',()=>{
  it('concilia saldos, costos, reintentos y rechaza retiros que dejan saldo retroactivo negativo',async()=>{
   const base={effectiveDate:'2026-11-08',warehouseId:1,feedCode:'preinicio',lotCode:'LOTE-P-01',costPerKg:2.5,reason:'Compra para prueba',operationKey:'feed-purchase-1'};
   let res=await post({...base,movementType:'purchase',supplier:'Proveedor Uno',quantityKg:602});expect(res.status).toBe(201);
+  const purchaseFinance=await db.prepare("SELECT amount_minor,currency_code,source_type,source_id FROM financial_entries WHERE source_type='feed_purchase'").first<{amount_minor:number;currency_code:string;source_type:string;source_id:string}>();expect(purchaseFinance).toMatchObject({amount_minor:150500,currency_code:'PEN',source_type:'feed_purchase'});
   expect((await post({...base,movementType:'purchase',supplier:'Proveedor Uno',quantityKg:602})).status).toBe(200);
   res=await post({...base,movementType:'delivery',quantityKg:123,destinationBarnId:1,reason:'Ración del galpón',operationKey:'feed-delivery-1'});expect(res.status).toBe(201);
+  expect(await db.prepare("SELECT COUNT(*) AS count FROM financial_entries WHERE source_type='feed_purchase'").first<{count:number}>()).toMatchObject({count:1});
   const data=await (await api('/api/feed/inventory?asOf=2026-11-08')).json() as {inventory:{availableKg:number;withdrawnKg:number;allocatedCostMinor:number}[];totals:{availableKg:number}};
   expect(data.totals.availableKg).toBe(479);expect(data.inventory[0].withdrawnKg).toBe(123);expect(data.inventory[0].allocatedCostMinor).toBe(30750);
   const admin=await db.prepare("SELECT id FROM users WHERE username='admin.feed@granja.pe'").first<{id:number}>();

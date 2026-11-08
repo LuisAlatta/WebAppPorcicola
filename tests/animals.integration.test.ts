@@ -94,6 +94,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     reason: 'Alta de ficha de prueba',
     operationKey: `ani-${Math.random().toString(36).slice(2, 12)}`,
     ...overrides,
+    ...(overrides.originType === 'compra' && overrides.purchaseAmount === undefined ? { purchaseAmount: '1.00', purchaseCurrencyCode: 'PEN' } : {}),
   });
 
   const create = (overrides: Record<string, unknown> = {}, token = adminToken) =>
@@ -137,6 +138,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0015_health_events_and_withdrawals.sql',
       '0016_vaccine_rules_and_schedules.sql',
       '0017_financial_ledger.sql',
+      '0018_trade_links.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -638,7 +640,9 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const blockedSale=await api('/api/animals/T17-SALUD-01/exit',{method:'POST',body:JSON.stringify({exitType:'sale',causeCode:'edad',effectiveDate:'2026-11-07',reason:'Venta de prueba bloqueada',operationKey:'t17-blocked-sale'})});expect(blockedSale.status).toBe(409);
     const transfer=await api('/api/animals/T17-SALUD-01/transfer',{method:'POST',body:JSON.stringify({destinationBarnId:2,locationCode:null,lotCode:null,effectiveDate:'2026-11-07',reason:'Traslado posterior al tratamiento',operationKey:'t17-health-transfer'})});expect(transfer.status).toBe(201);
     const historyAfter=await api('/api/health/events?animalCode=T17-SALUD-01');const historyAfterData=await historyAfter.json() as {events:{barnName:string}[]};expect(historyAfterData.events[0].barnName).toBe('Galpón A');
-    const saleAfterWithdrawal=await api('/api/animals/T17-SALUD-01/exit',{method:'POST',body:JSON.stringify({exitType:'sale',causeCode:'edad',effectiveDate:'2026-11-08',reason:'Venta posterior al retiro',operationKey:'t17-sale-after-withdrawal'})});expect(saleAfterWithdrawal.status).toBe(201);
+    const salePayload={exitType:'sale',causeCode:'edad',effectiveDate:'2026-11-08',saleAmount:'180.00',currencyCode:'PEN',counterparty:'Cliente prueba',documentReference:'VTA-T17-01',reason:'Venta posterior al retiro',operationKey:'t17-sale-after-withdrawal'};const saleAfterWithdrawal=await api('/api/animals/T17-SALUD-01/exit',{method:'POST',body:JSON.stringify(salePayload)});expect(saleAfterWithdrawal.status).toBe(201);
+    const saleReplay=await api('/api/animals/T17-SALUD-01/exit',{method:'POST',body:JSON.stringify(salePayload)});expect(saleReplay.status).toBe(200);
+    const saleFinance=await db.prepare("SELECT f.id,f.amount_minor,f.currency_code,f.source_type,m.id AS movement_id FROM financial_entries f JOIN operation_log o ON o.id=f.operation_log_id JOIN inventory_movements m ON m.operation_log_id=o.id WHERE f.source_type='animal_sale' AND f.source_id=(SELECT id FROM animals WHERE code='T17-SALUD-01')").first<{id:number;amount_minor:number;currency_code:string;source_type:string;movement_id:number}>();expect(saleFinance).toMatchObject({amount_minor:18000,currency_code:'PEN',source_type:'animal_sale'});expect(saleFinance?.movement_id).toBeTruthy();
   });
 
   it('respeta el alcance por galpón y el perfil de solo lectura', async () => {
@@ -1049,6 +1053,19 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const forbidden=await api('/api/finance/entries',{method:'POST',body:JSON.stringify({...payload,operationKey:'fin-t19-forbidden'})},operarioToken);expect(forbidden.status).toBe(403);
     const scoped=await api('/api/finance/entries?from=2026-11-01&to=2026-11-07',{},responsableToken);expect(scoped.status).toBe(200);const scopedData=await scoped.json() as {entries:{amountMinor:number;entryTotalMinor:number|null;barnName:string}[];totals:{currencyCode:string;amountMinor:number}[]};expect(scopedData.entries).toHaveLength(1);expect(scopedData.entries[0]).toMatchObject({amountMinor:6000,entryTotalMinor:null,barnName:'Galpón A'});expect(scopedData.totals).toEqual([{direction:'expense',currencyCode:'PEN',amountMinor:6000}]);
     const admin=await api('/api/finance/entries?from=2026-11-01&to=2026-11-07');expect(admin.status).toBe(200);const adminData=await admin.json() as {entries:{amountMinor:number;entryTotalMinor:number|null;barnName:string}[];totals:{currencyCode:string;amountMinor:number}[]};expect(adminData.entries).toHaveLength(3);expect(adminData.entries.filter(row=>row.entryTotalMinor===10000)).toHaveLength(2);expect(adminData.entries.some(row=>row.barnName==='General')).toBe(true);expect(adminData.totals.map(row=>row.currencyCode).sort()).toEqual(['PEN','USD']);
+    const entryId=Number((await db.prepare("SELECT id FROM financial_entries WHERE operation_log_id=(SELECT id FROM operation_log WHERE operation_key='fin-t19-split')").first<{id:number}>())?.id);
+    const reversalBody={effectiveDate:'2026-11-08',reason:'Corrección de prueba',operationKey:'fin-t20-reversal'};
+    const reversal=await api(`/api/finance/entries/${entryId}/reverse`,{method:'POST',body:JSON.stringify(reversalBody)});expect(reversal.status,await reversal.clone().text()).toBe(201);
+    const reversalRetry=await api(`/api/finance/entries/${entryId}/reverse`,{method:'POST',body:JSON.stringify(reversalBody)});expect(reversalRetry.status).toBe(200);
+    expect(await db.prepare('SELECT reversed_at FROM financial_entries WHERE id=?').bind(entryId).first()).toMatchObject({reversed_at:expect.any(String)});
+    expect(await db.prepare('SELECT COUNT(*) AS n FROM financial_entries WHERE reversal_of_id=?').bind(entryId).first()).toMatchObject({n:1});
+  });
+
+  it('enlaza compra de animal con su única entrada y movimiento de inventario', async () => {
+    const purchase={code:'T20-COMPRA',animalType:'lechon',sex:'macho',birthDate:'2026-10-01',entryDate:'2026-11-06',entryStageCode:'preinicio',originType:'compra',purchaseAmount:'500.00',purchaseCurrencyCode:'PEN',purchaseCounterparty:'Proveedor porcino',purchaseDocumentReference:'FC-COMPRA-20',reason:'Compra para prueba integrada',operationKey:'ani-t20-purchase'};
+    const first=await create(purchase);expect(first.status).toBe(201);const retry=await create(purchase);expect(retry.status).toBe(200);
+    const linked=await db.prepare("SELECT f.id,f.amount_minor,f.currency_code,f.source_type,f.source_id,m.id AS movement_id,m.movement_type FROM financial_entries f JOIN operation_log o ON o.id=f.operation_log_id JOIN inventory_movements m ON m.operation_log_id=o.id WHERE f.source_type='animal_purchase' AND f.source_id=(SELECT id FROM animals WHERE code='T20-COMPRA')").first<{id:number;amount_minor:number;currency_code:string;source_type:string;source_id:string;movement_id:number;movement_type:string}>();expect(linked).toMatchObject({amount_minor:50000,currency_code:'PEN',source_type:'animal_purchase',movement_type:'purchase'});expect(linked?.movement_id).toBeTruthy();expect(await db.prepare("SELECT COUNT(*) AS count FROM financial_entries WHERE source_type='animal_purchase' AND source_id=(SELECT id FROM animals WHERE code='T20-COMPRA')").first<{count:number}>()).toMatchObject({count:1});
+    const sourceOnlyReverse=await api(`/api/finance/entries/${linked!.id}/reverse`,{method:'POST',body:JSON.stringify({effectiveDate:'2026-11-08',reason:'Prueba rechazo',operationKey:'fin-t20-linked-reverse'})});expect(sourceOnlyReverse.status).toBe(409);
   });
 
 });

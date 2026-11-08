@@ -169,6 +169,10 @@ interface AnimalForm {
   aptitude: string;
   originType: OriginType;
   originDetail: string;
+  purchaseAmount: string;
+  purchaseCurrencyCode: string;
+  purchaseCounterparty: string;
+  purchaseDocumentReference: string;
   entryDate: string;
   entryStageCode: string;
   barnId: string;
@@ -193,7 +197,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const ORIGIN_HINTS: Record<OriginType, string> = {
   nacimiento: 'El lechón nace en la granja: suma una cabeza al inventario.',
-  compra: 'El animal llega de fuera: suma una cabeza al inventario.',
+  compra: 'El animal llega de fuera: suma una cabeza al inventario. Registre el importe para enlazar la compra con Finanzas.',
   inicial: 'Existencia que ya estaba al empezar: suma una cabeza al inventario.',
   interna: 'Ya estaba en un grupo sin arete: identifica la ficha sin sumar cabezas.',
 };
@@ -212,6 +216,10 @@ function emptyForm(): AnimalForm {
     aptitude: '',
     originType: 'nacimiento',
     originDetail: '',
+    purchaseAmount: '',
+    purchaseCurrencyCode: 'PEN',
+    purchaseCounterparty: '',
+    purchaseDocumentReference: '',
     entryDate: farmToday(),
     entryStageCode: '',
     barnId: '',
@@ -286,7 +294,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
   const [transferForm, setTransferForm] = useState({ destinationBarnId: '', locationCode: '', lotCode: '', effectiveDate: farmToday(), reason: '' });
-  const [exitForm, setExitForm] = useState({ exitType: 'sale' as 'sale' | 'death', causeCode: '', effectiveDate: farmToday(), reason: '' });
+  const [exitForm, setExitForm] = useState({ exitType: 'sale' as 'sale' | 'death', causeCode: '', effectiveDate: farmToday(), reason: '', saleAmount: '', currencyCode: 'PEN', counterparty: '', documentReference: '' });
   const [physicalActionError, setPhysicalActionError] = useState<string | null>(null);
   const [transferOperationKey, setTransferOperationKey] = useState(() => newOperationKey('ani-transfer'));
   const [exitOperationKey, setExitOperationKey] = useState(() => newOperationKey('ani-exit'));
@@ -456,6 +464,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
       aptitude: detail.aptitude ?? '',
       originType: detail.originType,
       originDetail: detail.originDetail ?? '',
+      purchaseAmount: '',
+      purchaseCurrencyCode: 'PEN',
+      purchaseCounterparty: '',
+      purchaseDocumentReference: '',
       entryDate: detail.entryDate,
       entryStageCode: detail.entryStageCode,
       barnId: String(detail.barnId),
@@ -532,6 +544,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
         code: form.code.trim(),
         originType: form.originType,
         originDetail: form.originDetail.trim() || null,
+        purchaseAmount: form.originType==='compra'?form.purchaseAmount:undefined,
+        purchaseCurrencyCode: form.purchaseCurrencyCode,
+        purchaseCounterparty: form.purchaseCounterparty.trim()||form.originDetail.trim()||undefined,
+        purchaseDocumentReference: form.purchaseDocumentReference.trim()||undefined,
         entryDate: form.entryDate,
         entryStageCode: form.entryStageCode,
         barnId: Number(form.barnId),
@@ -682,8 +698,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
   const handlePhysicalExit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!detail || !exitForm.causeCode || !exitForm.reason.trim()) {
-      setPhysicalActionError('Seleccione la causa y escriba el motivo de la salida.');
+    if (!detail || !exitForm.causeCode || !exitForm.reason.trim() || (exitForm.exitType==='sale'&&(!exitForm.saleAmount||Number(exitForm.saleAmount)<=0))) {
+      setPhysicalActionError('Seleccione la causa, ingrese el precio de venta y escriba el motivo de la salida.');
       return;
     }
     setBusy(true); setPhysicalActionError(null);
@@ -693,7 +709,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
       const body = await res.json() as { error?: string; animal?: AnimalDetail };
       if (!res.ok || !body.animal) { setPhysicalActionError(body.error ?? 'No se pudo registrar la salida.'); return; }
       setDetail(body.animal); setExitOperationKey(newOperationKey('ani-exit'));
-      setExitForm((prev) => ({ ...prev, causeCode: '', reason: '' }));
+      setExitForm((prev) => ({ ...prev, causeCode: '', reason: '', saleAmount: '', counterparty: '', documentReference: '' }));
       setSuccess(`La ficha ${body.animal.code} y el movimiento de ${exitForm.exitType === 'death' ? 'muerte' : 'venta'} quedaron registrados juntos.`);
       await loadList();
     } catch { setPhysicalActionError('No se pudo confirmar la salida. Reintente con el mismo formulario.'); }
@@ -1271,6 +1287,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                     <p className="form-helper">{ORIGIN_HINTS[form.originType]}</p>
                   </div>
 
+                  {form.originType==='compra'&&<><div className="form-group"><label className="form-label" htmlFor="ani-purchase-amount">Importe pagado / de compra</label><input id="ani-purchase-amount" type="number" min="0.01" step="0.01" className="form-input" value={form.purchaseAmount} onChange={(event)=>setField('purchaseAmount',event.target.value)} required/></div><div className="form-group"><label className="form-label" htmlFor="ani-purchase-currency">Moneda</label><select id="ani-purchase-currency" className="form-select" value={form.purchaseCurrencyCode} onChange={(event)=>setField('purchaseCurrencyCode',event.target.value)}><option value="PEN">PEN · Sol</option><option value="USD">USD · Dólar</option><option value="EUR">EUR · Euro</option></select></div><div className="form-group"><label className="form-label" htmlFor="ani-purchase-seller">Proveedor</label><input id="ani-purchase-seller" className="form-input" value={form.purchaseCounterparty} onChange={(event)=>setField('purchaseCounterparty',event.target.value)}/></div><div className="form-group"><label className="form-label" htmlFor="ani-purchase-reference">Documento de compra</label><input id="ani-purchase-reference" className="form-input" value={form.purchaseDocumentReference} onChange={(event)=>setField('purchaseDocumentReference',event.target.value)}/></div></>}
+
                   <div className="form-group">
                     <label className="form-label" htmlFor="ani-origin-detail">Detalle de procedencia</label>
                     <input
@@ -1844,6 +1862,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                         <div className="form-group"><label className="form-label" htmlFor="ani-exit-type">Tipo de salida</label><select id="ani-exit-type" className="form-select" value={exitForm.exitType} onChange={(event) => setExitForm((prev) => ({ ...prev, exitType: event.target.value as 'sale' | 'death', causeCode: '' }))}><option value="sale">Venta o descarte</option><option value="death">Muerte</option></select></div>
                         <div className="form-group"><label className="form-label" htmlFor="ani-exit-cause">Causa</label><select id="ani-exit-cause" className="form-select" value={exitForm.causeCode} onChange={(event) => setExitForm((prev) => ({ ...prev, causeCode: event.target.value }))} required><option value="">Seleccione causa</option>{(exitForm.exitType === 'death' ? data?.options.deathCauses : data?.options.saleCauses)?.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
                         <div className="form-group"><label className="form-label" htmlFor="ani-exit-date">Fecha efectiva</label><input id="ani-exit-date" type="date" className="form-input" value={exitForm.effectiveDate} max={farmToday()} onChange={(event) => setExitForm((prev) => ({ ...prev, effectiveDate: event.target.value }))} required /></div>
+                        {exitForm.exitType==='sale'&&<><div className="form-group"><label className="form-label" htmlFor="ani-exit-amount">Importe de venta</label><input id="ani-exit-amount" type="number" min="0.01" step="0.01" className="form-input" value={exitForm.saleAmount} onChange={(event) => setExitForm((prev) => ({ ...prev, saleAmount: event.target.value }))} required /></div><div className="form-group"><label className="form-label" htmlFor="ani-exit-currency">Moneda</label><select id="ani-exit-currency" className="form-select" value={exitForm.currencyCode} onChange={(event) => setExitForm((prev) => ({ ...prev, currencyCode: event.target.value }))}><option value="PEN">PEN · Sol</option><option value="USD">USD · Dólar</option><option value="EUR">EUR · Euro</option></select></div><div className="form-group"><label className="form-label" htmlFor="ani-exit-buyer">Cliente</label><input id="ani-exit-buyer" className="form-input" value={exitForm.counterparty} onChange={(event) => setExitForm((prev) => ({ ...prev, counterparty: event.target.value }))} /></div><div className="form-group"><label className="form-label" htmlFor="ani-exit-document">Documento</label><input id="ani-exit-document" className="form-input" value={exitForm.documentReference} onChange={(event) => setExitForm((prev) => ({ ...prev, documentReference: event.target.value }))} /></div></>}
                         <div className="form-group"><label className="form-label" htmlFor="ani-exit-reason">Motivo</label><input id="ani-exit-reason" className="form-input" value={exitForm.reason} onChange={(event) => setExitForm((prev) => ({ ...prev, reason: event.target.value }))} required /></div>
                       </div>
                       <div className="form-actions"><button type="submit" className="btn btn-danger btn-sm" disabled={busy}>{busy ? 'Guardando…' : 'Registrar salida'}</button></div>

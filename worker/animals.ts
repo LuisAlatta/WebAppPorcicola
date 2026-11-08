@@ -781,6 +781,10 @@ export interface CreateAnimalInput {
   fatherExternal?: string | null;
   originType?: string;
   originDetail?: string | null;
+  purchaseAmount?: unknown;
+  purchaseCurrencyCode?: unknown;
+  purchaseCounterparty?: unknown;
+  purchaseDocumentReference?: unknown;
   entryDate?: string;
   entryStageCode?: string;
   barnId?: number | string;
@@ -966,6 +970,12 @@ export async function createAnimal(
 
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Alta de animal' });
 
+  let purchaseAmountMinor:number|null=null;let purchaseCurrency='PEN';let purchaseCounterparty:string|null=null;let purchaseReference:string|null=null;
+  if(originType==='compra'&&input.purchaseAmount!==undefined&&input.purchaseAmount!==null&&input.purchaseAmount!==''){
+    const raw=String(input.purchaseAmount).trim();if(!/^\d{1,12}(?:\.\d{1,2})?$/.test(raw))throw new ApiError(400,'El importe de compra debe tener hasta dos decimales');const [whole,decimal='']=raw.split('.');purchaseAmountMinor=Number(whole)*100+Number(decimal.padEnd(2,'0'));if(!Number.isSafeInteger(purchaseAmountMinor)||purchaseAmountMinor<=0)throw new ApiError(400,'El importe de compra debe ser mayor que cero');purchaseCurrency=String(input.purchaseCurrencyCode??'PEN').toUpperCase();if(!/^[A-Z]{3}$/.test(purchaseCurrency))throw new ApiError(400,'Código de moneda inválido');purchaseCounterparty=String(input.purchaseCounterparty??'').trim()||null;purchaseReference=String(input.purchaseDocumentReference??'').trim()||null;
+  }
+  if(originType==='compra'&&purchaseAmountMinor===null)throw new ApiError(400,'Toda compra de animales requiere importe para enlazarla con Finanzas');
+
   const payload = {
     code,
     alias,
@@ -983,6 +993,7 @@ export async function createAnimal(
     fatherExternal,
     originType,
     originDetail,
+    purchaseAmountMinor,purchaseCurrency,purchaseCounterparty,purchaseReference,
     entryDate,
     entryStageCode: stageCode,
     barnId,
@@ -1126,6 +1137,7 @@ export async function createAnimal(
   }
 
   const result = { animalId, code };
+  const financeRow=purchaseAmountMinor===null?null:await db.prepare('SELECT COALESCE(MAX(id),0)+1 AS id FROM financial_entries').first<{id:number}>();const financialEntryId=financeRow?Number(financeRow.id):null;
   const claim = await createOperationClaim({
     operationKey: input.operationKey,
     operationType: 'animal.create',
@@ -1135,8 +1147,14 @@ export async function createAnimal(
     barnId,
     effectiveDate: entryDate,
     payload,
-    result,
+    result:{...result,financialEntryId},
   });
+
+  if(movementId!==null)statements.push(db.prepare('UPDATE inventory_movements SET operation_log_id=? WHERE id=?').bind(claim.id,movementId));
+  if(financialEntryId!==null){
+    statements.push(db.prepare(`INSERT INTO financial_entries(id,operation_log_id,direction,category,concept,operation_date,amount_minor,currency_code,counterparty,reference,notes,created_by_user_id,created_at,source_type,source_id) VALUES(?,?,'expense','Compra de animal',?,?,?,?,?,?,?,?,?,'animal_purchase',?)`).bind(financialEntryId,claim.id,`Compra de animal ${code}`,entryDate,purchaseAmountMinor,purchaseCurrency,purchaseCounterparty,purchaseReference,reason,actorUserId,claim.recordedAt,String(animalId)));
+    statements.push(db.prepare(`INSERT INTO financial_allocations(entry_id,barn_id,barn_name_snapshot,amount_minor,animal_id,animal_code_snapshot,lot_code,quantity,created_at) VALUES(?,?,?,?,?,?,?,?,?)`).bind(financialEntryId,barnId,barn.name,purchaseAmountMinor,animalId,code,lotCode,1,claim.recordedAt));
+  }
 
   const audits: AuditRecordInput[] = [{
     entityType: 'animal',
@@ -1153,6 +1171,7 @@ export async function createAnimal(
     effectiveDate: entryDate,
     recordedAt: claim.recordedAt,
   }];
+  if(financialEntryId!==null)audits.push({entityType:'financial_entry',entityId:financialEntryId,action:'create',actorUserId,barnId,reason,previousData:null,newData:{direction:'expense',category:'Compra de animal',animalCode:code,amountMinor:purchaseAmountMinor,currencyCode:purchaseCurrency,counterparty:purchaseCounterparty,reference:purchaseReference},effectiveDate:entryDate,recordedAt:claim.recordedAt});
 
   statements.push(db.prepare(`INSERT INTO animal_location_history
     (animal_id, barn_id, location_code, lot_code, stage_code, valid_from, valid_until, operation_log_id, created_by_user_id, created_at)
@@ -1723,6 +1742,10 @@ export interface AnimalExitInput {
   exitType?: unknown;
   causeCode?: unknown;
   effectiveDate?: string;
+  saleAmount?: unknown;
+  currencyCode?: unknown;
+  counterparty?: unknown;
+  documentReference?: unknown;
   reason?: string;
   operationKey?: string;
 }
@@ -1753,19 +1776,26 @@ export async function registerAnimalExit(
   const sex = String(row.sex) as Sex;
   const locationCode = row.location_code === null || row.location_code === undefined ? null : String(row.location_code);
   const lotCode = row.lot_code === null || row.lot_code === undefined ? null : String(row.lot_code);
-  const payload = { key, exitType, causeCode, effectiveDate };
-  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
-  if (replay) return { animal: await getAnimal(db, key, scope), replayed: true };
-  if (!exitedCheck(row)) throw new ApiError(409, 'La ficha ya tiene una salida física');
   if(exitType==='sale'){
     const restriction=await db.prepare(`SELECT h.product,h.withdrawal_until FROM health_events h JOIN health_event_animals ha ON ha.health_event_id=h.id
       WHERE ha.animal_id=? AND h.event_type<>'death' AND h.effective_date<=? AND ha.withdrawal_until>=? ORDER BY ha.withdrawal_until DESC LIMIT 1`).bind(animalId,effectiveDate,effectiveDate).first<{product:string;withdrawal_until:string}>();
     if(restriction)throw new ApiError(409,`No se puede vender: retiro sanitario de ${restriction.product} hasta ${restriction.withdrawal_until}`);
   }
+  let saleAmountMinor:number|null=null;let saleCurrency='PEN';let buyer:string|null=null;let documentReference:string|null=null;
+  if(exitType==='sale'&&input.saleAmount!==undefined&&input.saleAmount!==null&&input.saleAmount!==''){
+    const raw=String(input.saleAmount).trim();if(!/^\d{1,12}(?:\.\d{1,2})?$/.test(raw))throw new ApiError(400,'El importe de venta debe tener hasta dos decimales');const [whole,decimal='']=raw.split('.');saleAmountMinor=Number(whole)*100+Number(decimal.padEnd(2,'0'));if(!Number.isSafeInteger(saleAmountMinor)||saleAmountMinor<=0)throw new ApiError(400,'El importe de venta debe ser mayor que cero');
+    saleCurrency=String(input.currencyCode??'PEN').toUpperCase();if(!/^[A-Z]{3}$/.test(saleCurrency))throw new ApiError(400,'Código de moneda inválido');buyer=String(input.counterparty??'').trim()||null;documentReference=String(input.documentReference??'').trim()||null;
+  }
+  if(exitType==='sale'&&saleAmountMinor===null)throw new ApiError(400,'Toda venta de animales requiere importe para enlazarla con Finanzas');
+  const payload = { key, exitType, causeCode, effectiveDate,saleAmountMinor,saleCurrency,buyer,documentReference };
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) return { animal: await getAnimal(db, key, scope), replayed: true };
+  if (!exitedCheck(row)) throw new ApiError(409, 'La ficha ya tiene una salida física');
   const reason = normalizeReason(input.reason, { required: true, fallback: exitType === 'death' ? 'Muerte de animal' : 'Venta de animal' });
+  const financeRow=saleAmountMinor===null?null:await db.prepare('SELECT COALESCE(MAX(id),0)+1 AS id FROM financial_entries').first<{id:number}>();const financialEntryId=financeRow?Number(financeRow.id):null;
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: `animal.${exitType}`,
     authorUserId: actorUserId, entityType: 'animal', entityId: animalId, barnId, effectiveDate,
-    payload, result: { animalId, code: row.code, exitType } });
+    payload, result: { animalId, code: row.code, exitType,financialEntryId } });
   const createdAt = claim.recordedAt;
   const movementId = Date.now() * 1000 + Math.floor(Math.random() * 1000);
   const healthEventId = exitType === 'death' ? Date.now() * 1000 + Math.floor(Math.random() * 1000) : null;
@@ -1787,11 +1817,13 @@ export async function registerAnimalExit(
       VALUES(?,?,?,?,?,?,?,?,NULL)`).bind(healthEventId,animalId,String(row.code),barnId,String(row.barn_name),locationCode,lotCode,stageCode)]),
     stockGuardStatement(db, barnId, locationCode, lotCode, stageCode, sex),
     db.prepare('DELETE FROM inventory_write_guard'),
+    ...(financialEntryId===null?[]:[db.prepare(`INSERT INTO financial_entries(id,operation_log_id,direction,category,concept,operation_date,amount_minor,currency_code,counterparty,reference,notes,created_by_user_id,created_at,source_type,source_id) VALUES(?,?,'income','Venta de animal',?,?,?,?,?,?,?,?,?,'animal_sale',?)`).bind(financialEntryId,claim.id,`Venta de animal ${String(row.code)}`,effectiveDate,saleAmountMinor,saleCurrency,buyer,documentReference,reason,actorUserId,createdAt,String(animalId)),db.prepare(`INSERT INTO financial_allocations(entry_id,barn_id,barn_name_snapshot,amount_minor,animal_id,animal_code_snapshot,lot_code,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(financialEntryId,barnId,String(row.barn_name),saleAmountMinor,animalId,String(row.code),lotCode,createdAt)]),
   ];
   await commitOperation(db, claim, statements, [{ entityType: 'animal', entityId: animalId, action: 'update', actorUserId, barnId, reason,
     previousData: { status: String(row.status), exitDate: null },
     newData: { status, exitType, exitDate: effectiveDate, causeCode, inventoryMovementId: movementId,healthEventId }, effectiveDate, recordedAt: createdAt },
-    ...(healthEventId===null?[]:[{entityType:'health_event',entityId:healthEventId,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{eventType:'death',causeCode,animalCode:String(row.code),inventoryMovementId:movementId},effectiveDate,recordedAt:createdAt}])]);
+    ...(healthEventId===null?[]:[{entityType:'health_event',entityId:healthEventId,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{eventType:'death',causeCode,animalCode:String(row.code),inventoryMovementId:movementId},effectiveDate,recordedAt:createdAt}]),
+    ...(financialEntryId===null?[]:[{entityType:'financial_entry',entityId:financialEntryId,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{direction:'income',category:'Venta de animal',animalCode:String(row.code),amountMinor:saleAmountMinor,currencyCode:saleCurrency,counterparty:buyer,reference:documentReference,inventoryMovementId:movementId},effectiveDate,recordedAt:createdAt}])]);
   return { animal: await getAnimal(db, key, scope), replayed: false };
 }
 

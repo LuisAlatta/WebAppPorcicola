@@ -9,11 +9,11 @@ import { BocetoFormulario } from './components/BocetoFormulario';
 import { ModuloAdministracion } from './components/ModuloAdministracion';
 import { ModuloConfiguracion } from './components/ModuloConfiguracion';
 import { ModuloInventario } from './components/ModuloInventario';
-import { ModuloAnimales } from './components/ModuloAnimales';
 import { ModuloReproduccion } from './components/ModuloReproduccion';
 import { ModuloAlimentacion } from './components/ModuloAlimentacion';
 import { ModuloSanidad } from './components/ModuloSanidad';
 const ModuloFinanzas = lazy(() => import('./components/ModuloFinanzas').then(module => ({default:module.ModuloFinanzas})));
+const ModuloAnimales = lazy(() => import('./components/ModuloAnimales').then(module => ({default:module.ModuloAnimales})));
 import './style.css';
 
 function getInitialView(): Vista {
@@ -149,7 +149,7 @@ function App() {
           />
         );
       case 'detalle':
-        return <ModuloAnimales perfil={perfilActual} initialAnimalKey={selectedAnimalId} />;
+        return <Suspense fallback={<div className="module-container">Cargando ficha…</div>}><ModuloAnimales perfil={perfilActual} initialAnimalKey={selectedAnimalId} /></Suspense>;
       case 'inventario':
         return <ModuloInventario perfil={perfilActual} />;
       case 'alimentacion':
@@ -159,7 +159,7 @@ function App() {
       case 'finanzas':
         return <Suspense fallback={<div className="module-container">Cargando finanzas…</div>}><ModuloFinanzas perfil={perfilActual} /></Suspense>;
       case 'animales':
-        return <ModuloAnimales perfil={perfilActual} />;
+        return <Suspense fallback={<div className="module-container">Cargando animales…</div>}><ModuloAnimales perfil={perfilActual} /></Suspense>;
       case 'reproduccion':
         return <ModuloReproduccion perfil={perfilActual} />;
       case 'configuracion':

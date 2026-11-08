@@ -6,7 +6,7 @@ type Row = Record<string, unknown>;
 export interface FeedScope { allowedBarnNames?: string[] | null }
 export type FeedMovementInput = {
   movementType?: unknown; effectiveDate?: unknown; warehouseId?: unknown; feedCode?: unknown; lotCode?: unknown;
-  supplier?: unknown; quantityKg?: unknown; costPerKg?: unknown; destinationBarnId?: unknown; animalCode?: unknown;
+  supplier?: unknown; quantityKg?: unknown; costPerKg?: unknown; destinationBarnId?: unknown; animalCode?: unknown; currencyCode?:unknown; documentReference?:unknown;
   reason?: unknown; operationKey?: string;
   turn?: { shiftCode?: unknown; stageCode?: unknown; plannedKg?: unknown; servedKg?: unknown; consumedKg?: unknown };
 };
@@ -109,7 +109,7 @@ export async function listFeedMovements(db:D1Database,filters:{from?:unknown;to?
   const rows=await db.prepare(`SELECT m.*,w.code AS warehouse_code,w.name AS warehouse_name,b.name AS destination_barn_name,a.code AS animal_code,u.name AS actor_name
     FROM feed_movements m JOIN feed_warehouses w ON w.id=m.warehouse_id LEFT JOIN barns b ON b.id=m.destination_barn_id LEFT JOIN animals a ON a.id=m.animal_id
     JOIN users u ON u.id=m.created_by_user_id WHERE ${where.join(' AND ')} ORDER BY m.effective_date DESC,m.id DESC LIMIT ?`).bind(...params,limit).all<Row>();
-  return (rows.results??[]).map(row=>({id:Number(row.id),movementType:String(row.movement_type),effectiveDate:String(row.effective_date),warehouseCode:String(row.warehouse_code),warehouseName:String(row.warehouse_name),feedCode:String(row.feed_code),lotCode:String(row.lot_code),supplier:row.supplier===null?null:String(row.supplier),quantityKg:Number(row.quantity_kg),stockDeltaKg:Number(row.stock_delta_kg),costPerKg:Number(row.unit_cost_minor)/100,totalCost:Number(row.total_cost_minor)/100,destinationBarn:row.destination_barn_name===null?null:String(row.destination_barn_name),animalCode:row.animal_code===null?null:String(row.animal_code),reason:String(row.reason),actorName:String(row.actor_name)}));
+  return (rows.results??[]).map(row=>({id:Number(row.id),movementType:String(row.movement_type),effectiveDate:String(row.effective_date),warehouseCode:String(row.warehouse_code),warehouseName:String(row.warehouse_name),feedCode:String(row.feed_code),lotCode:String(row.lot_code),supplier:row.supplier===null?null:String(row.supplier),quantityKg:Number(row.quantity_kg),stockDeltaKg:Number(row.stock_delta_kg),costPerKg:Number(row.unit_cost_minor)/100,totalCost:Number(row.total_cost_minor)/100,currencyCode:String(row.currency_code),documentReference:row.document_reference===null?null:String(row.document_reference),destinationBarn:row.destination_barn_name===null?null:String(row.destination_barn_name),animalCode:row.animal_code===null?null:String(row.animal_code),reason:String(row.reason),actorName:String(row.actor_name)}));
 }
 export async function registerFeedMovement(db:D1Database,actorUserId:number,input:FeedMovementInput,scope:FeedScope={}){
   const movementType=String(input.movementType??'');
@@ -127,6 +127,8 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
   const costPerKg=Number(input.costPerKg);
   if(!Number.isFinite(costPerKg)||costPerKg<0||Math.round(costPerKg*100)!==costPerKg*100)throw new ApiError(400,'El costo por kg debe tener hasta dos decimales');
   const unitCostMinor=Math.round(costPerKg*100);const totalCostMinor=Math.round(quantityKg*unitCostMinor);
+  if(movementType==='purchase'&&totalCostMinor<=0)throw new ApiError(400,'La compra de alimento debe tener un costo positivo para generar el egreso asociado');
+  const currencyCode=String(input.currencyCode??'PEN').trim().toUpperCase();if(currencyCode!=='PEN')throw new ApiError(400,'Las compras de alimento se valoran en PEN para mantener consistente el costo por lote');const documentReference=text(input.documentReference,'Referencia del documento',100);
   const supplier=text(input.supplier,'Proveedor',160);
   const reason=normalizeReason(input.reason,{required:true});
   const config=await getConfigSnapshot(db,effectiveDate);
@@ -150,13 +152,14 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
   }else if(animalCode||input.destinationBarnId){throw new ApiError(400,'El destino solo se indica en una entrega/consumo');}
   if(movementType==='purchase'&&!supplier)throw new ApiError(400,'Indique el proveedor de la compra');
   if(movementType==='waste'&&!reason)throw new ApiError(400,'Indique el motivo de la merma');
-  const payload={movementType,effectiveDate,warehouseId,feedCode,lotCode,supplier,quantityKg,costPerKg,destinationBarnId,animalId,reason,turn:input.turn??null};
+  const payload={movementType,effectiveDate,warehouseId,feedCode,lotCode,supplier,quantityKg,costPerKg,currencyCode,documentReference,destinationBarnId,animalId,reason,turn:input.turn??null};
   const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);
   if(replay)return {replayed:true,movement:replay.result};
   const id=Date.now()*1000+Math.floor(Math.random()*1000);
   const positive=['opening','purchase','return_in'].includes(movementType);const stockDeltaKg=positive?quantityKg:-quantityKg;
-  const claim=await createOperationClaim({operationKey:input.operationKey,operationType:`feed.${movementType}`,authorUserId:actorUserId,entityType:'feed_movement',entityId:id,barnId:destinationBarnId??(warehouse.barn_id===null?null:Number(warehouse.barn_id)),effectiveDate,payload,result:{id,movementType,effectiveDate,warehouseId,feedCode,lotCode,quantityKg,stockDeltaKg,costPerKg,totalCost:totalCostMinor/100,destinationBarnId,animalId}});
-  const movement={id,movementType,effectiveDate,warehouseId,feedCode,lotCode,supplier,quantityKg,stockDeltaKg,costPerKg,totalCost:totalCostMinor/100,destinationBarnId,animalId,reason};
+  const warehouseBarnId=warehouse.barn_id===null?null:Number(warehouse.barn_id);const warehouseBarn=warehouseBarnId===null?null:await db.prepare('SELECT name FROM barns WHERE id=?').bind(warehouseBarnId).first<{name:string}>();const financialEntryId=movementType==='purchase'?Number((await db.prepare('SELECT COALESCE(MAX(id),0)+1 AS id FROM financial_entries').first<{id:number}>())?.id??1):null;
+  const claim=await createOperationClaim({operationKey:input.operationKey,operationType:`feed.${movementType}`,authorUserId:actorUserId,entityType:'feed_movement',entityId:id,barnId:destinationBarnId??warehouseBarnId,effectiveDate,payload,result:{id,movementType,effectiveDate,warehouseId,feedCode,lotCode,quantityKg,stockDeltaKg,costPerKg,totalCost:totalCostMinor/100,destinationBarnId,animalId,financialEntryId}});
+  const movement={id,movementType,effectiveDate,warehouseId,feedCode,lotCode,supplier,quantityKg,stockDeltaKg,costPerKg,totalCost:totalCostMinor/100,currencyCode,documentReference,destinationBarnId,animalId,reason};
   let turnStatement:D1PreparedStatement|undefined;
   if(input.turn){
     if(movementType!=='delivery'||animalId!==null||destinationBarnId===null)throw new ApiError(400,'El turno debe ser una entrega a un galpón');
@@ -180,10 +183,10 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
     SELECT CASE WHEN COALESCE(MIN(running),0)>=0 THEN 0 ELSE -1 END FROM (
       SELECT SUM(stock_delta_kg) OVER (ORDER BY effective_date,id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running
       FROM feed_movements WHERE warehouse_id=? AND feed_code=? AND lot_code=?)`).bind(warehouseId,feedCode,lotCode);
-  const statements=[db.prepare(`INSERT INTO feed_movements(id,operation_log_id,warehouse_id,movement_type,effective_date,feed_code,lot_code,supplier,quantity_kg,stock_delta_kg,unit_cost_minor,total_cost_minor,destination_barn_id,animal_id,reason,created_by_user_id,created_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,claim.id,warehouseId,movementType,effectiveDate,feedCode,lotCode,supplier,quantityKg,stockDeltaKg,unitCostMinor,totalCostMinor,destinationBarnId,animalId,reason,actorUserId,claim.recordedAt),...(turnStatement?[turnStatement]:[]),signCheck,db.prepare('DELETE FROM feed_stock_guard')];
+  const statements=[db.prepare(`INSERT INTO feed_movements(id,operation_log_id,warehouse_id,movement_type,effective_date,feed_code,lot_code,supplier,quantity_kg,stock_delta_kg,unit_cost_minor,total_cost_minor,destination_barn_id,animal_id,reason,created_by_user_id,created_at,currency_code,document_reference)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,claim.id,warehouseId,movementType,effectiveDate,feedCode,lotCode,supplier,quantityKg,stockDeltaKg,unitCostMinor,totalCostMinor,destinationBarnId,animalId,reason,actorUserId,claim.recordedAt,currencyCode,documentReference),...(financialEntryId===null?[]:[db.prepare(`INSERT INTO financial_entries(id,operation_log_id,direction,category,concept,operation_date,amount_minor,currency_code,counterparty,reference,notes,created_by_user_id,created_at,source_type,source_id) VALUES(?,?,'expense','Compra de alimento',?,?,?,?,?,?,?,?,?,'feed_purchase',?)`).bind(financialEntryId,claim.id,`${quantityKg} kg de ${feedCode} · lote ${lotCode}`,effectiveDate,totalCostMinor,currencyCode,supplier,documentReference,reason,actorUserId,claim.recordedAt,String(id)),db.prepare(`INSERT INTO financial_allocations(entry_id,barn_id,barn_name_snapshot,amount_minor,supply_code,lot_code,quantity,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(financialEntryId,warehouseBarnId,warehouseBarn?.name??null,totalCostMinor,feedCode,lotCode,quantityKg,claim.recordedAt)]),...(turnStatement?[turnStatement]:[]),signCheck,db.prepare('DELETE FROM feed_stock_guard')];
   await commitOperation(db,claim,statements,
-    [{entityType:'feed_movement',entityId:id,action:'create',actorUserId,barnId:destinationBarnId??(warehouse.barn_id===null?null:Number(warehouse.barn_id)),reason,previousData:null,newData:movement,effectiveDate,recordedAt:claim.recordedAt}]);
+    [{entityType:'feed_movement',entityId:id,action:'create',actorUserId,barnId:destinationBarnId??(warehouse.barn_id===null?null:Number(warehouse.barn_id)),reason,previousData:null,newData:movement,effectiveDate,recordedAt:claim.recordedAt},...(financialEntryId===null?[]:[{entityType:'financial_entry',entityId:financialEntryId,action:'create' as const,actorUserId,barnId:warehouseBarnId,reason,previousData:null,newData:{direction:'expense',category:'Compra de alimento',sourceType:'feed_purchase',sourceId:id,amountMinor:totalCostMinor,currencyCode,counterparty:supplier,reference:documentReference},effectiveDate,recordedAt:claim.recordedAt}])]);
   return {replayed:false,movement};
 }
 
