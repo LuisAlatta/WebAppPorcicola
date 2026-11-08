@@ -1,5 +1,6 @@
 import { ApiError, commitOperation, createOperationClaim, currentFarmDate, isValidDateString, lookupExistingOperation, normalizeReason } from './events';
 import { getConfigSnapshot } from './config';
+import { getInventorySnapshot } from './inventory';
 
 type Row = Record<string, unknown>;
 export interface FeedScope { allowedBarnNames?: string[] | null }
@@ -7,6 +8,7 @@ export type FeedMovementInput = {
   movementType?: unknown; effectiveDate?: unknown; warehouseId?: unknown; feedCode?: unknown; lotCode?: unknown;
   supplier?: unknown; quantityKg?: unknown; costPerKg?: unknown; destinationBarnId?: unknown; animalCode?: unknown;
   reason?: unknown; operationKey?: string;
+  turn?: { shiftCode?: unknown; stageCode?: unknown; plannedKg?: unknown; servedKg?: unknown; consumedKg?: unknown };
 };
 const text = (value: unknown, field: string, max = 120, required = false): string | null => {
   if (value === undefined || value === null || String(value).trim() === '') {
@@ -148,19 +150,81 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
   }else if(animalCode||input.destinationBarnId){throw new ApiError(400,'El destino solo se indica en una entrega/consumo');}
   if(movementType==='purchase'&&!supplier)throw new ApiError(400,'Indique el proveedor de la compra');
   if(movementType==='waste'&&!reason)throw new ApiError(400,'Indique el motivo de la merma');
-  const payload={movementType,effectiveDate,warehouseId,feedCode,lotCode,supplier,quantityKg,costPerKg,destinationBarnId,animalId,reason};
+  const payload={movementType,effectiveDate,warehouseId,feedCode,lotCode,supplier,quantityKg,costPerKg,destinationBarnId,animalId,reason,turn:input.turn??null};
   const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);
   if(replay)return {replayed:true,movement:replay.result};
   const id=Date.now()*1000+Math.floor(Math.random()*1000);
   const positive=['opening','purchase','return_in'].includes(movementType);const stockDeltaKg=positive?quantityKg:-quantityKg;
   const claim=await createOperationClaim({operationKey:input.operationKey,operationType:`feed.${movementType}`,authorUserId:actorUserId,entityType:'feed_movement',entityId:id,barnId:destinationBarnId??(warehouse.barn_id===null?null:Number(warehouse.barn_id)),effectiveDate,payload,result:{id,movementType,effectiveDate,warehouseId,feedCode,lotCode,quantityKg,stockDeltaKg,costPerKg,totalCost:totalCostMinor/100,destinationBarnId,animalId}});
   const movement={id,movementType,effectiveDate,warehouseId,feedCode,lotCode,supplier,quantityKg,stockDeltaKg,costPerKg,totalCost:totalCostMinor/100,destinationBarnId,animalId,reason};
+  let turnStatement:D1PreparedStatement|undefined;
+  if(input.turn){
+    if(movementType!=='delivery'||animalId!==null||destinationBarnId===null)throw new ApiError(400,'El turno debe ser una entrega a un galpón');
+    const shiftCode=text(input.turn.shiftCode,'Turno',20,true)!;
+    if(!['manana','tarde','noche'].includes(shiftCode))throw new ApiError(400,'Turno inválido');
+    const stageCode=text(input.turn.stageCode,'Etapa',40,true)!;
+    const plannedKg=Number(input.turn.plannedKg);const servedKg=Number(input.turn.servedKg);
+    if(!Number.isFinite(plannedKg)||plannedKg<0||Math.round(plannedKg*1000)!==plannedKg*1000)throw new ApiError(400,'La cantidad prevista debe ser cero o positiva con hasta 3 decimales');
+    if(servedKg!==quantityKg)throw new ApiError(400,'La cantidad servida debe coincidir con los kg de la entrega real');
+    const consumedKg=input.turn.consumedKg===undefined||input.turn.consumedKg===null||input.turn.consumedKg===''?null:Number(input.turn.consumedKg);
+    if(consumedKg!==null&&(!Number.isFinite(consumedKg)||consumedKg<0||consumedKg>servedKg||Math.round(consumedKg*1000)!==consumedKg*1000))throw new ApiError(400,'El consumo real debe estar entre cero y la cantidad servida');
+    const stage=await db.prepare('SELECT code FROM stage_versions WHERE code=? AND effective_from<=? AND (effective_to IS NULL OR effective_to>=?) AND status=\'active\'').bind(stageCode,effectiveDate,effectiveDate).first();
+    if(!stage)throw new ApiError(400,'Seleccione una etapa vigente');
+    const stageConfig=config.stages.find(item=>item.code===stageCode);
+    const expectedFeed=config.catalogs.find(item=>item.key==='alimento')?.items.find(item=>item.code===stageCode||item.name.toLocaleLowerCase('es-PE')===stageConfig?.rationName?.toLocaleLowerCase('es-PE'));
+    if(expectedFeed&&expectedFeed.code!==feedCode)throw new ApiError(400,'El alimento no coincide con la ración configurada para la etapa');
+    turnStatement=db.prepare(`INSERT INTO feed_turns(operation_log_id,feed_movement_id,effective_date,shift_code,barn_id,stage_code,feed_code,lot_code,planned_kg,served_kg,consumed_kg,created_by_user_id,created_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(claim.id,id,effectiveDate,shiftCode,destinationBarnId,stageCode,feedCode,lotCode,plannedKg,servedKg,consumedKg,actorUserId,claim.recordedAt);
+  }
   const signCheck=db.prepare(`INSERT INTO feed_stock_guard (guard_id)
     SELECT CASE WHEN COALESCE(MIN(running),0)>=0 THEN 0 ELSE -1 END FROM (
       SELECT SUM(stock_delta_kg) OVER (ORDER BY effective_date,id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running
       FROM feed_movements WHERE warehouse_id=? AND feed_code=? AND lot_code=?)`).bind(warehouseId,feedCode,lotCode);
-  await commitOperation(db,claim,[db.prepare(`INSERT INTO feed_movements(id,operation_log_id,warehouse_id,movement_type,effective_date,feed_code,lot_code,supplier,quantity_kg,stock_delta_kg,unit_cost_minor,total_cost_minor,destination_barn_id,animal_id,reason,created_by_user_id,created_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,claim.id,warehouseId,movementType,effectiveDate,feedCode,lotCode,supplier,quantityKg,stockDeltaKg,unitCostMinor,totalCostMinor,destinationBarnId,animalId,reason,actorUserId,claim.recordedAt),signCheck,db.prepare('DELETE FROM feed_stock_guard')],
+  const statements=[db.prepare(`INSERT INTO feed_movements(id,operation_log_id,warehouse_id,movement_type,effective_date,feed_code,lot_code,supplier,quantity_kg,stock_delta_kg,unit_cost_minor,total_cost_minor,destination_barn_id,animal_id,reason,created_by_user_id,created_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,claim.id,warehouseId,movementType,effectiveDate,feedCode,lotCode,supplier,quantityKg,stockDeltaKg,unitCostMinor,totalCostMinor,destinationBarnId,animalId,reason,actorUserId,claim.recordedAt),...(turnStatement?[turnStatement]:[]),signCheck,db.prepare('DELETE FROM feed_stock_guard')];
+  await commitOperation(db,claim,statements,
     [{entityType:'feed_movement',entityId:id,action:'create',actorUserId,barnId:destinationBarnId??(warehouse.barn_id===null?null:Number(warehouse.barn_id)),reason,previousData:null,newData:movement,effectiveDate,recordedAt:claim.recordedAt}]);
   return {replayed:false,movement};
+}
+
+export async function getFeedProjection(db:D1Database,asOfValue:unknown,scope:FeedScope={}){
+  const asOf=asOfValue?validateDate(asOfValue):currentFarmDate();
+  const [config,animals,stock]=await Promise.all([getConfigSnapshot(db,asOf),getInventorySnapshot(db,{asOf,from:asOf,movementLimit:0},scope),getFeedInventory(db,asOf,scope)]);
+  const stages=config.stages;const catalog=config.catalogs.find(item=>item.key==='alimento')?.items??[];
+  const byStage=new Map(animals.summary.byStage.map(row=>[row.stageCode,row.available]));
+  const projection=stages.map(stage=>{
+    const heads=byStage.get(stage.code)??0;const feed=catalog.find(item=>item.code===stage.code||item.name.toLocaleLowerCase('es-PE')===stage.rationName?.toLocaleLowerCase('es-PE'));
+    const requirements:string[]=[];if(heads>0&&(!stage.dailyFeedKg||stage.dailyFeedKg<=0))requirements.push('Configurar consumo diario por cabeza');if(heads>0&&(!stage.durationDays||stage.durationDays<=0))requirements.push('Configurar duración de etapa');if(heads>0&&!feed)requirements.push('Vincular ración con un alimento del catálogo');
+    const dailyKg=heads===0?0:stage.dailyFeedKg===null?null:Number((heads*stage.dailyFeedKg).toFixed(3));
+    const availableKg=feed?stock.inventory.filter(row=>row.feedCode===feed.code).reduce((sum,row)=>sum+row.availableKg,0):0;
+    const stageNeedKg=heads===0?0:dailyKg!==null&&stage.durationDays!==null?Number((dailyKg*stage.durationDays).toFixed(3)):null;const monthlyNeedKg=dailyKg===null?null:Number((dailyKg*30).toFixed(3));
+    return {stageCode:stage.code,stageName:stage.name,heads,rationName:stage.rationName,feedCode:feed?.code??null,feedName:feed?.name??null,dailyPerHeadKg:stage.dailyFeedKg,dailyKg,stageDays:stage.durationDays,stageNeedKg,monthlyNeedKg,availableKg,coveredDays:dailyKg&&dailyKg>0?Math.floor(availableKg/dailyKg):null,stageShortageKg:stageNeedKg===null?null:Number(Math.max(0,stageNeedKg-availableKg).toFixed(3)),monthlyShortageKg:monthlyNeedKg===null?null:Number(Math.max(0,monthlyNeedKg-availableKg).toFixed(3)),requirements};
+  });
+  const feedSummary=[...new Set(projection.map(row=>row.feedCode).filter((code):code is string=>Boolean(code)))].map(feedCode=>{
+    const rows=projection.filter(row=>row.feedCode===feedCode);const dailyKg=Number(rows.reduce((sum,row)=>sum+(row.dailyKg??0),0).toFixed(3));const availableKg=stock.inventory.filter(row=>row.feedCode===feedCode).reduce((sum,row)=>sum+row.availableKg,0);const monthlyNeedKg=Number((dailyKg*30).toFixed(3));
+    return {feedCode,feedName:rows[0].feedName,heads:rows.reduce((sum,row)=>sum+row.heads,0),dailyKg,monthlyNeedKg,availableKg,coveredDays:dailyKg>0?Math.floor(availableKg/dailyKg):null,monthlyShortageKg:Number(Math.max(0,monthlyNeedKg-availableKg).toFixed(3))};
+  });
+  const barnIds=await allowedBarnIds(db,scope);const turnScope=barnIds===null?'':barnIds.length?` AND t.barn_id IN (${barnIds.map(()=>'?').join(',')})`:' AND 0=1';
+  const turns=await db.prepare(`SELECT t.id,t.effective_date,t.shift_code,t.barn_id,b.name AS barn_name,t.stage_code,t.feed_code,t.lot_code,t.planned_kg,t.served_kg,t.consumed_kg
+    FROM feed_turns t JOIN barns b ON b.id=t.barn_id WHERE t.effective_date<=?${turnScope} ORDER BY t.effective_date DESC,t.id DESC LIMIT 100`).bind(asOf,...(barnIds??[])).all<Row>();
+  const periodStart=new Date(`${asOf}T00:00:00Z`);periodStart.setUTCDate(periodStart.getUTCDate()-29);const from=periodStart.toISOString().slice(0,10);
+  const weightScope=barnIds===null?'':barnIds.length?` AND barn_id IN (${barnIds.map(()=>'?').join(',')})`:' AND 0=1';
+  const weights=await db.prepare(`WITH measured AS (
+      SELECT animal_id,barn_id,stage_code,weight_kg,
+        FIRST_VALUE(barn_id) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id) AS first_barn,
+        FIRST_VALUE(stage_code) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id) AS first_stage,
+        FIRST_VALUE(weight_kg) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id) AS first_weight,
+        LAST_VALUE(barn_id) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_barn,
+        LAST_VALUE(stage_code) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_stage,
+        LAST_VALUE(weight_kg) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_weight,
+        ROW_NUMBER() OVER (PARTITION BY animal_id ORDER BY weighed_on DESC,weighed_time DESC,id DESC) AS last_row,
+        COUNT(*) OVER (PARTITION BY animal_id) AS measurement_count
+      FROM animal_weights WHERE weighed_on BETWEEN ? AND ?${weightScope} AND barn_id IS NOT NULL AND stage_code IS NOT NULL
+    ) SELECT first_barn,first_stage,first_weight,last_weight FROM measured
+      WHERE last_row=1 AND measurement_count>=2 AND first_barn=last_barn AND first_stage=last_stage`).bind(from,asOf,...(barnIds??[])).all<Row>();
+  const gains=new Map<string,{gain:number;animals:number}>();for(const row of weights.results??[]){const key=`${row.first_barn}:${row.first_stage}`;const value=gains.get(key)??{gain:0,animals:0};value.gain+=Number(row.last_weight)-Number(row.first_weight);value.animals+=1;gains.set(key,value);}
+  const consumedRows=await db.prepare(`SELECT t.barn_id,t.stage_code,SUM(t.consumed_kg) AS consumed_kg FROM feed_turns t WHERE t.effective_date BETWEEN ? AND ? AND t.consumed_kg IS NOT NULL${turnScope} GROUP BY t.barn_id,t.stage_code`).bind(from,asOf,...(barnIds??[])).all<Row>();
+  const consumed=new Map((consumedRows.results??[]).map(row=>[`${row.barn_id}:${row.stage_code}`,Number(row.consumed_kg)]));
+  const comparisonKeys=new Set([...gains.keys(),...consumed.keys()]);const conversion=[...comparisonKeys].map(key=>{const [barnId,stageCode]=key.split(':');const gain=gains.get(key)??{gain:0,animals:0};const consumedKg=consumed.get(key)??0;const barnName=animals.options.barns.find(item=>item.id===Number(barnId))?.name??`Galpón ${barnId}`;return {barnId:Number(barnId),barnName,stageCode,periodFrom:from,periodTo:asOf,measuredAnimals:gain.animals,weightGainKg:Number(gain.gain.toFixed(3)),consumedKg:Number(consumedKg.toFixed(3)),feedConversionRatio:gain.gain>0&&consumedKg>0?Number((consumedKg/gain.gain).toFixed(3)):null,unavailableReason:gain.animals===0?'Faltan dos pesajes del mismo animal, galpón y etapa dentro del periodo':gain.gain<=0?'La ganancia comparable debe ser positiva':consumedKg<=0?'Falta registrar consumo real medido en los turnos':null};});
+  return {asOf,stages:projection,feeds:feedSummary,conversion,turns:(turns.results??[]).map(row=>({id:Number(row.id),effectiveDate:String(row.effective_date),shiftCode:String(row.shift_code),barnName:String(row.barn_name),stageCode:String(row.stage_code),feedCode:String(row.feed_code),lotCode:String(row.lot_code),plannedKg:Number(row.planned_kg),servedKg:Number(row.served_kg),consumedKg:row.consumed_kg===null?null:Number(row.consumed_kg)}))};
 }

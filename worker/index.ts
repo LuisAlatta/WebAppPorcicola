@@ -70,7 +70,7 @@ import {
   saveWeaningPlan,
 } from './reproduction';
 import { correctLitter, recordFarrowing, recordLitterEvent } from './litters';
-import { createFeedWarehouse, getFeedInventory, listFeedMovements, listFeedWarehouses, registerFeedMovement } from './feed';
+import { createFeedWarehouse, getFeedInventory, getFeedProjection, listFeedMovements, listFeedWarehouses, registerFeedMovement } from './feed';
 
 export interface Env {
   DB: D1Database;
@@ -523,7 +523,7 @@ const worker = {
     }
 
     // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
-    if (path === '/api/feed/warehouses' || path === '/api/feed/inventory' || path === '/api/feed/movements') {
+    if (path === '/api/feed/warehouses' || path === '/api/feed/inventory' || path === '/api/feed/movements' || path === '/api/feed/projection' || path === '/api/feed/turns') {
       const token=getSessionToken(request);
       if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});
       const session=await validateSession(env.DB,token);
@@ -540,6 +540,12 @@ const worker = {
           return Response.json({ok:true,...result},{status:result.replayed?200:201});
         }
         if(path==='/api/feed/inventory'&&request.method==='GET')return Response.json({ok:true,...await getFeedInventory(env.DB,url.searchParams.get('asOf'),scope)});
+        if(path==='/api/feed/projection'&&request.method==='GET')return Response.json({ok:true,...await getFeedProjection(env.DB,url.searchParams.get('asOf'),scope)});
+        if(path==='/api/feed/turns'&&request.method==='POST'){
+          const body=await request.json() as Parameters<typeof registerFeedMovement>[2];
+          const result=await registerFeedMovement(env.DB,session.user.id,{...body,movementType:'delivery',quantityKg:body.turn?.servedKg},scope);
+          return Response.json({ok:true,...result},{status:result.replayed?200:201});
+        }
         if(path==='/api/feed/movements'&&request.method==='GET')return Response.json({ok:true,movements:await listFeedMovements(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),warehouseId:url.searchParams.get('warehouseId'),feedCode:url.searchParams.get('feedCode'),limit:url.searchParams.get('limit')},scope)});
         if(path==='/api/feed/movements'&&request.method==='POST'){
           const body=await request.json() as Parameters<typeof registerFeedMovement>[2];
