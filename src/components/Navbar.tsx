@@ -199,6 +199,10 @@ export function Navbar({
           </span>
         </button>
 
+        <button type="button" className={`nav-tab ${vistaActual === 'alertas' ? 'nav-tab-active' : ''}`} onClick={() => onNavigate('alertas')}>
+          <span className="inline-flex items-center justify-center gap-2 leading-none"><IconAlertTriangle size={16}/><span>Alertas</span></span>
+        </button>
+
         <button type="button" className={`nav-tab ${vistaActual === 'finanzas' ? 'nav-tab-active' : ''}`} onClick={() => onNavigate('finanzas')}>
           <span className="inline-flex items-center justify-center gap-2 leading-none"><IconCoins size={16}/><span>Finanzas</span></span>
         </button>

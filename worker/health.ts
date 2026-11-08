@@ -5,7 +5,7 @@ export type HealthScope={allowedBarnNames?:string[]|null};
 export type HealthEventInput={eventType?:unknown;effectiveDate?:unknown;animalCodes?:unknown;product?:unknown;productLot?:unknown;dosage?:unknown;dosageUnit?:unknown;nextDueDate?:unknown;withdrawalUntil?:unknown;observations?:unknown;reason?:unknown;operationKey?:string};
 const requiredText=(value:unknown,label:string,max=160)=>{const text=String(value??'').trim();if(!text)throw new ApiError(400,`${label} es obligatorio`);if(text.length>max)throw new ApiError(400,`${label} supera ${max} caracteres`);return text;};
 const optionalText=(value:unknown,label:string,max=500)=>{const text=String(value??'').trim();if(!text)return null;if(text.length>max)throw new ApiError(400,`${label} supera ${max} caracteres`);return text;};
-function date(value:unknown,label:string,optional=false):string|null{if(optional&&(value===null||value===undefined||value===''))return null;if(!isValidDateString(value))throw new ApiError(400,`${label} inválida; use AAAA-MM-DD`);const result=String(value);if(result>currentFarmDate())throw new ApiError(400,`${label} no puede ser futura`);return result;}
+function date(value:unknown,label:string,optional=false,allowFuture=false):string|null{if(optional&&(value===null||value===undefined||value===''))return null;if(!isValidDateString(value))throw new ApiError(400,`${label} inválida; use AAAA-MM-DD`);const result=String(value);if(!allowFuture&&result>currentFarmDate())throw new ApiError(400,`${label} no puede ser futura`);return result;}
 
 async function resolveAnimalAt(db:D1Database,code:string,effectiveDate:string,scope:HealthScope){
   const row=await db.prepare(`SELECT a.id,a.code,a.entry_date,a.exit_date,a.is_active FROM animals a WHERE a.code=?`).bind(code).first<Row>();
@@ -22,7 +22,7 @@ export async function createHealthEvent(db:D1Database,actorUserId:number,input:H
   const eventType=String(input.eventType??'');if(!['treatment','deworming','other'].includes(eventType))throw new ApiError(400,'Tipo de evento sanitario inválido');
   const effectiveDate=date(input.effectiveDate,'Fecha del evento')!;const product=requiredText(input.product,'Producto');const productLot=optionalText(input.productLot,'Lote del producto',80);
   const dosage=Number(input.dosage);if(!Number.isFinite(dosage)||dosage<=0||Math.round(dosage*1000)!==dosage*1000)throw new ApiError(400,'La dosis debe ser positiva y tener hasta 3 decimales');
-  const dosageUnit=requiredText(input.dosageUnit,'Unidad de dosis',30);const nextDueDate=date(input.nextDueDate,'Próxima aplicación',true);const withdrawalUntil=date(input.withdrawalUntil,'Fin de retiro',true);
+  const dosageUnit=requiredText(input.dosageUnit,'Unidad de dosis',30);const nextDueDate=date(input.nextDueDate,'Próxima aplicación',true,true);const withdrawalUntil=date(input.withdrawalUntil,'Fin de retiro',true,true);
   if(nextDueDate&&nextDueDate<=effectiveDate)throw new ApiError(400,'La próxima aplicación debe ser posterior al evento');if(withdrawalUntil&&withdrawalUntil<effectiveDate)throw new ApiError(400,'El fin de retiro no puede preceder al evento');
   const reason=normalizeReason(input.reason,{required:true});const observations=optionalText(input.observations,'Observaciones');
   if(!Array.isArray(input.animalCodes)||input.animalCodes.length===0||input.animalCodes.length>500)throw new ApiError(400,'Seleccione entre 1 y 500 animales');

@@ -11,6 +11,7 @@ export type Vista =
   | 'inventario'
   | 'alimentacion'
   | 'sanidad'
+  | 'alertas'
   | 'finanzas'
   | 'configuracion'
   | 'administracion';

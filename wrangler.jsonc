@@ -21,6 +21,9 @@
     },
     "staging": {
       "name": "web-porcicola-staging",
+      "triggers": {
+        "crons": ["5 5 * * *"]
+      },
       "d1_databases": [
         {
           "binding": "DB",

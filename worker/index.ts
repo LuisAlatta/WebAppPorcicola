@@ -75,6 +75,7 @@ import { createFeedWarehouse, getFeedInventory, getFeedProjection, listFeedMovem
 import { createHealthEvent, listHealthEvents, listUpcomingHealthEvents, listWithdrawalAlerts } from './health';
 import { applyVaccineOccurrence, createManualVaccineSchedule, deactivateVaccineRule, generateAnimalVaccineSchedules, generateVaccineSchedules, listVaccineRules, listVaccineSchedules, saveVaccineRule } from './vaccines';
 import { createFinancialEntry, createFinancialOpeningBalance, createFinancialSettlement, listFinancialCashflow, listFinancialEntries, reverseFinancialEntry } from './finance';
+import { attendAlert, createManualAlert, listAlerts, reconcileAlerts } from './alerts';
 
 export interface Env {
   DB: D1Database;
@@ -109,6 +110,7 @@ function checkCsrf(request: Request): boolean {
 }
 
 const worker = {
+  async scheduled(_controller:ScheduledController,env:Env):Promise<void>{await reconcileAlerts(env.DB);},
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -534,6 +536,11 @@ const worker = {
       try{if(path==='/api/finance/barns'&&request.method==='GET'){const where=scope.allowedBarnNames===null?'status<>\'inactivo\'':`status<>'inactivo' AND name IN (${scope.allowedBarnNames?.map(()=>'?').join(',')||'NULL'})`;const barns=await env.DB.prepare(`SELECT id,name FROM barns WHERE ${where} ORDER BY name`).bind(...(scope.allowedBarnNames??[])).all<{id:number;name:string}>();return Response.json({ok:true,barns:barns.results??[]});}if(path==='/api/finance/entries'&&request.method==='GET')return Response.json({ok:true,...await listFinancialEntries(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),direction:url.searchParams.get('direction'),currencyCode:url.searchParams.get('currencyCode'),category:url.searchParams.get('category'),barnId:url.searchParams.get('barnId')},scope)});if(path==='/api/finance/cashflow'&&request.method==='GET')return Response.json({ok:true,...await listFinancialCashflow(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),currencyCode:url.searchParams.get('currencyCode'),barnId:url.searchParams.get('barnId')},scope)});if(path==='/api/finance/cash/opening'&&request.method==='POST'){if(session.user.role!=='administrador')return Response.json({error:'Solo el Administrador puede fijar saldos iniciales de caja'},{status:403});const body=await request.json() as Parameters<typeof createFinancialOpeningBalance>[2];const result=await createFinancialOpeningBalance(env.DB,session.user.id,body);return Response.json({ok:true,...result},{status:result.replayed?200:201});}if(path==='/api/finance/entries'&&request.method==='POST'){const body=await request.json() as Parameters<typeof createFinancialEntry>[2];const result=await createFinancialEntry(env.DB,session.user.id,body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});}const settlement=path.match(/^\/api\/finance\/entries\/(\d+)\/settlements$/);if(settlement&&request.method==='POST'){const body=await request.json() as Parameters<typeof createFinancialSettlement>[3];const result=await createFinancialSettlement(env.DB,session.user.id,Number(settlement[1]),body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});}const reversal=path.match(/^\/api\/finance\/entries\/(\d+)\/reverse$/);if(reversal&&request.method==='POST'){const body=await request.json() as Parameters<typeof reverseFinancialEntry>[3];const result=await reverseFinancialEntry(env.DB,session.user.id,Number(reversal[1]),body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});}return Response.json({error:'Ruta financiera no encontrada'},{status:404});}catch(err){const message=(err as Error).message||String(err);const status=err instanceof ApiError?err.status:/UNIQUE constraint|financial_entries|financial settlement/.test(message)?409:400;return Response.json({error:message},{status});}
     }
 
+    if(path==='/api/alerts'||path==='/api/alerts/manual'||/^\/api\/alerts\/\d+\/attend$/.test(path)){
+      const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
+      try{if(path==='/api/alerts'&&request.method==='GET')return Response.json({ok:true,...await listAlerts(env.DB,{status:url.searchParams.get('status'),type:url.searchParams.get('type'),bucket:url.searchParams.get('bucket'),from:url.searchParams.get('from'),to:url.searchParams.get('to')},scope)});if(path==='/api/alerts/manual'&&request.method==='POST'){const body=await request.json() as Parameters<typeof createManualAlert>[2];const result=await createManualAlert(env.DB,session.user.id,body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});}const match=path.match(/^\/api\/alerts\/(\d+)\/attend$/);if(match&&request.method==='POST'){const body=await request.json() as Parameters<typeof attendAlert>[3];const result=await attendAlert(env.DB,session.user.id,Number(match[1]),body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:200});}return Response.json({error:'Ruta de alertas no encontrada'},{status:404});}catch(err){const message=(err as Error).message||String(err);const status=err instanceof ApiError?err.status:/UNIQUE constraint/.test(message)?409:400;return Response.json({error:message},{status});}
+    }
+
     // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
     if(path==='/api/vaccines/rules'||path.startsWith('/api/vaccines/')){
       const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});
@@ -556,16 +563,16 @@ const worker = {
         if(path==='/api/vaccines/schedules'&&request.method==='GET')return Response.json({ok:true,schedules:await listVaccineSchedules(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),animalType:url.searchParams.get('animalType'),status:url.searchParams.get('status')},scope)});
         if(path==='/api/vaccines/generate'&&request.method==='POST'){
           if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo veterinario o administrador puede generar vacunas'},{status:403});
-          const body=await request.json() as {animalCode?:string;ruleKey?:string};const result=body.animalCode?await generateAnimalVaccineSchedules(env.DB,body.animalCode,session.user.id,scope):await generateVaccineSchedules(env.DB,session.user.id,scope,body.ruleKey);return Response.json({ok:true,...result});
+          const body=await request.json() as {animalCode?:string;ruleKey?:string};const result=body.animalCode?await generateAnimalVaccineSchedules(env.DB,body.animalCode,session.user.id,scope):await generateVaccineSchedules(env.DB,session.user.id,scope,body.ruleKey);await reconcileAlerts(env.DB);return Response.json({ok:true,...result});
         }
         if(path==='/api/vaccines/schedules/manual'&&request.method==='POST'){
           if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo veterinario o administrador puede programar vacunas'},{status:403});
-          const body=await request.json() as Parameters<typeof createManualVaccineSchedule>[2];const result=await createManualVaccineSchedule(env.DB,session.user.id,body,scope);return Response.json(result.conflictDetected?{ok:true,...result,error:'Ya existe una programación pendiente para esa vacuna y fecha; revise el registro existente.'}:{ok:true,...result},{status:result.conflictDetected?409:result.replayed?200:201});
+          const body=await request.json() as Parameters<typeof createManualVaccineSchedule>[2];const result=await createManualVaccineSchedule(env.DB,session.user.id,body,scope);await reconcileAlerts(env.DB);return Response.json(result.conflictDetected?{ok:true,...result,error:'Ya existe una programación pendiente para esa vacuna y fecha; revise el registro existente.'}:{ok:true,...result},{status:result.conflictDetected?409:result.replayed?200:201});
         }
         const occurrenceMatch=path.match(/^\/api\/vaccines\/schedules\/(\d+)\/apply$/);
         if(occurrenceMatch&&request.method==='POST'){
           if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo veterinario o administrador puede aplicar vacunas'},{status:403});
-          const body=await request.json() as Parameters<typeof applyVaccineOccurrence>[3];const result=await applyVaccineOccurrence(env.DB,session.user.id,Number(occurrenceMatch[1]),body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});
+          const body=await request.json() as Parameters<typeof applyVaccineOccurrence>[3];const result=await applyVaccineOccurrence(env.DB,session.user.id,Number(occurrenceMatch[1]),body,scope);await reconcileAlerts(env.DB);return Response.json({ok:true,...result},{status:result.replayed?200:201});
         }
         return Response.json({error:'Ruta de vacunas no encontrada'},{status:404});
       }catch(err){const message=(err as Error).message||String(err);const status=err instanceof ApiError?err.status:/UNIQUE constraint|guard_id/.test(message)?409:400;return Response.json({error:message},{status});}
@@ -580,7 +587,7 @@ const worker = {
         if(path==='/api/health/events'&&request.method==='GET')return Response.json({ok:true,events:await listHealthEvents(env.DB,{animalCode:url.searchParams.get('animalCode'),lotCode:url.searchParams.get('lotCode'),product:url.searchParams.get('product'),from:url.searchParams.get('from'),to:url.searchParams.get('to'),limit:url.searchParams.get('limit')},scope)});
         if(path==='/api/health/events'&&request.method==='POST'){
           if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo el veterinario o administrador puede registrar tratamientos'},{status:403});
-          const body=await request.json() as Parameters<typeof createHealthEvent>[2];const result=await createHealthEvent(env.DB,session.user.id,body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});
+          const body=await request.json() as Parameters<typeof createHealthEvent>[2];const result=await createHealthEvent(env.DB,session.user.id,body,scope);await reconcileAlerts(env.DB);return Response.json({ok:true,...result},{status:result.replayed?200:201});
         }
         if(path==='/api/health/withdrawals'&&request.method==='GET')return Response.json({ok:true,alerts:await listWithdrawalAlerts(env.DB,url.searchParams.get('asOf')??undefined,scope)});
         if(path==='/api/health/upcoming'&&request.method==='GET')return Response.json({ok:true,events:await listUpcomingHealthEvents(env.DB,url.searchParams.get('asOf')??undefined,scope)});
@@ -603,21 +610,21 @@ const worker = {
           if(session.user.role!=='administrador')return Response.json({error:'Solo el administrador puede crear almacenes'},{status:403});
           const body=await request.json() as Parameters<typeof createFeedWarehouse>[2];
           const result=await createFeedWarehouse(env.DB,session.user.id,body,scope);
-          return Response.json({ok:true,...result},{status:result.replayed?200:201});
+          await reconcileAlerts(env.DB);return Response.json({ok:true,...result},{status:result.replayed?200:201});
         }
         if(path==='/api/feed/inventory'&&request.method==='GET')return Response.json({ok:true,...await getFeedInventory(env.DB,url.searchParams.get('asOf'),scope)});
         if(path==='/api/feed/projection'&&request.method==='GET')return Response.json({ok:true,...await getFeedProjection(env.DB,url.searchParams.get('asOf'),scope)});
         if(path==='/api/feed/turns'&&request.method==='POST'){
           const body=await request.json() as Parameters<typeof registerFeedMovement>[2];
           const result=await registerFeedMovement(env.DB,session.user.id,{...body,movementType:'delivery',quantityKg:body.turn?.servedKg},scope);
-          return Response.json({ok:true,...result},{status:result.replayed?200:201});
+          await reconcileAlerts(env.DB);return Response.json({ok:true,...result},{status:result.replayed?200:201});
         }
         if(path==='/api/feed/movements'&&request.method==='GET')return Response.json({ok:true,movements:await listFeedMovements(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),warehouseId:url.searchParams.get('warehouseId'),feedCode:url.searchParams.get('feedCode'),limit:url.searchParams.get('limit')},scope)});
         if(path==='/api/feed/movements'&&request.method==='POST'){
           const body=await request.json() as Parameters<typeof registerFeedMovement>[2];
           if(['opening','purchase','return_supplier'].includes(String(body.movementType))&&!['administrador','responsable'].includes(session.user.role))return Response.json({error:'El operario no puede registrar compras, saldos iniciales o devoluciones a proveedor'},{status:403});
           const result=await registerFeedMovement(env.DB,session.user.id,body,scope);
-          return Response.json({ok:true,...result},{status:result.replayed?200:201});
+          await reconcileAlerts(env.DB);return Response.json({ok:true,...result},{status:result.replayed?200:201});
         }
         return Response.json({error:'Ruta de alimento no encontrada'},{status:404});
       }catch(err){
@@ -647,11 +654,13 @@ const worker = {
         if (path === '/api/reproduction/cycles' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof createReproductionCycle>[2];
           const result = await createReproductionCycle(env.DB, session.user.id, body, scope);
+          await reconcileAlerts(env.DB);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
         if (path === '/api/reproduction/antecedents' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof createPregnantAntecedent>[2];
           const result = await createPregnantAntecedent(env.DB, session.user.id, body, scope);
+          await reconcileAlerts(env.DB);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
         const parts = path.split('/').filter(Boolean);
@@ -660,22 +669,26 @@ const worker = {
           const body = await request.json() as Parameters<typeof correctLitter>[3];
           const result = await correctLitter(env.DB, session.user.id, cycleId, body, scope);
           const dam=await env.DB.prepare('SELECT a.code FROM litters l JOIN animals a ON a.id=l.female_animal_id WHERE l.id=?').bind(cycleId).first<{code:string}>();if(dam)await generateAnimalVaccineSchedules(env.DB,dam.code,session.user.id,scope);
+          await reconcileAlerts(env.DB);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
         if (parts[2] === 'litters' && cycleId && parts.length === 5 && parts[4] === 'events' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof recordLitterEvent>[3];
           const result = await recordLitterEvent(env.DB, session.user.id, cycleId, body, scope);
+          await reconcileAlerts(env.DB);
           return Response.json({ ok:true, ...result }, { status:result.replayed?200:201 });
         }
         if (cycleId && parts.length === 5 && parts[4] === 'farrowing' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof recordFarrowing>[3];
           const result = await recordFarrowing(env.DB, session.user.id, cycleId, body, scope);
           const dam=await env.DB.prepare('SELECT a.code FROM litters l JOIN animals a ON a.id=l.female_animal_id WHERE l.id=?').bind(result.litterId).first<{code:string}>();if(dam)await generateAnimalVaccineSchedules(env.DB,dam.code,session.user.id,scope);
+          await reconcileAlerts(env.DB);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
         if (cycleId && parts.length === 4 && request.method === 'PUT') {
           const body = await request.json() as Parameters<typeof updateReproductionCycle>[3];
           const result = await updateReproductionCycle(env.DB, session.user.id, cycleId, body, scope);
+          await reconcileAlerts(env.DB);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 200 });
         }
         if (cycleId && parts.length === 5 && parts[4] === 'postweaning' && request.method === 'PUT') {
@@ -691,6 +704,7 @@ const worker = {
         if (cycleId && parts.length === 5 && parts[4] === 'events' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof recordReproductionEvent>[3];
           const result = await recordReproductionEvent(env.DB, session.user.id, cycleId, body, scope);
+          await reconcileAlerts(env.DB);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
         return Response.json({ error: 'Ruta de reproducción no encontrada' }, { status: 404 });

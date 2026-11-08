@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Miniflare } from 'miniflare';
 import worker from '../worker/index';
+import { currentFarmDate } from '../worker/events';
 
 const runtime = new Miniflare({
   workers: [{
@@ -141,6 +142,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0018_trade_links.sql',
       '0019_feed_purchase_reversals.sql',
       '0020_financial_settlements.sql',
+      '0021_alert_occurrences.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -1096,6 +1098,21 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const overpay=await api(`/api/finance/entries/${entryId}/settlements`,{method:'POST',body:JSON.stringify({settlementDate:'2026-02-05',amount:'1.00',paymentMethod:'efectivo',reason:'Intento de sobrepago',operationKey:'fin-ca31-overpay',allocations:[{allocationId:allocation!.id,amount:'1.00'}]})});expect(overpay.status).toBe(409);
     const denied=await api(`/api/finance/entries/${entryId}/settlements`,{method:'POST',body:JSON.stringify({settlementDate:'2026-02-05',amount:'1.00',paymentMethod:'efectivo',reason:'Permiso de operario',operationKey:'fin-ca31-denied',allocations:[{allocationId:allocation!.id,amount:'1.00'}]})},operarioToken);expect(denied.status).toBe(403);
     const concurrentEntry=await api('/api/finance/entries',{method:'POST',body:JSON.stringify({direction:'income',category:'Venta de productos',concept:'Prueba concurrente de caja',operationDate:'2026-03-01',amount:'100.00',currencyCode:'PEN',reason:'Preparar prueba concurrente de abonos',operationKey:'fin-ca31-concurrent-entry',allocations:[{barnId:1,amount:'100.00'}]})});expect(concurrentEntry.status).toBe(201);const concurrentId=Number((await concurrentEntry.json() as {entry:{id:number}}).entry.id);const concurrentAllocation=await db.prepare('SELECT id FROM financial_allocations WHERE entry_id=?').bind(concurrentId).first<{id:number}>();const pay=(key:string)=>api(`/api/finance/entries/${concurrentId}/settlements`,{method:'POST',body:JSON.stringify({settlementDate:'2026-03-02',amount:'70.00',paymentMethod:'transferencia',reason:'Intento concurrente controlado',operationKey:key,allocations:[{allocationId:concurrentAllocation!.id,amount:'70.00'}]})});const concurrent=await Promise.all([pay('fin-ca31-concurrent-a'),pay('fin-ca31-concurrent-b')]);expect(concurrent.map(response=>response.status).sort()).toEqual([201,409]);expect(await db.prepare('SELECT SUM(amount_minor) AS amount FROM financial_settlement_allocations WHERE financial_allocation_id=?').bind(concurrentAllocation!.id).first()).toMatchObject({amount:7000});
+  });
+
+  it('genera una sola ocurrencia de vacuna y tratamiento, actualiza el contador y resuelve al aplicar (T22)', async () => {
+    const today=currentFarmDate();const due=new Date(`${today}T00:00:00.000Z`);due.setUTCDate(due.getUTCDate()+7);const dueInSevenDays=due.toISOString().slice(0,10);
+    const animal=await create({code:'T22-AGENDA',animalType:'reemplazo',sex:'hembra',entryDate:today,originType:'nacimiento',operationKey:'ani-t22-agenda'});expect(animal.status,await animal.clone().text()).toBe(201);
+    const vaccine=await api('/api/vaccines/schedules/manual',{method:'POST',body:JSON.stringify({animalCode:'T22-AGENDA',vaccineName:'Vacuna T22',scheduledDate:dueInSevenDays,reason:'Prueba agenda T22',operationKey:'vax-t22-agenda'})},veterinarioToken);expect(vaccine.status,await vaccine.clone().text()).toBe(201);const vaccineId=Number((await vaccine.json() as {schedule:{id:number}}).schedule.id);
+    const treatment=await api('/api/health/events',{method:'POST',body:JSON.stringify({eventType:'treatment',effectiveDate:today,animalCodes:['T22-AGENDA'],product:'Tratamiento T22',dosage:1,dosageUnit:'ml',nextDueDate:dueInSevenDays,reason:'Prueba tratamiento pendiente',operationKey:'health-t22-agenda'})},veterinarioToken);expect(treatment.status,await treatment.clone().text()).toBe(201);
+    const first=await api('/api/alerts?type=vaccine&bucket=upcoming');expect(first.status).toBe(200);const vaccineAlerts=(await first.json() as {alerts:{key:string;dueDate:string;status:string}[];counts:Record<string,number>}).alerts;expect(vaccineAlerts).toHaveLength(1);expect(vaccineAlerts[0]).toMatchObject({key:`vaccine:${vaccineId}`,dueDate:dueInSevenDays,status:'pending'});
+    const repeated=await api('/api/alerts?type=vaccine&bucket=upcoming');expect((await repeated.json() as {alerts:{key:string}[]}).alerts).toHaveLength(1);
+    const treatmentAlerts=await api('/api/alerts?type=treatment&bucket=upcoming');expect((await treatmentAlerts.json() as {alerts:{title:string}[]}).alerts).toHaveLength(1);
+    const schedules=await api('/api/vaccines/schedules?status=pending&from='+dueInSevenDays+'&to='+dueInSevenDays);const schedule=(await schedules.json() as {schedules:{id:number}[]}).schedules.find(item=>item.id===vaccineId);expect(schedule).toBeTruthy();
+    const applied=await api(`/api/vaccines/schedules/${vaccineId}/apply`,{method:'POST',body:JSON.stringify({appliedDate:today,dosage:1,dosageUnit:'ml',reason:'Atendida para probar resolución',operationKey:'vax-t22-applied'})},veterinarioToken);expect(applied.status).toBe(201);
+    const resolved=await api('/api/alerts?type=vaccine&status=resolved');expect((await resolved.json() as {alerts:{key:string;status:string;resolutionReason:string|null}[]}).alerts).toContainEqual(expect.objectContaining({key:`vaccine:${vaccineId}`,status:'resolved',resolutionReason:'Evento de origen completado, cancelado o ya no vigente'}));
+    const manual=await api('/api/alerts/manual',{method:'POST',body:JSON.stringify({title:'Revisar bebedero',dueDate:today,barnId:1,reason:'Aviso manual de inspección',operationKey:'alert-t22-manual'})});expect(manual.status).toBe(201);const manualId=Number((await manual.json() as {alert:{id:number}}).alert.id);const attended=await api(`/api/alerts/${manualId}/attend`,{method:'POST',body:JSON.stringify({reason:'Inspección completada',linkedEventType:'maintenance',linkedEventId:'BE-1',operationKey:'alert-t22-attend'})});expect(attended.status).toBe(200);expect((await api('/api/alerts?type=manual')).status).toBe(200);
+    const denied=await api('/api/alerts/manual',{method:'POST',body:JSON.stringify({title:'Alerta de otro galpón',dueDate:today,barnId:2,reason:'Prueba de separación',operationKey:'alert-t22-denied'})},responsableToken);expect(denied.status).toBe(403);
   });
 
   it('enlaza compra de animal con su única entrada y movimiento de inventario', async () => {

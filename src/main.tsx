@@ -12,6 +12,7 @@ import { ModuloInventario } from './components/ModuloInventario';
 import { ModuloReproduccion } from './components/ModuloReproduccion';
 import { ModuloAlimentacion } from './components/ModuloAlimentacion';
 import { ModuloSanidad } from './components/ModuloSanidad';
+import { ModuloAlertas } from './components/ModuloAlertas';
 const ModuloFinanzas = lazy(() => import('./components/ModuloFinanzas').then(module => ({default:module.ModuloFinanzas})));
 const ModuloAnimales = lazy(() => import('./components/ModuloAnimales').then(module => ({default:module.ModuloAnimales})));
 import './style.css';
@@ -27,6 +28,7 @@ function getInitialView(): Vista {
     if (path === '/inventario') return 'inventario';
     if (path === '/alimentacion') return 'alimentacion';
     if (path === '/sanidad') return 'sanidad';
+    if (path === '/alertas') return 'alertas';
     if (path === '/finanzas') return 'finanzas';
     if (path === '/configuracion' || path === '/config') return 'configuracion';
     if (path === '/administracion' || path === '/admin') return 'administracion';
@@ -88,6 +90,7 @@ function App() {
       else if (vista === 'inventario') targetPath = '/inventario';
       else if (vista === 'alimentacion') targetPath = '/alimentacion';
       else if (vista === 'sanidad') targetPath = '/sanidad';
+      else if (vista === 'alertas') targetPath = '/alertas';
       else if (vista === 'finanzas') targetPath = '/finanzas';
       else if (vista === 'configuracion') targetPath = '/configuracion';
       else if (vista === 'administracion') targetPath = '/administracion';
@@ -156,6 +159,8 @@ function App() {
         return <ModuloAlimentacion perfil={perfilActual} />;
       case 'sanidad':
         return <ModuloSanidad perfil={perfilActual} />;
+      case 'alertas':
+        return <ModuloAlertas perfil={perfilActual} />;
       case 'finanzas':
         return <Suspense fallback={<div className="module-container">Cargando finanzas…</div>}><ModuloFinanzas perfil={perfilActual} /></Suspense>;
       case 'animales':
