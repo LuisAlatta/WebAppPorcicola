@@ -134,6 +134,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0013_feed_warehouses_and_ledger.sql',
       '0014_feed_projections_and_turns.sql',
       '0015_health_events_and_withdrawals.sql',
+      '0016_vaccine_rules_and_schedules.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -1005,6 +1006,32 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       weighedOn: '2026-06-22', weighedTime: '12:00', weightKg: 0, operationKey: 'ani-t11-peso-cero',
     }) });
     expect(zero.status).toBe(400);
+  });
+
+  it('genera una vacuna por nacimiento, permite otra vacuna en el mismo día y conserva la aplicación al regenerar', async () => {
+    const created=await create({code:'T18-002',animalType:'reemplazo',sex:'hembra',birthDate:'2026-06-06',entryDate:'2026-06-06',entryStageCode:'preinicio',originType:'compra',operationKey:'ani-t18-002'});
+    expect(created.status,JSON.stringify(await created.clone().json())).toBe(201);
+    const rule=await api('/api/vaccines/rules',{method:'POST',body:JSON.stringify({vaccineName:'Glasser',targetCategory:'reemplazo',baseEvent:'birth',offsetDays:60,effectiveFrom:'2026-06-06',reason:'Caso de aceptación T18',operationKey:'vax-t18-rule'})});
+    expect(rule.status).toBe(201);
+    const ruleBody=await rule.json() as {ruleKey:string};
+    let agenda=await api('/api/vaccines/schedules?status=pending&from=2026-08-05&to=2026-08-05');
+    let items=(await agenda.json() as {schedules:{id:number;animalCode:string;scheduledDate:string;status:string}[]}).schedules.filter(item=>item.animalCode==='T18-002');
+    expect(items).toHaveLength(1);expect(items[0].scheduledDate).toBe('2026-08-05');
+    const generated=await api('/api/vaccines/generate',{method:'POST',body:JSON.stringify({ruleKey:ruleBody.ruleKey})},veterinarioToken);expect(generated.status).toBe(200);
+    const other=await api('/api/vaccines/schedules/manual',{method:'POST',body:JSON.stringify({animalCode:'T18-002',vaccineName:'Otra vacuna',scheduledDate:'2026-08-05',reason:'Vacuna distinta',operationKey:'vax-t18-other'})},veterinarioToken);expect(other.status).toBe(201);
+    const same=await api('/api/vaccines/schedules/manual',{method:'POST',body:JSON.stringify({animalCode:'T18-002',vaccineName:'Otra vacuna',scheduledDate:'2026-08-05',reason:'Duplicado',operationKey:'vax-t18-other-duplicate'})},veterinarioToken);expect(same.status).toBe(409);
+    const applied=await api(`/api/vaccines/schedules/${items[0].id}/apply`,{method:'POST',body:JSON.stringify({appliedDate:'2026-08-05',dosage:1,dosageUnit:'ml',reason:'Aplicación veterinaria',operationKey:'vax-t18-apply'})},veterinarioToken);expect(applied.status).toBe(201);
+    const again=await api('/api/vaccines/generate',{method:'POST',body:JSON.stringify({ruleKey:ruleBody.ruleKey})},veterinarioToken);expect(again.status).toBe(200);
+    agenda=await api('/api/vaccines/schedules?from=2026-08-05&to=2026-08-05');items=(await agenda.json() as {schedules:{id:number;animalCode:string;vaccineName:string;scheduledDate:string;status:string;appliedDate:string|null}[]}).schedules.filter(item=>item.animalCode==='T18-002'&&item.vaccineName==='Glasser');
+    expect(items).toHaveLength(1);expect(items[0]).toMatchObject({scheduledDate:'2026-08-05',status:'applied',appliedDate:'2026-08-05'});
+
+    const sowRule=await api('/api/vaccines/rules',{method:'POST',body:JSON.stringify({vaccineName:'Vacuna ciclo',targetCategory:'cerda_primeriza',baseEvent:'birth',offsetDays:60,effectiveFrom:'2026-06-06',reason:'Prueba de edición de ciclo',operationKey:'vax-t18-cycle-rule'})});expect(sowRule.status).toBe(201);
+    const sow=await create({code:'T18-CERDA',animalType:'cerda',sex:'hembra',birthDate:'2026-06-06',entryDate:'2026-06-06',entryStageCode:'preinicio',originType:'compra',operationKey:'ani-t18-cycle-sow'});expect(sow.status).toBe(201);
+    const cycle=await api('/api/reproduction/cycles',{method:'POST',body:JSON.stringify({femaleCode:'T18-CERDA',serviceDate:'2026-06-10',serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'Registro de prueba',operationKey:'rep-t18-cycle'})});expect(cycle.status).toBe(201);
+    const cycleId=(await cycle.json() as {createdCycleId:string}).createdCycleId;
+    const cycleEdit=await api(`/api/reproduction/cycles/${cycleId}`,{method:'PUT',body:JSON.stringify({observations:'Observación corregida 1',operationKey:'rep-t18-cycle-edit-1'})});expect(cycleEdit.status).toBe(200);
+    const cycleEditAgain=await api(`/api/reproduction/cycles/${cycleId}`,{method:'PUT',body:JSON.stringify({observations:'Observación corregida 2',operationKey:'rep-t18-cycle-edit-2'})});expect(cycleEditAgain.status).toBe(200);
+    const sowSchedule=await api('/api/vaccines/schedules?status=pending&from=2026-08-05&to=2026-08-05');const sowRows=(await sowSchedule.json() as {schedules:{animalCode:string}[]}).schedules.filter(row=>row.animalCode==='T18-CERDA');expect(sowRows).toHaveLength(1);
   });
 
 });

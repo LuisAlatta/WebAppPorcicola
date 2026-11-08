@@ -72,6 +72,7 @@ import {
 import { correctLitter, recordFarrowing, recordLitterEvent } from './litters';
 import { createFeedWarehouse, getFeedInventory, getFeedProjection, listFeedMovements, listFeedWarehouses, registerFeedMovement } from './feed';
 import { createHealthEvent, listHealthEvents, listUpcomingHealthEvents, listWithdrawalAlerts } from './health';
+import { applyVaccineOccurrence, createManualVaccineSchedule, deactivateVaccineRule, generateAnimalVaccineSchedules, generateVaccineSchedules, listVaccineRules, listVaccineSchedules, saveVaccineRule } from './vaccines';
 
 export interface Env {
   DB: D1Database;
@@ -524,6 +525,43 @@ const worker = {
     }
 
     // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
+    if(path==='/api/vaccines/rules'||path.startsWith('/api/vaccines/')){
+      const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});
+      const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});
+      const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};const parts=path.split('/').filter(Boolean);
+      try{
+        if(path==='/api/vaccines/rules'&&request.method==='GET')return Response.json({ok:true,rules:await listVaccineRules(env.DB)});
+        if(path==='/api/vaccines/rules'&&request.method==='POST'){
+          if(session.user.role!=='administrador')return Response.json({error:'Solo el administrador puede crear reglas de vacunación'},{status:403});
+          const body=await request.json() as Parameters<typeof saveVaccineRule>[2];return Response.json({ok:true,...await saveVaccineRule(env.DB,session.user.id,body,scope)},{status:201});
+        }
+        if(parts[2]==='rules'&&parts[3]&&parts.length===4&&request.method==='PUT'){
+          if(session.user.role!=='administrador')return Response.json({error:'Solo el administrador puede editar reglas de vacunación'},{status:403});
+          const body=await request.json() as Parameters<typeof saveVaccineRule>[2];return Response.json({ok:true,...await saveVaccineRule(env.DB,session.user.id,body,scope,decodeURIComponent(parts[3]))});
+        }
+        if(parts[2]==='rules'&&parts[3]&&parts[4]==='deactivate'&&request.method==='POST'){
+          if(session.user.role!=='administrador')return Response.json({error:'Solo el administrador puede desactivar reglas'},{status:403});
+          const body=await request.json() as {reason?:string;operationKey?:string};return Response.json({ok:true,...await deactivateVaccineRule(env.DB,session.user.id,decodeURIComponent(parts[3]),String(body.reason??''),String(body.operationKey??''),scope)});
+        }
+        if(path==='/api/vaccines/schedules'&&request.method==='GET')return Response.json({ok:true,schedules:await listVaccineSchedules(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),animalType:url.searchParams.get('animalType'),status:url.searchParams.get('status')},scope)});
+        if(path==='/api/vaccines/generate'&&request.method==='POST'){
+          if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo veterinario o administrador puede generar vacunas'},{status:403});
+          const body=await request.json() as {animalCode?:string;ruleKey?:string};const result=body.animalCode?await generateAnimalVaccineSchedules(env.DB,body.animalCode,session.user.id,scope):await generateVaccineSchedules(env.DB,session.user.id,scope,body.ruleKey);return Response.json({ok:true,...result});
+        }
+        if(path==='/api/vaccines/schedules/manual'&&request.method==='POST'){
+          if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo veterinario o administrador puede programar vacunas'},{status:403});
+          const body=await request.json() as Parameters<typeof createManualVaccineSchedule>[2];const result=await createManualVaccineSchedule(env.DB,session.user.id,body,scope);return Response.json(result.conflictDetected?{ok:true,...result,error:'Ya existe una programación pendiente para esa vacuna y fecha; revise el registro existente.'}:{ok:true,...result},{status:result.conflictDetected?409:result.replayed?200:201});
+        }
+        const occurrenceMatch=path.match(/^\/api\/vaccines\/schedules\/(\d+)\/apply$/);
+        if(occurrenceMatch&&request.method==='POST'){
+          if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo veterinario o administrador puede aplicar vacunas'},{status:403});
+          const body=await request.json() as Parameters<typeof applyVaccineOccurrence>[3];const result=await applyVaccineOccurrence(env.DB,session.user.id,Number(occurrenceMatch[1]),body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});
+        }
+        return Response.json({error:'Ruta de vacunas no encontrada'},{status:404});
+      }catch(err){const message=(err as Error).message||String(err);const status=err instanceof ApiError?err.status:/UNIQUE constraint|guard_id/.test(message)?409:400;return Response.json({error:message},{status});}
+    }
+
+    // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
     if(path==='/api/health/events'||path==='/api/health/withdrawals'||path==='/api/health/upcoming'){
       const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});
       const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});
@@ -611,6 +649,7 @@ const worker = {
         if (parts[2] === 'litters' && cycleId && parts.length === 5 && parts[4] === 'correction' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof correctLitter>[3];
           const result = await correctLitter(env.DB, session.user.id, cycleId, body, scope);
+          const dam=await env.DB.prepare('SELECT a.code FROM litters l JOIN animals a ON a.id=l.female_animal_id WHERE l.id=?').bind(cycleId).first<{code:string}>();if(dam)await generateAnimalVaccineSchedules(env.DB,dam.code,session.user.id,scope);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
         if (parts[2] === 'litters' && cycleId && parts.length === 5 && parts[4] === 'events' && request.method === 'POST') {
@@ -621,6 +660,7 @@ const worker = {
         if (cycleId && parts.length === 5 && parts[4] === 'farrowing' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof recordFarrowing>[3];
           const result = await recordFarrowing(env.DB, session.user.id, cycleId, body, scope);
+          const dam=await env.DB.prepare('SELECT a.code FROM litters l JOIN animals a ON a.id=l.female_animal_id WHERE l.id=?').bind(result.litterId).first<{code:string}>();if(dam)await generateAnimalVaccineSchedules(env.DB,dam.code,session.user.id,scope);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
         if (cycleId && parts.length === 4 && request.method === 'PUT') {
@@ -702,6 +742,7 @@ const worker = {
         if (path === '/api/animals' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof createAnimal>[2];
           const result = await createAnimal(env.DB, session.user.id, body, scope);
+          if(result.animal?.code)await generateAnimalVaccineSchedules(env.DB,result.animal.code,session.user.id,scope);
           return Response.json(
             { ok: true, animal: result.animal, replayed: result.replayed },
             { status: result.replayed ? 200 : 201 },
@@ -720,6 +761,7 @@ const worker = {
         if (key && segments.length === 1 && request.method === 'PUT') {
           const body = await request.json() as Parameters<typeof updateAnimal>[3];
           const result = await updateAnimal(env.DB, session.user.id, key, body, scope);
+          if(result.animal?.code)await generateAnimalVaccineSchedules(env.DB,result.animal.code,session.user.id,scope);
           return Response.json({ ok: true, animal: result.animal, replayed: result.replayed });
         }
 

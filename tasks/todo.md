@@ -1,6 +1,6 @@
 # Control de ejecución
 
-Estado actual: Fases 2 y 3 completas; T12–T15 completadas. Siguiente: T16 (planificar raciones y calcular cobertura). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
+Estado actual: Fases 2 y 3 completas; T12–T18 completadas. Siguiente: T19 (libro de ingresos y egresos). Leer [estado y guía para retomar](estado.md), [plan](plan.md) y [requisitos](requisitos.md). Marcar una tarea solo después de registrar evidencia. Para un caso, guardar el resultado real, no solo el esperado.
 
 ## 1. Preparación
 
@@ -37,7 +37,7 @@ Estado actual: Fases 2 y 3 completas; T12–T15 completadas. Siguiente: T16 (pla
 - [x] T15 · Controlar almacenes y suministros · dependencias 10.
 - [x] T16 · Planificar raciones y calcular cobertura · dependencias 11,15.
 - [x] T17 · Historial clínico y tratamientos · dependencias 10,14.
-- [ ] T18 · Programar vacunas y registrar su aplicación · dependencias 12,13,17.
+- [x] T18 · Programar vacunas y registrar su aplicación · dependencias 12,13,17.
 - [ ] Cierre 5: Registrar alimento, tratamiento y vacuna. Repetir los dos fallos señalados por el cliente y verificar los valores reales de la ficha.
 
 ## 6. Finanzas
