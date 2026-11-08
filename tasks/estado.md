@@ -2,6 +2,8 @@
 
 Actualizado el 8 de noviembre de 2026. Esta carpeta contiene el contexto necesario para continuar.
 
+Código del último bloque: `5a9c232` — «se agregaron exportaciones e instalacion pwa», pusheado a `main` y hash remoto verificado. Árbol limpio tras publicar. La siguiente modificación funcional es CA-20; no se implementó todavía.
+
 ## Orden de lectura
 
 1. Este archivo, para conocer el estado y los próximos pasos.
