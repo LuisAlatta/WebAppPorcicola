@@ -139,10 +139,29 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0016_vaccine_rules_and_schedules.sql',
       '0017_financial_ledger.sql',
       '0018_trade_links.sql',
+      '0019_feed_purchase_reversals.sql',
+      '0020_financial_settlements.sql',
     ];
 
     for (const file of migrationFiles) {
       const schemaSql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
+      if (file === '0020_financial_settlements.sql') {
+        const sql = schemaSql.replace(/^--.*$/gm, '').replace(/\s+/g, ' ');
+        const statements = sql.split(';').map((part) => part.trim()).filter(Boolean);
+        let trigger = '';
+        for (const statement of statements) {
+          if (trigger || /^CREATE TRIGGER/i.test(statement)) {
+            trigger += `${statement}; `;
+            if (/\bEND$/i.test(statement)) {
+              await db.exec(trigger.trim());
+              trigger = '';
+            }
+          } else {
+            await db.exec(`${statement};`);
+          }
+        }
+        continue;
+      }
       const statements = schemaSql
         .split('\n')
         .map((line) => line.trim())
@@ -1062,6 +1081,21 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const reversalRetry=await api(`/api/finance/entries/${entryId}/reverse`,{method:'POST',body:JSON.stringify(reversalBody)});expect(reversalRetry.status).toBe(200);
     expect(await db.prepare('SELECT reversed_at FROM financial_entries WHERE id=?').bind(entryId).first()).toMatchObject({reversed_at:expect.any(String)});
     expect(await db.prepare('SELECT COUNT(*) AS n FROM financial_entries WHERE reversal_of_id=?').bind(entryId).first()).toMatchObject({n:1});
+  });
+
+  it('separa una venta de sus cobros parciales y calcula caja por fecha de pago (CA31)', async () => {
+    const openingBody={effectiveDate:'2025-12-31',currencyCode:'PEN',amount:'1500.00',reason:'Saldo inicial ficticio CA31',operationKey:'fin-ca31-opening'};const opening=await api('/api/finance/cash/opening',{method:'POST',body:JSON.stringify(openingBody)});expect(opening.status,await opening.clone().text()).toBe(201);expect((await api('/api/finance/cash/opening',{method:'POST',body:JSON.stringify(openingBody)})).status).toBe(200);const forbiddenOpening=await api('/api/finance/cash/opening',{method:'POST',body:JSON.stringify({...openingBody,operationKey:'fin-ca31-opening-forbidden'})},responsableToken);expect(forbiddenOpening.status).toBe(403);
+    const sale=await api('/api/finance/entries',{method:'POST',body:JSON.stringify({direction:'income',category:'Venta de animales',concept:'Venta a crédito CA31',operationDate:'2026-01-15',amount:'1000.00',currencyCode:'PEN',counterparty:'Cliente de prueba',reason:'Venta ficticia para comprobar abonos',operationKey:'fin-ca31-sale',allocations:[{barnId:1,amount:'1000.00'}]})});expect(sale.status,await sale.clone().text()).toBe(201);
+    const entryId=Number((await sale.json() as {entry:{id:number}}).entry.id);const allocation=await db.prepare('SELECT id FROM financial_allocations WHERE entry_id=?').bind(entryId).first<{id:number}>();expect(allocation).toBeTruthy();
+    const janBody={settlementDate:'2026-01-20',amount:'400.00',paymentMethod:'transferencia',reference:'COB-ENE',reason:'Primer abono recibido',operationKey:'fin-ca31-jan',allocations:[{allocationId:allocation!.id,amount:'400.00'}]};const jan=await api(`/api/finance/entries/${entryId}/settlements`,{method:'POST',body:JSON.stringify(janBody)});expect(jan.status,await jan.clone().text()).toBe(201);expect((await api(`/api/finance/entries/${entryId}/settlements`,{method:'POST',body:JSON.stringify(janBody)})).status).toBe(200);
+    const feb=await api(`/api/finance/entries/${entryId}/settlements`,{method:'POST',body:JSON.stringify({settlementDate:'2026-02-04',amount:'600.00',paymentMethod:'efectivo',reason:'Saldo final recibido',operationKey:'fin-ca31-feb',allocations:[{allocationId:allocation!.id,amount:'600.00'}]})});expect(feb.status,await feb.clone().text()).toBe(201);
+    const entries=await api('/api/finance/entries?from=2026-01-01&to=2026-01-31');const january=(await entries.json() as {entries:{id:number;amountMinor:number;settledMinor:number;outstandingMinor:number}[]}).entries.find(row=>row.id===entryId);expect(january).toMatchObject({amountMinor:100000,settledMinor:40000,outstandingMinor:60000});
+    const janCash=await api('/api/finance/cashflow?from=2026-01-01&to=2026-01-31&currencyCode=PEN');const janCashData=await janCash.json() as {totals:{direction:string;currencyCode:string;amountMinor:number}[];cashBalances:{openingMinor:number;closingMinor:number;openingBalanceIsCalculated:boolean}[]};expect(janCashData.totals).toEqual([{direction:'income',currencyCode:'PEN',amountMinor:40000}]);expect(janCashData.cashBalances).toEqual([{currencyCode:'PEN',openingMinor:150000,receiptsMinor:40000,paymentsMinor:0,openingBalanceIsCalculated:false,closingMinor:190000}]);
+    const febCash=await api('/api/finance/cashflow?from=2026-02-01&to=2026-02-28&currencyCode=PEN');expect((await febCash.json() as {totals:{direction:string;currencyCode:string;amountMinor:number}[]}).totals).toEqual([{direction:'income',currencyCode:'PEN',amountMinor:60000}]);
+    const all=await api('/api/finance/entries?from=2026-01-01&to=2026-02-28');expect((await all.json() as {entries:{id:number}[]}).entries.filter(row=>row.id===entryId)).toHaveLength(1);
+    const overpay=await api(`/api/finance/entries/${entryId}/settlements`,{method:'POST',body:JSON.stringify({settlementDate:'2026-02-05',amount:'1.00',paymentMethod:'efectivo',reason:'Intento de sobrepago',operationKey:'fin-ca31-overpay',allocations:[{allocationId:allocation!.id,amount:'1.00'}]})});expect(overpay.status).toBe(409);
+    const denied=await api(`/api/finance/entries/${entryId}/settlements`,{method:'POST',body:JSON.stringify({settlementDate:'2026-02-05',amount:'1.00',paymentMethod:'efectivo',reason:'Permiso de operario',operationKey:'fin-ca31-denied',allocations:[{allocationId:allocation!.id,amount:'1.00'}]})},operarioToken);expect(denied.status).toBe(403);
+    const concurrentEntry=await api('/api/finance/entries',{method:'POST',body:JSON.stringify({direction:'income',category:'Venta de productos',concept:'Prueba concurrente de caja',operationDate:'2026-03-01',amount:'100.00',currencyCode:'PEN',reason:'Preparar prueba concurrente de abonos',operationKey:'fin-ca31-concurrent-entry',allocations:[{barnId:1,amount:'100.00'}]})});expect(concurrentEntry.status).toBe(201);const concurrentId=Number((await concurrentEntry.json() as {entry:{id:number}}).entry.id);const concurrentAllocation=await db.prepare('SELECT id FROM financial_allocations WHERE entry_id=?').bind(concurrentId).first<{id:number}>();const pay=(key:string)=>api(`/api/finance/entries/${concurrentId}/settlements`,{method:'POST',body:JSON.stringify({settlementDate:'2026-03-02',amount:'70.00',paymentMethod:'transferencia',reason:'Intento concurrente controlado',operationKey:key,allocations:[{allocationId:concurrentAllocation!.id,amount:'70.00'}]})});const concurrent=await Promise.all([pay('fin-ca31-concurrent-a'),pay('fin-ca31-concurrent-b')]);expect(concurrent.map(response=>response.status).sort()).toEqual([201,409]);expect(await db.prepare('SELECT SUM(amount_minor) AS amount FROM financial_settlement_allocations WHERE financial_allocation_id=?').bind(concurrentAllocation!.id).first()).toMatchObject({amount:7000});
   });
 
   it('enlaza compra de animal con su única entrada y movimiento de inventario', async () => {
