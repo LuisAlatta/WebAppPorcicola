@@ -299,6 +299,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const [transferOperationKey, setTransferOperationKey] = useState(() => newOperationKey('ani-transfer'));
   const [exitOperationKey, setExitOperationKey] = useState(() => newOperationKey('ani-exit'));
   const [saleReturnOperationKey, setSaleReturnOperationKey] = useState(() => newOperationKey('ani-sale-return'));
+  const [saleReturnModalOpen, setSaleReturnModalOpen] = useState(false);
+  const [saleReturnReason, setSaleReturnReason] = useState('');
   const [weightOperationKey, setWeightOperationKey] = useState(() => newOperationKey('ani-pesaje'));
   const [weightForm, setWeightForm] = useState({ weighedOn: farmToday(), weighedTime: '12:00', weightKg: '', stageCode: '', note: '' });
   const [weightError, setWeightError] = useState<string | null>(null);
@@ -717,10 +719,29 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     finally { setBusy(false); }
   };
 
-  const handleSaleReturn=async()=>{
-    if(!detail)return;const reason=window.prompt(`Motivo para devolver la venta de ${detail.code}`);if(!reason?.trim())return;
-    setBusy(true);setPhysicalActionError(null);
-    try{const response=await fetch(`/api/animals/${encodeURIComponent(detail.code)}/sale-return`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({effectiveDate:farmToday(),reason,operationKey:saleReturnOperationKey})});const result=await response.json() as {error?:string;animal?:AnimalDetail};if(!response.ok||!result.animal)throw new Error(result.error||'No se pudo devolver la venta');setDetail(result.animal);setSaleReturnOperationKey(newOperationKey('ani-sale-return'));setSuccess(`Se revirtió la venta y se restituyó el animal ${result.animal.code} al inventario.`);await loadList();}catch(error){setPhysicalActionError(error instanceof Error?error.message:'No se pudo confirmar la devolución. Reintente con la misma clave.');}finally{setBusy(false);}
+  const confirmSaleReturn = async () => {
+    if (!detail || !saleReturnReason.trim()) return;
+    setBusy(true);
+    setPhysicalActionError(null);
+    try {
+      const response = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/sale-return`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ effectiveDate: farmToday(), reason: saleReturnReason.trim(), operationKey: saleReturnOperationKey }),
+      });
+      const result = await response.json() as { error?: string; animal?: AnimalDetail };
+      if (!response.ok || !result.animal) throw new Error(result.error || 'No se pudo devolver la venta');
+      setDetail(result.animal);
+      setSaleReturnOperationKey(newOperationKey('ani-sale-return'));
+      setSuccess(`Se revirtió la venta y se restituyó el animal ${result.animal.code} al inventario.`);
+      setSaleReturnModalOpen(false);
+      setSaleReturnReason('');
+      await loadList();
+    } catch (error) {
+      setPhysicalActionError(error instanceof Error ? error.message : 'No se pudo confirmar la devolución. Reintente con la misma clave.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleWeightSave = async (event: React.FormEvent) => {
@@ -1879,7 +1900,67 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                   </div>
                 </>
               )}
-              {detail.exitDate!==null&&detail.exitType==='sale'&&['administrador','responsable'].includes(perfil)&&<section className="card"><div className="card-header-clean mb-2"><span className="section-title">Devolver una venta</span><span className="text-xs text-muted">Restaura la ficha y el inventario, y enlaza el asiento compensatorio con la venta original.</span></div>{physicalActionError&&<div className="alert alert-error" role="alert">{physicalActionError}</div>}<button type="button" className="btn btn-secondary" disabled={busy} onClick={()=>void handleSaleReturn()}>Registrar devolución de venta</button></section>}
+              {detail.exitDate !== null && detail.exitType === 'sale' && ['administrador', 'responsable'].includes(perfil) && (
+                <section className="card">
+                  <div className="card-header-clean mb-2">
+                    <span className="section-title">Devolver una venta</span>
+                    <span className="text-xs text-muted">Restaura la ficha y el inventario, y enlaza el asiento compensatorio con la venta original.</span>
+                  </div>
+                  {physicalActionError && <div className="alert alert-error" role="alert">{physicalActionError}</div>}
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={busy}
+                    onClick={() => { setSaleReturnReason(''); setSaleReturnModalOpen(true); }}
+                  >
+                    Registrar devolución de venta
+                  </button>
+                </section>
+              )}
+            </div>
+          )}
+
+          {saleReturnModalOpen && detail && (
+            <div className="modal-backdrop">
+              <div className="modal-content card p-4">
+                <h4 className="text-lg font-bold mb-2">Devolver Venta de Animal</h4>
+                <p className="text-sm text-muted mb-3">
+                  Se cancelará el registro de salida del animal <strong>{detail.code}</strong>, se reintegrará 1 cabeza al inventario del galpón y se generará el contra-asiento financiero auditable.
+                </p>
+                <form onSubmit={(e) => { e.preventDefault(); void confirmSaleReturn(); }}>
+                  <div className="form-group mb-4">
+                    <label className="form-label text-sm" htmlFor="modal-sale-return-reason">
+                      Motivo de la devolución:
+                    </label>
+                    <input
+                      id="modal-sale-return-reason"
+                      className="form-input"
+                      value={saleReturnReason}
+                      onChange={(e) => setSaleReturnReason(e.target.value)}
+                      placeholder="ej. Reclamo del cliente / transacción revertida"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      disabled={busy}
+                      onClick={() => setSaleReturnModalOpen(false)}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={busy || !saleReturnReason.trim()}
+                    >
+                      {busy ? 'Guardando…' : 'Confirmar Devolución'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
         </div>

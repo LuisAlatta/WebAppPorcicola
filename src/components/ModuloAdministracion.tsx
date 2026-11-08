@@ -124,6 +124,8 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
   const [newBarnName, setNewBarnName] = useState<string>('');
   const [newBarnZone, setNewBarnZone] = useState<string>('');
   const [newBarnCapacity, setNewBarnCapacity] = useState<number>(80);
+  const [barnToDelete, setBarnToDelete] = useState<{ id: number; name: string } | null>(null);
+  const [deleteBarnLoading, setDeleteBarnLoading] = useState<boolean>(false);
 
   // Asignación de equipo (ACC-04: clave de reintento estable por formulario)
   const [selectedBarnId, setSelectedBarnId] = useState<number | ''>('');
@@ -498,25 +500,26 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
     }
   };
 
-  const handleDeleteBarn = async (barnId: number, barnName: string) => {
-    if (!window.confirm(`¿Está seguro de eliminar el galpón ${barnName}? Solo es posible si no tiene registros asociados.`)) {
-      return;
-    }
-
+  const confirmDeleteBarn = async () => {
+    if (!barnToDelete) return;
+    setDeleteBarnLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
 
     try {
-      const res = await fetch(`/api/admin/barns/${barnId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/barns/${barnToDelete.id}`, { method: 'DELETE' });
       const data = await res.json() as { ok?: boolean; error?: string };
       if (!res.ok) {
         setErrorMsg(data.error || 'Error al eliminar galpón');
         return;
       }
-      setSuccessMsg(`Galpón ${barnName} eliminado exitosamente`);
+      setSuccessMsg(`Galpón ${barnToDelete.name} eliminado exitosamente`);
+      setBarnToDelete(null);
       await refreshData();
     } catch (err) {
       setErrorMsg(String(err));
+    } finally {
+      setDeleteBarnLoading(false);
     }
   };
 
@@ -899,7 +902,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm text-danger"
-                        onClick={() => handleDeleteBarn(b.id, b.name)}
+                        onClick={() => setBarnToDelete({ id: b.id, name: b.name })}
                         title="Eliminar galpón sin registros"
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -977,6 +980,36 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Confirmar Eliminación de Galpón */}
+          {barnToDelete && (
+            <div className="modal-backdrop">
+              <div className="modal-content card p-4">
+                <h4 className="text-lg font-bold mb-2 text-danger">Confirmar Eliminación</h4>
+                <p className="text-sm mb-4">
+                  ¿Está seguro de eliminar el galpón <strong>{barnToDelete.name}</strong>? Esta acción solo es posible si no tiene registros asociados.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    disabled={deleteBarnLoading}
+                    onClick={() => setBarnToDelete(null)}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={deleteBarnLoading}
+                    onClick={() => void confirmDeleteBarn()}
+                  >
+                    {deleteBarnLoading ? 'Eliminando…' : 'Eliminar Galpón'}
+                  </button>
+                </div>
               </div>
             </div>
           )}

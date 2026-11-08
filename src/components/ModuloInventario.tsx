@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   IconAlertCircle,
+  IconArrowRight,
   IconBox,
   IconBuilding,
   IconCalendar,
@@ -1022,7 +1023,17 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
               </div>
               <div className="form-actions"><button type="button" className="btn btn-outline btn-sm" onClick={() => void previewCorrection()} disabled={saving}>Previsualizar impacto</button></div>
               {correctionPreview && <div className={correctionPreview.allowed ? 'alert alert-success' : 'alert alert-error'} role="status">
-                <p>{correctionPreview.allowed ? `Compatible: ${correctionPreview.originalQuantity} → ${correctionPreview.correctedQuantity}.` : 'No se puede aplicar: estos movimientos posteriores quedarían incompatibles.'}</p>
+                <p className="inline-flex items-center gap-1.5 flex-wrap">
+                  {correctionPreview.allowed ? (
+                    <>
+                      <span>Compatible: {correctionPreview.originalQuantity}</span>
+                      <IconArrowRight size={14} className="inline text-muted" />
+                      <span>{correctionPreview.correctedQuantity}.</span>
+                    </>
+                  ) : (
+                    'No se puede aplicar: estos movimientos posteriores quedarían incompatibles.'
+                  )}
+                </p>
                 {correctionPreview.incompatibleMovements.map((item, index) => <p key={`${item.id}-${index}`}>#{item.id} · {item.type} · {item.date} · {item.quantity} cabezas · saldo resultante {item.balanceAfter}</p>)}
               </div>}
               <div className="form-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={saving || !correctionPreview?.allowed}>{saving ? 'Guardando…' : 'Confirmar corrección'}</button></div>

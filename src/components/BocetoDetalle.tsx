@@ -129,26 +129,28 @@ export function BocetoDetalle({ animalId, onNavigate }: BocetoDetalleProps) {
               </span>
             </button>
           </div>
-          <table className="data-table-compact">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Peso</th>
-                <th>Ganancia diaria</th>
-                <th>Responsable</th>
-              </tr>
-            </thead>
-            <tbody>
-              {HISTORIAL_PESAJES.map((pesaje, idx) => (
-                <tr key={idx}>
-                  <td>{pesaje.fecha}</td>
-                  <td className="font-numeric">{pesaje.pesoKg.toFixed(1)} kg</td>
-                  <td className="font-numeric">+{pesaje.gananciaGramosDia} g/d</td>
-                  <td className="text-muted text-xs">{pesaje.registradoPor}</td>
+          <div className="table-responsive">
+            <table className="data-table-compact">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Peso</th>
+                  <th>Ganancia diaria</th>
+                  <th>Responsable</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {HISTORIAL_PESAJES.map((pesaje, idx) => (
+                  <tr key={idx}>
+                    <td>{pesaje.fecha}</td>
+                    <td className="font-numeric">{pesaje.pesoKg.toFixed(1)} kg</td>
+                    <td className="font-numeric">+{pesaje.gananciaGramosDia} g/d</td>
+                    <td className="text-muted text-xs">{pesaje.registradoPor}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section className="card form-col-span-full">

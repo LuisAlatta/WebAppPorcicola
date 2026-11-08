@@ -6,6 +6,7 @@ export function PwaControls(){
   const [install,setInstall]=useState<InstallPrompt|null>(null);
   const [waiting,setWaiting]=useState<ServiceWorker|null>(null);
   const [message,setMessage]=useState('');
+  const [confirmUpdate,setConfirmUpdate]=useState(false);
   useEffect(()=>{
     const prompt=(event:Event)=>{event.preventDefault();setInstall(event as InstallPrompt);};
     const installed=()=>setInstall(null);
@@ -23,14 +24,34 @@ export function PwaControls(){
     return()=>{cancelled=true;window.removeEventListener('beforeinstallprompt',prompt);window.removeEventListener('appinstalled',installed);document.removeEventListener('visibilitychange',refresh);};
   },[]);
   const installApp=async()=>{if(!install)return;await install.prompt();await install.userChoice;setInstall(null);};
-  const updateApp=()=>{
+  const performUpdate=()=>{
     if(!waiting)return;
-    if(!window.confirm('La actualización recargará esta página. Guarda los formularios pendientes antes de continuar. ¿Actualizar ahora?'))return;
+    setConfirmUpdate(false);
     let refreshed=false;const reload=()=>{if(!refreshed){refreshed=true;window.location.reload();}};
     navigator.serviceWorker.addEventListener('controllerchange',reload,{once:true});
     waiting.addEventListener('statechange',()=>{if(waiting.state==='activated')reload();});
     waiting.postMessage({type:'ACTIVATE_UPDATE'});
   };
   if(!install&&!waiting&&!message)return null;
-  return <aside aria-label="Instalación y actualizaciones" className="pwa-controls">{message&&<p role="status">{message}</p>}{install&&<button type="button" className="btn btn-secondary" onClick={()=>void installApp()}>Instalar aplicación</button>}{waiting&&<><span>Hay una versión nueva. Puedes actualizar al terminar tu trabajo.</span><button type="button" className="btn btn-primary" onClick={updateApp}>Actualizar aplicación</button></>}</aside>;
+  return <>
+    <aside aria-label="Instalación y actualizaciones" className="pwa-controls">
+      {message&&<p role="status">{message}</p>}
+      {install&&<button type="button" className="btn btn-secondary" onClick={()=>void installApp()}>Instalar aplicación</button>}
+      {waiting&&<><span>Hay una versión nueva. Puedes actualizar al terminar tu trabajo.</span><button type="button" className="btn btn-primary" onClick={()=>setConfirmUpdate(true)}>Actualizar aplicación</button></>}
+    </aside>
+    {confirmUpdate&&(
+      <div className="modal-backdrop">
+        <div className="modal-content card p-4">
+          <h4 className="text-lg font-bold mb-2">Actualizar Aplicación</h4>
+          <p className="text-sm text-muted mb-4">
+            La actualización recargará la página para cargar la versión más reciente. Guarda tus formularios pendientes antes de continuar. ¿Deseas recargar ahora?
+          </p>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn btn-outline" onClick={()=>setConfirmUpdate(false)}>Más tarde</button>
+            <button type="submit" className="btn btn-primary" onClick={performUpdate}>Actualizar ahora</button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>;
 }
