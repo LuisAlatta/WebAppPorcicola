@@ -73,7 +73,7 @@ import {
 import { correctLitter, recordFarrowing, recordLitterEvent } from './litters';
 import { createFeedWarehouse, getFeedInventory, getFeedProjection, listFeedMovements, listFeedWarehouses, registerFeedMovement } from './feed';
 import { createHealthEvent, listHealthEvents, listUpcomingHealthEvents, listWithdrawalAlerts } from './health';
-import { applyVaccineOccurrence, createManualVaccineSchedule, deactivateVaccineRule, generateAnimalVaccineSchedules, generateVaccineSchedules, listVaccineRules, listVaccineSchedules, saveVaccineRule } from './vaccines';
+import { applyVaccineOccurrence, createManualVaccineSchedule, deactivateVaccineRule, generateAnimalVaccineSchedules, generateVaccineSchedules, listVaccineRules, listVaccineSchedules, saveVaccineRule, updateVaccineOccurrence } from './vaccines';
 import { createFinancialEntry, createFinancialOpeningBalance, createFinancialSettlement, listFinancialCashflow, listFinancialEntries, reverseFinancialEntry } from './finance';
 import { attendAlert, createManualAlert, listAlerts, reconcileAlerts } from './alerts';
 
@@ -573,6 +573,11 @@ const worker = {
         if(occurrenceMatch&&request.method==='POST'){
           if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo veterinario o administrador puede aplicar vacunas'},{status:403});
           const body=await request.json() as Parameters<typeof applyVaccineOccurrence>[3];const result=await applyVaccineOccurrence(env.DB,session.user.id,Number(occurrenceMatch[1]),body,scope);await reconcileAlerts(env.DB);return Response.json({ok:true,...result},{status:result.replayed?200:201});
+        }
+        const updateOccurrenceMatch=path.match(/^\/api\/vaccines\/schedules\/(\d+)$/);
+        if(updateOccurrenceMatch&&request.method==='PATCH'){
+          if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo veterinario o administrador puede reprogramar vacunas'},{status:403});
+          const body=await request.json() as Parameters<typeof updateVaccineOccurrence>[3];const result=await updateVaccineOccurrence(env.DB,session.user.id,Number(updateOccurrenceMatch[1]),body,scope);await reconcileAlerts(env.DB);return Response.json({ok:true,...result},{status:result.replayed?200:200});
         }
         return Response.json({error:'Ruta de vacunas no encontrada'},{status:404});
       }catch(err){const message=(err as Error).message||String(err);const status=err instanceof ApiError?err.status:/UNIQUE constraint|guard_id/.test(message)?409:400;return Response.json({error:message},{status});}
