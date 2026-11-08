@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Perfil, Vista } from '../types';
-import { IconPig, IconLogOut, IconWifiOff } from './icons';
+import { IconLogOut, IconWifiOff } from './icons';
 
 interface NavbarProps {
   vistaActual: Vista;
@@ -41,10 +41,7 @@ export function Navbar({ perfilActual, usuario, onNavigate, onLogout }: NavbarPr
             onClick={() => onNavigate('inicio')}
             title="Ir al Menú Principal"
           >
-            <span className="inline-flex items-center justify-center gap-2 leading-none brand-link">
-              <IconPig size={22} className="brand-icon" />
-              <span className="brand-text">Web Porcícola</span>
-            </span>
+            <span className="brand-text">Mi Granja Pro</span>
           </button>
           <span className="badge-env">{profileNames[perfilActual]}</span>
           {usuario && <span className="text-xs text-muted user-badge-navbar">{usuario}</span>}
@@ -52,11 +49,11 @@ export function Navbar({ perfilActual, usuario, onNavigate, onLogout }: NavbarPr
         <div className="navbar-controls">
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
+            className="btn btn-ghost btn-sm btn-logout"
             onClick={onLogout}
             title="Cerrar sesión"
           >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <span className="inline-flex items-center justify-center gap-1 leading-none">
               <IconLogOut size={16} />
               <span>Salir</span>
             </span>
