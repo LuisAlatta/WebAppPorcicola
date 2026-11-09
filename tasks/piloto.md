@@ -24,4 +24,4 @@ Registrar por paso: fecha/hora Lima, versión Worker/commit/esquema, actor, espe
 
 ## Condiciones de salida
 
-T29 debe cerrar sus32 casos, incluida CA-20 pendiente. Después del piloto sin incidencias de integridad/aislamiento se podrá preparar T31 con respaldo, bindings y migraciones revisados. T32 exige observar el primer cierre diario y el cron reales. Objetivos de recuperación y volumen aquí propuestos deben medirse antes de una garantía operativa.
+T29 debe cerrar el informe de sus 32 casos; CA-20 ya tiene implementación y pruebas automatizadas. Después del piloto sin incidencias de integridad/aislamiento se podrá completar T31 con respaldo, bindings y migraciones revisados. T32 exige observar el primer cierre diario y el cron reales. Objetivos de recuperación y volumen aquí propuestos deben medirse antes de una garantía operativa.

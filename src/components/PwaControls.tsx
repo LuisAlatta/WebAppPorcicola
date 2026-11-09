@@ -1,4 +1,5 @@
 import {useEffect,useState} from 'react';
+import {ModalDialog} from './ModalDialog';
 
 interface InstallPrompt extends Event { prompt(): Promise<void>; userChoice: Promise<{outcome:'accepted'|'dismissed'}> }
 
@@ -40,18 +41,16 @@ export function PwaControls(){
       {waiting&&<><span>Hay una versión nueva. Puedes actualizar al terminar tu trabajo.</span><button type="button" className="btn btn-primary" onClick={()=>setConfirmUpdate(true)}>Actualizar aplicación</button></>}
     </aside>
     {confirmUpdate&&(
-      <div className="modal-backdrop">
-        <div className="modal-content card p-4">
-          <h4 className="text-lg font-bold mb-2">Actualizar Aplicación</h4>
+      <ModalDialog labelledBy="pwa-update-dialog-title" onDismiss={() => setConfirmUpdate(false)}>
+          <h4 id="pwa-update-dialog-title" className="text-lg font-bold mb-2">Actualizar Aplicación</h4>
           <p className="text-sm text-muted mb-4">
             La actualización recargará la página para cargar la versión más reciente. Guarda tus formularios pendientes antes de continuar. ¿Deseas recargar ahora?
           </p>
           <div className="flex justify-end gap-2">
             <button type="button" className="btn btn-outline" onClick={()=>setConfirmUpdate(false)}>Más tarde</button>
-            <button type="submit" className="btn btn-primary" onClick={performUpdate}>Actualizar ahora</button>
+            <button type="button" className="btn btn-primary" onClick={performUpdate}>Actualizar ahora</button>
           </div>
-        </div>
-      </div>
+      </ModalDialog>
     )}
   </>;
 }

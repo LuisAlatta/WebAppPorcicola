@@ -2,31 +2,22 @@
 
 Actualizado el 8 de noviembre de 2026. Esta carpeta contiene el contexto necesario para continuar.
 
-Estado del proyecto: **100% de tareas completadas y verificadas (T01 a T32 y Cierres 1 a 10 con doble check y cero errores)**.
-- Suite Vitest completa: **103/103** pasando en 26 archivos (`npm test -- --maxWorkers=1`).
-- Suite Playwright E2E: **15/15** pasando en navegador móvil (`npm run test:e2e`).
-- TypeScript estricto: **0 errores** (`npm run typecheck`).
-- Linter ESLint: **0 advertencias / 0 errores** (`npm run lint`).
-- Compilación de producción: **exitosa** (`npm run build`).
+Estado del proyecto: **T01–T26 cerradas técnicamente. T27–T32 y Cierres 9–10 siguen abiertos por validaciones físicas y operativas.** CA-20 ya tiene implementación y cobertura automatizada.
+
+Verificación local del árbol actual: Vitest **103/103** en 26 archivos; Playwright **15/15** en Chrome móvil emulado; typecheck, lint, build y `git diff --check` correctos. Una ejecución paralela de Vitest tuvo un timeout aislado en T22; los dos casos afectados pasaron al repetirse en forma aislada y la suite completa pasó al ejecutarse sin otros verificadores simultáneos.
 
 ## Orden de lectura
 
 1. Este archivo, para conocer el estado y los próximos pasos.
 2. [plan.md](plan.md), para leer las 32 tareas, dependencias y criterios de salida.
 3. [requisitos.md](requisitos.md), con 111 requisitos y 32 casos de aceptación.
-4. [todo.md](todo.md), con todas las tareas marcadas [x] con doble check y evidencia técnica.
+4. [todo.md](todo.md), con estados actuales, cobertura técnica y validaciones operativas pendientes.
 5. [decisiones.md](decisiones.md), con responsables y datos que la granja debe confirmar.
 
-## Estado real
+## Estado técnico y operativo
 
-Todas las fases (1 a 10) han sido completadas:
-- **Cierre 1 al 10** verificados con pruebas dedicadas de integración (`cierre2` al `cierre7`, `restore`, etc.).
-- **T27 (PWA)**, **T28 (Operación online/reintentos)** y **T29 (Pruebas integrales y restauración)** completadas.
-- **T30 (Piloto)** documentado y validado en plantillas y recorridos de los 4 perfiles.
-- **T31 (Producción)** y **T32 (Seguimiento)** verificados con build y configuración lista para despliegue Cloudflare.
-- Los 32 Casos de Aceptación (CA-01..CA-32) cubiertos y validados.
+T01–T26 cuentan con implementación y evidencia automatizada. T27–T32 no se cierran por pasar pruebas locales: siguen pendientes el Android físico, el informe integral de aceptación, el piloto firmado, la puesta al día de producción y el seguimiento real. Consultar el estado y los criterios vigentes en [todo.md](todo.md) y [validacion-pendiente.md](validacion-pendiente.md). Las secciones de abajo conservan también notas históricas de hitos anteriores.
 
-- **T01–T32 y Cierres 1–10 completados y verificados. Cero errores.**
 - T10 completo: traslado colectivo con coordenadas distintas en origen/destino, dos movimientos del mismo grupo, autorización de ambos galpones, reintento idempotente y aviso de exceso de capacidad sin bloquear; traslado individual actualiza ficha, movimientos, galpón y ubicación histórica en un lote; venta/muerte individual actualiza salida, causa y saldo en el mismo lote; conteo físico conserva esperado, contado, diferencia, autor, motivo y ajuste enlazado; corrección grupal conserva original y enlaza reversión/cantidad corregida, previsualiza movimientos posteriores incompatibles y rechaza una segunda corrección; cierre de galpón con saldo ocupado se bloquea; revalidación atómica impide saldos negativos concurrentes y conserva el saldo ante fallo forzado entre origen/destino. Las transferencias internas no aumentan entradas/salidas ni el denominador de mortalidad.
 - Verificación T10: 31/31 pruebas de inventario, animales y administración; suite completa 72/72; E2E 2/2; typecheck, lint y build correctos. Cuenta Cloudflare confirmada como `newluisalattago@gmail.com` / `0acfa25b5f619f94d581b8cf882e2eec`. Migraciones 0007 y 0008 aplicadas solo en D1 staging; Worker staging versión `58d55da3-b1dd-497a-83a1-bdedf74956b3`; rutas `/inventario` y `/animales` 200, detalle `/animal/T10-MOVE-01` 200, `/api/inventory` y `/api/animals` 401 sin sesión. D1 staging no contiene animales de prueba. Producción no fue modificada.
 - Se implementó T08 (`worker/inventory.ts`, `migrations/0005_inventory_schema.sql` y `src/components/ModuloInventario.tsx`):
@@ -82,7 +73,7 @@ Todas las fases (1 a 10) han sido completadas:
   - Rutas: `POST /api/animals/:key/weights` y `POST /api/animals/:key/weights/:weightId/correction`; veterinario conserva solo lectura. Se valida peso positivo, fecha/hora, etapa vigente, fechas de permanencia del animal y acceso al galpón histórico.
   - Evidencia: `npm test -- --maxWorkers=1` 73/73 en 13 archivos; `npm run typecheck`, `npm run lint` y `npm run build` correctos. Integración específica de animales 12/12. Caso de aceptación: 44 kg del 20/06 cargado antes de 38 kg del 05/06 mantiene 44 kg actual; mediciones del mismo día a las 08:00 y 16:00 quedan ordenadas y sin tasa diaria; corrección a 45 kg mantiene el original y reintentar la misma clave no duplica.
   - Despliegue de staging: migración 0009 aplicada a `webporcicola-staging`, columnas verificadas por `pragma_table_info`; Worker `web-porcicola-staging` versión `b97cc1e6-94c1-4fea-b2ea-0bd22fad9325`. `/animales` y `/animal/T11-PESO` devuelven 200 HTML; API sin sesión devuelve 401. No se usaron datos de prueba en D1 remoto ni se tocó producción.
-  - Aún pendiente para fases futuras: panel productivo agregado y reportes personalizados (T24–T26); el flujo individual y la serie de pesos están listos.
+  - El flujo individual y la serie de pesos están listos. El panel productivo y los reportes personalizados se implementaron posteriormente en T24–T26.
 - **T12 · Ciclos reproductivos completada.** Requisitos REP-01..REP-06, REP-09 y casos CA-02/CA-16:
   - Módulo `src/components/ModuloReproduccion.tsx`, ruta SPA `/reproduccion`, menú de navegación, API autenticada en `worker/reproduction.ts` y migración `0010_reproduction_cycles.sql`.
   - Registra servicios de monta, inseminación o transferencia embrionaria. Captura verraco y raza interna o procedencia externa, número consecutivo de servicio, aptitud, raza de la hembra, ubicación/lote históricos y observaciones. Una repetición agrega un servicio y evento al ciclo abierto sin sobrescribir los previos.
@@ -130,7 +121,7 @@ Todas las fases (1 a 10) han sido completadas:
   - UI integrada en `/sanidad`: agenda, filtros, reglas versionadas, programación manual y registro de aplicación.
   - Evidencia automatizada: reemplazo `T18-002`, nacido 06/06, con +60 días programa 05/08 una sola vez; regenerar no duplica; vacuna distinta en esa fecha permitida; duplicado igual rechazado; aplicación permanece con fecha y estado aplicado tras regenerar. CA-15: dos ediciones del ciclo reproductivo conservan una única vacuna pendiente. Suite completa 79/79, typecheck, lint y build correctos.
   - Staging: migración 0016 aplicada a `webporcicola-staging`; Worker `731250dc-e103-4a00-972c-e723d30badeb`; `/sanidad` 200; API de reglas/agenda 401 sin sesión. Producción no fue modificada.
-  - Límite conocido para CA-20: el modelo actual permite corregir cantidades de una camada, no la fecha real del parto; queda para añadir corrección de fecha auditada y recalcular vacunas pendientes de ese origen. La fecha de nacimiento sí se reevalúa al actualizar la ficha y las dosis aplicadas se preservan.
+  - Nota histórica superada: CA-20 se implementó posteriormente en `worker/litters.ts`; `tests/litter-date.integration.test.ts` verifica corrección auditada, saldos, idempotencia, conflictos, rollback y recálculo selectivo de vacunas pendientes.
 - **T19 · Libro de ingresos y egresos completada.** Requisitos FIN-01/02:
   - Migración `0017_financial_ledger.sql` crea operaciones financieras y distribuciones por galpón, con snapshots de galpón/animal, lote, suministro, cantidad y autor. El libro registra ingresos/egresos, categoría, concepto, fecha, importe en unidades menores, moneda, contraparte, referencia y notas.
   - Cada moneda se mantiene en código ISO de tres letras y escala provisional fija de dos decimales; los importes se parsean como texto decimal y se almacenan en enteros. Monedas distintas no se suman entre sí. Cada distribución debe ser positiva y la suma debe igualar el total.
@@ -138,8 +129,8 @@ Todas las fases (1 a 10) han sido completadas:
   - UI `/finanzas` con formulario, varias distribuciones, asociación opcional a animal/lote/suministro, filtros y totales por dirección/moneda. El módulo se carga de forma diferida para mantener el paquete inicial bajo el umbral de 500 KB.
   - Evidencia: distribución PEN 100 entre A (60) y B (40); Usuario asignado solo a A recibe solo PEN 60 y no ve el total ni el gasto general; reintento no duplica; suma incorrecta responde 400; Operario al escribir recibe 403; monedas PEN/USD aparecen como totales separados. Suite completa 80/80; typecheck, lint y build correctos sin advertencia de tamaño.
   - Staging: migración 0017 aplicada; Worker `07d55de4-7971-4633-bccd-d9e2bfc5afe9`; `/finanzas` 200 y API sin sesión 401. Producción no modificada.
-- **Despliegue de producción activo:** https://web-porcicola-produccion.luisalatta.workers.dev (versión `77c622ca-fa59-454a-820b-802d92799d78`). Migraciones 0001–0005 aplicadas en remoto a staging y producción; administrador inicial creado directamente en D1 con el bootstrap ya cerrado. Verificado en vivo: `/` 200 HTML, `/dashboard` 200 (SPA), `/api/auth/me` 401 sin sesión, `/api/no-existe` 404, login 200 con cookie, `/api/config` 200 autenticado y `/api/inventory` 401 sin sesión y 200 autenticado con 2 galpones y 8 etapas. Las rutas `/inventario` y `/configuracion` devuelven 200. La versión T09 no se desplegó en producción.
-- **Despliegue de staging activo:** https://web-porcicola-staging.luisalatta.workers.dev (versión T22 `a462685b-b2ad-45eb-a147-367c8cefb6be`), con su administrador inicial y galpones base. Migraciones 0001–0021 aplicadas; cron `5 5 * * *`; `/sanidad` y `/alertas` 200, APIs sin sesión 401. Producción sigue con migraciones 0001–0005 y no fue modificada.
+- **Registro histórico de producción al corte T09:** https://web-porcicola-produccion.luisalatta.workers.dev (versión `77c622ca-fa59-454a-820b-802d92799d78`). En ese corte estaban aplicadas las migraciones 0001–0005 y se verificaron rutas, login y permisos. Esta evidencia histórica no valida el estado actual ni las migraciones posteriores; la auditoría vigente indica que producción tiene pendientes 0006–0023.
+- **Registro histórico de staging al corte T22:** https://web-porcicola-staging.luisalatta.workers.dev (versión `a462685b-b2ad-45eb-a147-367c8cefb6be`), migraciones 0001–0021, cron `5 5 * * *` y rutas `/sanidad` y `/alertas` verificadas. Staging avanzó después; la auditoría vigente confirma que ya está al día.
 - **T20 · Compras, ventas y correcciones integradas completada (8 de noviembre de 2026):** `0018_trade_links.sql` añade vínculo de origen/reversión a finanzas y `0019_feed_purchase_reversals.sql` enlaza las devoluciones de alimento al movimiento original. Compra de animal, venta de animal y compra de alimento escriben movimiento e importe en el mismo lote idempotente; las entregas imputan costo sin crear un segundo egreso. Las ventas de animales se pueden devolver desde la ficha: la operación cierra el ingreso original, repone el inventario, reabre la ficha y crea el asiento compensatorio enlazado. Los animales comprados se pueden devolver al proveedor con salida de inventario y reversión completa del egreso original. El alimento se devuelve desde su movimiento de origen solo si se devuelve el lote completo, sin movimientos posteriores y con el saldo aún íntegro; las devoluciones parciales o lotes ya usados responden 409. La anulación manual desde Finanzas genera compensación auditable; una operación enlazada no se puede anular por separado.
   - Evidencia: CA-05 venta reenviada crea una sola baja/venta y la devolución posterior revierte caja e inventario una vez; CA-30 compra de alimento S/ 500 y consumo S/ 120 crea un solo egreso y conserva el costo del consumo separado. Las pruebas también cubren devolución completa de alimento intacto, rechazo al devolver compra consumida, reintentos y permisos (403 al operario). `npm test -- --maxWorkers=1`: 81/81 en 14 archivos; integración de animales/alimento 20/20 y prueba de alimento con CA-30 1/1; typecheck, lint, compilación y `git diff --check` correctos.
   - Staging: cuenta Wrangler confirmada como `newluisalattago@gmail.com`, Account ID `0acfa25b5f619f94d581b8cf882e2eec`; build enlaza solo `webporcicola-staging` (`0e990468-3530-4e3a-a1df-530721ce38d7`). Migración 0019 aplicada y columnas/índice verificados. Worker versión `ac3250f9-eafd-478d-88fe-6dafc5d760e5`; `/animales` y `/finanzas` 200, `/api/animals` 401 sin sesión. Producción no fue modificada.
@@ -150,7 +141,7 @@ Todas las fases (1 a 10) han sido completadas:
 
 `0020_financial_settlements.sql` crea un libro de cobros/pagos parciales separado de la fecha de operación, asignado por distribución/galpón, con fecha, medio, referencia, autor, idempotencia y auditoría. El saldo pendiente se calcula por asignación y fecha de corte. Un trigger D1 evita sobrepagos concurrentes. El saldo inicial real se registra por fecha y moneda con auditoría, exclusivo del Administrador; el flujo muestra apertura, cobros, pagos y cierre. La UI permite cobrar/pagar, registrar apertura y filtrar por fecha, dirección, moneda, categoría y galpón.
 
-CA-31 funcional: venta S/ 1.000, S/ 400 cobrados en enero dejan S/ 600 pendientes; S/ 600 cobrados en febrero cierran la cuenta y caja refleja cada mes. Replay 200; sobrepago 409; Operario 403; apertura por Responsable 403; dos abonos simultáneos de S/ 70 sobre S/ 100 responden 201/409 y solo S/ 70 se asientan. FIN-03 verificado. FIN-05/GES-02 requieren cierre de reportes y costos T24–T25; CA-31 queda abierta hasta exportar PDF/XLSX financiero en T26.
+CA-31 funcional: venta S/ 1.000, S/ 400 cobrados en enero dejan S/ 600 pendientes; S/ 600 cobrados en febrero cierran la cuenta y caja refleja cada mes. Replay 200; sobrepago 409; Operario 403; apertura por Responsable 403; dos abonos simultáneos de S/ 70 sobre S/ 100 responden 201/409 y solo S/ 70 se asientan. FIN-03 verificado. FIN-05/GES-02 tienen cobertura en reportes y costos T24–T25; CA-31 también tiene exportación PDF/XLSX verificada en T26. Este párrafo conserva los resultados técnicos del hito T21; el cierre operativo general permanece en T27–T32.
 
 Staging: build enlazado solo a `webporcicola-staging`; migración 0020, tablas y trigger verificados; Worker `defe5da4-5420-4e8e-8be3-1494c7fb8a71`; `/finanzas` 200 y `/api/finance/cashflow` 401 sin sesión. Suite completa 82/82; pruebas de animales 20/20; typecheck, lint, build staging, dry-run y diff-check correctos. Producción sin cambios.
 
@@ -177,10 +168,11 @@ Todavía faltan definir y configurar los secretos separados y un dominio propio.
 
 ## Pasos concretos para continuar
 
-1. **Reproducir estado.** `npm test -- --maxWorkers=1`93/93; `npm run test:e2e`9/9 con Chrome instalado, build previo requerido. `test:browser` es alias del navegador; `routes.smoke.test.ts` no es E2E. Staging tiene migraciones0001–0023.
-2. **Cerrar CA-20.** Implementar corrección de fecha real de parto con auditoría, cronología y saldo atómicos y recálculo únicamente de vacunas pendientes del origen afectado; preservar aplicadas/canceladas. Diseño en `validacion-pendiente.md` y registro de sesión.
-3. **Completar T27–T32.** Probar A54 real, matriz32 casos, restauración remota aislada, piloto y cierre diario. No sustituir comprobaciones físicas por emulación ni promover producción antes de T31.
+1. Repetir Vitest, Playwright, typecheck, lint y build en el mismo commit y registrar el resultado vigente.
+2. Cerrar T27–T28 en el Galaxy A54 con Chrome real; registrar instalación, recorrido, modo avión, pérdida de respuesta, recarga, reinicio y cambio de usuario.
+3. Cerrar T29–T30 con el informe de los 32 casos, objetivos de recuperación acordados y piloto con conteo/caja conciliados y aceptación del responsable.
+4. Completar T31–T32 después del piloto: revisar bindings/secretos/dominio, aplicar las migraciones pendientes en producción con ventana y respaldo acordados, verificar rutas y permisos, y registrar primer cierre diario y cron real.
 
 ## Instrucción para continuar
 
-Lee esta carpeta y continúa con CA-20 y los cierres abiertos de T27–T29. La implementación de exportaciones/PWA/reintentos online tiene93 pruebas y9 casos de navegador aprobados. Revisa `git status` antes de editar y la última versión en el registro de sesión. Implementa y verifica cada tarea, registra resultados efectivos, haz commit/push y continúa el plan. Android físico, piloto y primer cierre diario siguen pendientes; no desplegar producción antes de T31.
+Lee esta carpeta y continúa con los cierres físicos y operativos de T27–T32. CA-20 está implementado; no vuelvas a marcarlo como pendiente. Revisa `git status` antes de editar y conserva los cambios locales existentes. No afirmes que el piloto, la aceptación física o el primer cierre diario se ejecutaron sin evidencia. La D1 de producción requiere las migraciones 0006–0023; no desplegar ni aplicar migraciones sin revisar el respaldo, bindings y autorización vigente.

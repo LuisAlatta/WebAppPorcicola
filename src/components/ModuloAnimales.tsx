@@ -17,6 +17,7 @@ import {
   IconSearch,
   IconTrash,
 } from './icons';
+import { ModalDialog } from './ModalDialog';
 import { farmToday, newOperationKey } from '../utils/operations';
 import type { Perfil } from '../types';
 
@@ -1900,6 +1901,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                   </div>
                 </>
               )}
+            </div>
+          )}
               {detail.exitDate !== null && detail.exitType === 'sale' && ['administrador', 'responsable'].includes(perfil) && (
                 <section className="card">
                   <div className="card-header-clean mb-2">
@@ -1911,19 +1914,16 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                     type="button"
                     className="btn btn-secondary btn-sm"
                     disabled={busy}
-                    onClick={() => { setSaleReturnReason(''); setSaleReturnModalOpen(true); }}
+                    onClick={() => { setSaleReturnReason(''); setSaleReturnOperationKey(newOperationKey('ani-sale-return')); setPhysicalActionError(null); setSaleReturnModalOpen(true); }}
                   >
                     Registrar devolución de venta
                   </button>
                 </section>
               )}
-            </div>
-          )}
 
           {saleReturnModalOpen && detail && (
-            <div className="modal-backdrop">
-              <div className="modal-content card p-4">
-                <h4 className="text-lg font-bold mb-2">Devolver Venta de Animal</h4>
+            <ModalDialog labelledBy="animal-sale-return-dialog-title" onDismiss={() => setSaleReturnModalOpen(false)} dismissDisabled={busy}>
+                <h4 id="animal-sale-return-dialog-title" className="text-lg font-bold mb-2">Devolver Venta de Animal</h4>
                 <p className="text-sm text-muted mb-3">
                   Se cancelará el registro de salida del animal <strong>{detail.code}</strong>, se reintegrará 1 cabeza al inventario del galpón y se generará el contra-asiento financiero auditable.
                 </p>
@@ -1960,8 +1960,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                     </button>
                   </div>
                 </form>
-              </div>
-            </div>
+            </ModalDialog>
           )}
         </div>
       )}

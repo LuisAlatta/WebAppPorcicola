@@ -18,6 +18,7 @@ import {
   IconSettings,
 } from './icons';
 import { farmToday, newOperationKey } from '../utils/operations';
+import { ModalDialog } from './ModalDialog';
 import { ModuloConfiguracion } from './ModuloConfiguracion';
 
 interface ModuloAdministracionProps {
@@ -751,9 +752,8 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
 
           {/* Modal / Formulario Nueva Cuenta */}
           {showUserModal && (
-            <div className="modal-backdrop">
-              <div className="modal-content card p-4">
-                <h4 className="text-lg font-bold mb-3">Crear Nueva Cuenta</h4>
+            <ModalDialog labelledBy="admin-create-user-dialog-title" onDismiss={() => setShowUserModal(false)}>
+                <h4 id="admin-create-user-dialog-title" className="text-lg font-bold mb-3">Crear Nueva Cuenta</h4>
                 <form onSubmit={handleCreateUser}>
                   <div className="form-group mb-2">
                     <label className="form-label text-sm">Nombre Completo:</label>
@@ -837,8 +837,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
                     </button>
                   </div>
                 </form>
-              </div>
-            </div>
+            </ModalDialog>
           )}
         </div>
       )}
@@ -919,9 +918,8 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
 
           {/* Modal Nuevo Galpón */}
           {showBarnModal && (
-            <div className="modal-backdrop">
-              <div className="modal-content card p-4">
-                <h4 className="text-lg font-bold mb-3">Registrar Nuevo Galpón</h4>
+            <ModalDialog labelledBy="admin-create-barn-dialog-title" onDismiss={() => setShowBarnModal(false)}>
+                <h4 id="admin-create-barn-dialog-title" className="text-lg font-bold mb-3">Registrar Nuevo Galpón</h4>
                 <form onSubmit={handleCreateBarn}>
                   <div className="form-group mb-2">
                     <label className="form-label text-sm">Código Único:</label>
@@ -980,15 +978,13 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
                     </button>
                   </div>
                 </form>
-              </div>
-            </div>
+            </ModalDialog>
           )}
 
           {/* Modal Confirmar Eliminación de Galpón */}
           {barnToDelete && (
-            <div className="modal-backdrop">
-              <div className="modal-content card p-4">
-                <h4 className="text-lg font-bold mb-2 text-danger">Confirmar Eliminación</h4>
+            <ModalDialog labelledBy="admin-delete-barn-dialog-title" onDismiss={() => setBarnToDelete(null)} dismissDisabled={deleteBarnLoading}>
+                <h4 id="admin-delete-barn-dialog-title" className="text-lg font-bold mb-2 text-danger">Confirmar Eliminación</h4>
                 <p className="text-sm mb-4">
                   ¿Está seguro de eliminar el galpón <strong>{barnToDelete.name}</strong>? Esta acción solo es posible si no tiene registros asociados.
                 </p>
@@ -1010,8 +1006,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
                     {deleteBarnLoading ? 'Eliminando…' : 'Eliminar Galpón'}
                   </button>
                 </div>
-              </div>
-            </div>
+            </ModalDialog>
           )}
         </div>
       )}
@@ -1281,9 +1276,8 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
 
           {/* Modal de corrección con historial */}
           {correctionTarget && (
-            <div className="modal-backdrop">
-              <div className="modal-content card p-4">
-                <h4 className="text-lg font-bold mb-2">Corregir Asignación Vigente</h4>
+            <ModalDialog labelledBy="admin-correct-team-dialog-title" onDismiss={closeCorrection} dismissDisabled={correctionSaving}>
+                <h4 id="admin-correct-team-dialog-title" className="text-lg font-bold mb-2">Corregir Asignación Vigente</h4>
                 <p className="text-xs text-muted mb-3">
                   Galpón <strong>{correctionTarget.barn_code}</strong> · {ROLE_LABEL[correctionTarget.role]} · titular actual{' '}
                   <strong>{correctionTarget.new_user_name}</strong>. La fila original se conserva como histórica (GES-03).
@@ -1368,8 +1362,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
                     </button>
                   </div>
                 </form>
-              </div>
-            </div>
+            </ModalDialog>
           )}
         </div>
       )}

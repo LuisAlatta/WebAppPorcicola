@@ -4,7 +4,9 @@ Actualizado el 8 de noviembre de 2026. Este documento distingue comprobaciones t
 
 ## Evidencia ejecutada en esta revisión
 
-- `npm run typecheck`: correcto después de incorporar T28 y la prueba de recuperación.
+- En la revisión actual, `npm test -- --maxWorkers=1`: **103/103** en 26 archivos; la repetición se ejecutó sola después de que una primera ejecución paralela alcanzara el timeout de T22. Los casos T22 y T23 pasaron al repetirse juntos de forma aislada (28,20 s).
+- `npm run test:e2e`: **15/15** en Chrome móvil emulado; incluye control de foco y restauración al cerrar el diálogo de actualización PWA.
+- `npm run typecheck`, `npm run lint`, `npm run build` y `git diff --check`: correctos en el árbol local revisado tras corregir el JSX de la ficha de animales y consolidar los diálogos accesibles.
 - `npx vitest run tests/operations.test.ts tests/restore.integration.test.ts --maxWorkers=1`: **5/5**, dos archivos; duración total 9,33 s, tiempo de pruebas 7,06 s en esta máquina. Son mediciones locales, no objetivos garantizados de recuperación remota.
 - ESLint de los cuatro componentes modificados, `src/utils/operations.ts` y los dos tests: correcto.
 - Ayuda local de Wrangler 4.156.1 para `d1 export`, `d1 execute` y `d1 time-travel`: consultada. No se ejecutó ninguna exportación, importación ni restauración remota durante esta revisión.
@@ -34,19 +36,19 @@ Esta prueba valida una copia lógica pequeña en el runtime local. **No acredita
 
 | Área | Evidencia disponible | Pendiente de cierre |
 |---|---|---|
-| Navegador real | Playwright Chrome móvil emulado9/9; `tests/routes.smoke.test.ts` conserva solo smoke de rutas. | Login/roles/SW/actualización comprobados en navegador automatizado; falta recorrido completo de formularios y evidencia del Android físico. |
+| Navegador real | Playwright Chrome móvil emulado15/15; `tests/routes.smoke.test.ts` conserva solo smoke de rutas. | Falta recorrido completo de formularios y evidencia del Android físico. |
 | Android físico | Dispositivo objetivo confirmado: Samsung Galaxy A54. | Registrar Android y versión de Chrome reales; instalar desde HTTPS, icono, enlace directo, actualización con formulario abierto, teclado decimal, foco, scroll y descargas. |
 | Desconexión física | Prueba automatizada de intento estable y no envío offline. | Modo avión real, pérdida de respuesta, recarga, reinicio y cambio de cuenta; confirmar ausencia de falsas confirmaciones y duplicados. |
-| CA-20 | `estado.md` ya identifica ausencia de corrección de la fecha real de parto. | Implementar y probar corrección auditada y recálculo selectivo de vacunas pendientes; no cerrar el caso por corregir solo la fecha probable. |
+| CA-20 | Implementado en `worker/litters.ts` y cubierto por `tests/litter-date.integration.test.ts`; E2E de formulario y reintento en `e2e/litter-date.browser.ts`. | Caso funcional cubierto automáticamente. Mantenerlo abierto solo si el informe final de T29 detecta una discrepancia; no describir la corrección como pendiente de implementación. |
 | Alertas por cambio de día | Integraciones prueban ayer/hoy/+1/+7/+8 y handler programado local. | Registrar cambio de fecha Lima y ejecución programada real de staging; verificar contadores antes/después y ausencia de repetición. |
 | Recuperación remota | [Ensayo remoto ejecutado](recuperacion-remota.md):52tablas/96filas, FK0, Worker autenticado con copia y Time Travel verificados; destino efímero eliminado después. | Falta volumen real, custodia de copias y RPO/RTO acordados; confirmar plan efectivo (retención Free7días/Paid30). No equivale a recuperar producción bajo carga. |
 | Piloto | Procedimiento y plantillas en [piloto.md](piloto.md). | Carga aprobada, conteo físico, jornada de cuatro perfiles y aceptación del responsable operativo. |
 | Producción | Entorno separado ya existe en configuración. | Promover solo después de T30, revisar migraciones/bindings/secretos y configurar cron de producción: el cron de staging por sí solo no acredita el de producción. |
 | Entrega | Código y evidencia técnica local. | Primer cierre diario real, ejecución programada real, responsables de incidencias y recuperación y conciliación aceptada. |
 
-### Diseño pendiente de CA-20
+### CA-20 implementado
 
-La corrección debe conservar fecha original, motivo y autor. Antes de confirmar debe validar secuencia del ciclo, presencia histórica de la madre, lactancia, fichas identificadas y eventos posteriores de la camada. Si cambia la fecha de entrada de cabezas, conservar el libro original y registrar compensaciones/reemplazos enlazados; comprobar saldo cronológico y atomicidad. Recalcular únicamente vacunas pendientes vinculadas al origen `farrowing` de esa camada. Las aplicaciones ya realizadas conservan su fecha, responsable y ocurrencia original. Se requieren casos con una vacuna aplicada y otra pendiente, y rechazo sin efectos ante secuencia incompatible.
+La corrección de fecha real conserva fecha previa, autor y motivo; valida secuencia e inventario; reprograma solo dosis pendientes del parto y preserva las aplicadas/canceladas. La cobertura automatizada está en `tests/litter-date.integration.test.ts` e incluye concurrencia con generación, permisos, idempotencia, conflicto y rollback. El resultado vigente de la suite completa (103/103) está registrado en la evidencia de esta revisión.
 
 ## Matriz para el ensayo de los 32 casos
 
@@ -73,7 +75,7 @@ La columna «Base» señala dónde existe una prueba candidata; no sustituye su 
 | 17 | Administración/inventario/reportes integración | Matriz completa de URL/API/panel/archivos para galpón ajeno. |
 | 18 | Reportes y exportación T26 | Sembrar exactamente venta180/consumo24 y cotejar PDF/XLSX abiertos. |
 | 19 | Animales integración T22 | Aplicación resuelve una sola alerta con vínculo sanitario. |
-| 20 | Brecha funcional documentada | Corregir fecha real con aplicada/pendiente y verificar conservación. |
+| 20 | `tests/litter-date.integration.test.ts` y `e2e/litter-date.browser.ts` | Corregir fecha real con aplicada/pendiente; verificar conservación, permisos, reintento y rechazo atómico. |
 | 21 | `alerts.test.ts` e integración T22 | Cambio de medianoche Lima real y límites inclusivos. |
 | 22 | Integración T22 | Reprogramación, aplicación y parto eliminan pendientes originales. |
 | 23 | Integración T22 | Destete parcial y siguiente tratamiento conservan ocurrencias correctas. |
