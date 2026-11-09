@@ -192,7 +192,9 @@ export function locationEventGuardStatement(db:D1Database,animalId:number,effect
   ) AND NOT EXISTS(
     SELECT 1 FROM health_event_animals ha JOIN health_events h ON h.id=ha.health_event_id JOIN operation_log o ON o.id=h.operation_log_id
     WHERE ha.animal_id=? AND h.effective_date>=? AND o.status='committed'
-  ) THEN 0 ELSE -1 END`).bind(effectiveDate,animalId,animalId,animalId,effectiveDate);
+  ) AND NOT EXISTS(
+    SELECT 1 FROM animal_weights w WHERE w.animal_id=? AND w.weighed_on>=?
+  ) THEN 0 ELSE -1 END`).bind(effectiveDate,animalId,animalId,animalId,effectiveDate,animalId,effectiveDate);
 }
 
 function mapMovement(row: Row): InventoryMovement {

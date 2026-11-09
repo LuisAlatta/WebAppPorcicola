@@ -50,7 +50,7 @@ const initialAnimal = () => ({
 
 const listOptions = {
   barns: [{ id: 1, code: 'A', name: 'Galpón A' }],
-  stages: [{ code: 'crecimiento', name: 'Crecimiento' }],
+  stages: [{ code: 'crecimiento', name: 'Crecimiento' }, {code:'inicio',name:'Inicio'}],
   locations: [], lots: [], aptitudes: [], types: [], sexes: [], statuses: [], origins: [], deathCauses: [], saleCauses: [{code:'edad',name:'Edad'}],
 };
 
@@ -80,6 +80,16 @@ test('descarte desde la ficha no solicita importe y envía su causa',async({page
   await page.getByLabel('Tipo de salida').selectOption('discard');await expect(page.getByLabel('Importe de venta')).toHaveCount(0);
   await page.getByLabel('Causa',{exact:true}).selectOption('edad');await page.locator('#ani-exit-date').fill('2026-11-07');await page.locator('#ani-exit-reason').fill('Retiro por edad');await page.getByRole('button',{name:'Registrar salida'}).click();
   await expect(page.getByRole('cell',{name:'Descarte · Edad'})).toBeVisible();expect(sent).toMatchObject({exitType:'discard',causeCode:'edad',effectiveDate:'2026-11-07'});
+});
+
+test('el pesaje permite elegir la etapa que actualizará la ficha',async({page})=>{
+  const animal=initialAnimal();let sent:Record<string,unknown>|undefined;
+  await mockAnimalApi(page,animal);
+  await page.route('**/api/animals/RETRY-001/weights',route=>{sent=route.request().postDataJSON() as Record<string,unknown>;return route.fulfill({status:201,json:{animal:{...animal,stageCode:'inicio',stageName:'Inicio'}}});});
+  await page.goto('/animales');await page.getByRole('button',{name:'Ver ficha'}).click();
+  await page.locator('#ani-weight-kg').fill('18');await page.locator('#ani-weight-stage').selectOption('inicio');
+  await expect(page.getByText('Si elige otra etapa, se actualizarán la ficha y el inventario',{exact:false})).toBeVisible();
+  await page.getByRole('button',{name:'Registrar pesaje'}).click();await expect.poll(()=>sent?.stageCode).toBe('inicio');
 });
 
 async function mockAnimalApi(page: Page, initial: ReturnType<typeof initialAnimal>) {

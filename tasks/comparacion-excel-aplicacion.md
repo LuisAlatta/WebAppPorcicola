@@ -4,7 +4,7 @@
 
 | Punto del diagnóstico | Estado en el código actual |
 |---|---|
-| Movimientos dentro del mismo galpón y cambios de etapa | Implementados para animales y grupos, con movimientos de origen y destino, actualización de fichas y protección del saldo. |
+| Movimientos dentro del mismo galpón y cambios de etapa | Implementados para animales y grupos, con movimientos de origen y destino, actualización de fichas y protección del saldo. Al registrar un pesaje con otra etapa también se actualizan la ficha y el inventario en la misma operación. |
 | Destete y mortalidad | Los movimientos internos de destete ya no incrementan las entradas externas; el destete puede actualizar las fichas individuales seleccionadas. |
 | Ficha reproductiva | Muestra servicios, partos, fechas, crías por sexo, peso promedio y causa de salida. |
 | Informes de pesos y nacimientos | Conectados a sus consultas, filtros, gráficos y exportaciones. |
@@ -13,7 +13,7 @@
 | Camadas | La corrección de cantidades está disponible en pantalla y conserva la coherencia histórica del inventario. El plan postdestete usa la fecha real de la camada anterior cuando está registrada. |
 | Descarte y filtros | Hay salida por descarte sin venta ni muerte, vinculada a la camada cuando corresponde. El padrón filtra también por progenitores, raza, aptitud, procedencia y etapa de ingreso. |
 
-Estas mejoras están en el repositorio. Las migraciones `0024_litter_discard.sql` y `0025_same_day_locations.sql` son necesarias para las salidas individuales conectadas a camadas y los cambios de ubicación del mismo día. Para preservar la ubicación histórica, el sistema rechaza un traslado o destete individual si ya existe un servicio o actuación sanitaria en esa fecha o una posterior. Un `push` no demuestra que la base ni la aplicación publicada estén actualizadas. La validación en dispositivos y el despliegue compatible siguen requiriendo una comprobación independiente.
+Estas mejoras están en el repositorio. Las migraciones `0024_litter_discard.sql` y `0025_same_day_locations.sql` son necesarias para las salidas individuales conectadas a camadas y los cambios de ubicación del mismo día. Para preservar la ubicación histórica, el sistema rechaza un traslado o destete individual si ya existe un pesaje, servicio o actuación sanitaria en esa fecha o una posterior. Un `push` no demuestra que la base ni la aplicación publicada estén actualizadas. La validación en dispositivos y el despliegue compatible siguen requiriendo una comprobación independiente.
 
 Fecha de revisión: 8 de noviembre de 2026. Código examinado: `ab49568` en `main`, antes de añadir este informe.
 

@@ -5,7 +5,7 @@ import worker from '../worker/index';
 import { currentFarmDate } from '../worker/events';
 import { applyVaccineOccurrence } from '../worker/vaccines';
 import { createHealthEvent } from '../worker/health';
-import { registerAnimalExit } from '../worker/animals';
+import { registerAnimalExit, registerAnimalWeight } from '../worker/animals';
 import { createReproductionCycle } from '../worker/reproduction';
 
 const runtime = new Miniflare({
@@ -1032,6 +1032,36 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const summaryResponse=await api('/api/animals/T13-MADRE');
     expect((await summaryResponse.json() as {animal:{reproductiveSummary:unknown}}).animal.reproductiveSummary).toMatchObject({serviceCount:2,farrowingCount:2,totalBorn:19,maleBorn:16,femaleBorn:3,weighedBirths:9,averageBirthWeightKg:1.47,firstFarrowingDate:'2026-09-16',lastFarrowingDate:'2026-10-20'});
   }, 25000);
+
+  it('actualiza ficha e inventario al registrar un pesaje en otra etapa', async () => {
+    expect((await create({code:'PESO-CAMBIA-ETAPA',entryDate:'2026-10-01',entryStageCode:'preinicio',originType:'nacimiento',operationKey:'weight-stage-create'})).status).toBe(201);
+    const before=await inventoryTotals('2026-11-08');const payload={weighedOn:'2026-10-01',weighedTime:'10:00',weightKg:18,stageCode:'inicio',operationKey:'weight-stage-change'};
+    const weight=await api('/api/animals/PESO-CAMBIA-ETAPA/weights',{method:'POST',body:JSON.stringify(payload)});expect(weight.status,await weight.clone().text()).toBe(201);
+    expect((await weight.json() as {animal:{stageCode:string}}).animal.stageCode).toBe('inicio');
+    expect((await api('/api/animals/PESO-CAMBIA-ETAPA/weights',{method:'POST',body:JSON.stringify(payload)})).status).toBe(200);
+    const after=await inventoryTotals('2026-11-08');expect(after.summary.total.available).toBe(before.summary.total.available);
+    const heads=(snapshot:typeof before,stage:string)=>snapshot.balances.filter(row=>row.stageCode===stage&&row.sex==='hembra'&&row.barnName==='Galpón A').reduce((sum,row)=>sum+row.heads,0);
+    expect(heads(after,'preinicio')).toBe(heads(before,'preinicio')-1);expect(heads(after,'inicio')).toBe(heads(before,'inicio')+1);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM inventory_movements WHERE operation_log_id=(SELECT id FROM operation_log WHERE operation_key='weight-stage-change') AND movement_type IN ('transfer_in','transfer_out')").first()).toMatchObject({n:2});
+  },25000);
+
+  it('rechaza cambios retroactivos de etapa que contradicen pesajes guardados', async () => {
+    expect((await create({code:'PESO-ETAPA-HISTORIA',entryDate:'2026-10-01',entryStageCode:'preinicio',operationKey:'weight-stage-history-create'})).status).toBe(201);
+    const later=await api('/api/animals/PESO-ETAPA-HISTORIA/weights',{method:'POST',body:JSON.stringify({weighedOn:'2026-10-20',weighedTime:'15:00',weightKg:18,operationKey:'weight-stage-history-later'})});expect(later.status).toBe(201);
+    for(const date of ['2026-10-10','2026-10-20']){const invalid=await api('/api/animals/PESO-ETAPA-HISTORIA/weights',{method:'POST',body:JSON.stringify({weighedOn:date,weighedTime:'10:00',weightKg:17,stageCode:'inicio',operationKey:`weight-stage-history-${date}`})});expect(invalid.status,await invalid.clone().text()).toBe(409);}
+    expect(await db.prepare("SELECT current_stage_code FROM animals WHERE code='PESO-ETAPA-HISTORIA'").first()).toMatchObject({current_stage_code:'preinicio'});
+  },25000);
+
+  it('evita inconsistencias al cruzar un pesaje y un traslado', async () => {
+    const actor=(await db.prepare("SELECT id FROM users WHERE username='veterinario.animales@granja.pe'").first<{id:number}>())!.id;
+    const delayedDb=()=>{let release!:()=>void;let observed!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});const waiting=new Promise<void>(resolve=>{observed=resolve;});const delayed=new Proxy(db,{get(target,key){if(key==='batch')return async(...args:Parameters<D1Database['batch']>)=>{observed();await gate;return target.batch(...args);};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}}) as D1Database;return{delayed,release,waiting};};
+    expect((await create({code:'PESO-TRASLADO-A',entryDate:'2026-10-01',operationKey:'weight-move-a-create'})).status).toBe(201);
+    const a=delayedDb();const weight=registerAnimalWeight(a.delayed,actor,'PESO-TRASLADO-A',{weighedOn:'2026-10-10',weighedTime:'10:00',weightKg:18,operationKey:'weight-move-a'});await a.waiting;
+    const moved=await api('/api/animals/PESO-TRASLADO-A/transfer',{method:'POST',body:JSON.stringify({destinationBarnId:2,effectiveDate:'2026-10-10',reason:'Traslado concurrente',operationKey:'weight-move-a-transfer'})});expect(moved.status,await moved.clone().text()).toBe(201);a.release();await expect(weight).rejects.toMatchObject({status:409});
+    expect((await create({code:'PESO-TRASLADO-B',entryDate:'2026-10-01',operationKey:'weight-move-b-create'})).status).toBe(201);
+    expect((await api('/api/animals/PESO-TRASLADO-B/weights',{method:'POST',body:JSON.stringify({weighedOn:'2026-10-10',weighedTime:'10:00',weightKg:18,operationKey:'weight-move-b'})})).status).toBe(201);
+    expect((await api('/api/animals/PESO-TRASLADO-B/transfer',{method:'POST',body:JSON.stringify({destinationBarnId:2,effectiveDate:'2026-10-10',reason:'Traslado concurrente',operationKey:'weight-move-b-transfer'})})).status).toBe(409);
+  },25000);
 
   it('permite traslados individuales el mismo día del ingreso', async () => {
     const created=await create({code:'MISMO-DIA',entryDate:'2026-10-15',entryStageCode:'preinicio',originType:'nacimiento',operationKey:'same-day-create'});expect(created.status,await created.clone().text()).toBe(201);

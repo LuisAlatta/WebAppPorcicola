@@ -1699,14 +1699,27 @@ export async function registerAnimalWeight(db: D1Database, actorUserId: number, 
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'animal.weight',
     authorUserId: actorUserId, entityType: 'animal', entityId: Number(context.row.id), barnId: context.barnId,
     effectiveDate: weighedOn, payload, result: { animalId: Number(context.row.id), weighedOn, weighedTime, weightKg } });
-  await commitOperation(db, claim, [db.prepare(`INSERT INTO animal_weights
+  const animalId=Number(context.row.id);const stageChanged=stageCode!==context.stageAtDate;
+  const statements:D1PreparedStatement[]=[db.prepare('INSERT INTO inventory_write_guard(guard_id) VALUES(1)'),db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?) AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ? AND h.stage_code=?) THEN 0 ELSE -1 END`).bind(animalId,weighedOn,weighedOn,weighedOn,weighedOn,context.barnId,context.locationCode,context.lotCode,context.stageAtDate)];
+  if(stageChanged){
+    if(context.row.exit_date!==null||Number(context.row.is_active)!==1)throw new ApiError(409,'La ficha no está activa para cambiar de etapa');
+    if(context.row.litter_id&&context.stageAtDate==='preinicio'&&!await db.prepare(`SELECT 1 FROM inventory_movements m JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=? AND m.litter_id=? AND m.quantity<0 AND o.operation_type='litter.weaning'`).bind(animalId,context.row.litter_id).first())throw new ApiError(409,'Use el destete de la camada para cambiar la etapa de este lechón');
+    const group=crypto.randomUUID();const sex=String(context.row.sex) as Sex;
+    statements.push(locationEventGuardStatement(db,animalId,weighedOn),db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id AND h.valid_until IS NULL WHERE a.id=? AND a.exit_date IS NULL AND a.is_active=1 AND a.barn_id=? AND a.location_code IS ? AND a.lot_code IS ? AND a.current_stage_code=? AND h.valid_from<=? AND h.stage_code=?) AND NOT EXISTS(SELECT 1 FROM animal_weights WHERE animal_id=? AND weighed_on>=?) THEN 0 ELSE -1 END`).bind(animalId,context.barnId,context.locationCode,context.lotCode,context.stageAtDate,weighedOn,context.stageAtDate,animalId,weighedOn));
+    statements.push(db.prepare('UPDATE animal_location_history SET valid_until=? WHERE animal_id=? AND valid_until IS NULL').bind(weighedOn,animalId),db.prepare(`INSERT INTO animal_location_history(animal_id,barn_id,location_code,lot_code,stage_code,valid_from,valid_until,operation_log_id,created_by_user_id,created_at) VALUES(?,?,?,?,?,?,NULL,?,?,?)`).bind(animalId,context.barnId,context.locationCode,context.lotCode,stageCode,weighedOn,claim.id,actorUserId,claim.recordedAt),db.prepare('UPDATE animals SET current_stage_code=?,updated_at=? WHERE id=?').bind(stageCode,claim.recordedAt,animalId));
+    for(const [type,stage] of [['transfer_out',context.stageAtDate],['transfer_in',stageCode]] as const)statements.push(db.prepare(`INSERT INTO inventory_movements(operation_log_id,movement_type,effective_date,barn_id,location_code,lot_code,stage_code,sex,quantity,transfer_group_id,notes,animal_id,created_by_user_id,created_at) VALUES(?,?,?,?,?,?,?,?,1,?,?,?,?,?)`).bind(claim.id,type,weighedOn,context.barnId,context.locationCode,context.lotCode,stage,sex,group,'Cambio de etapa al registrar pesaje',animalId,actorUserId,claim.recordedAt));
+    statements.push(stockGuardStatement(db,context.barnId,context.locationCode,context.lotCode,context.stageAtDate,sex),stockGuardStatement(db,context.barnId,context.locationCode,context.lotCode,stageCode,sex));
+  }
+  statements.push(db.prepare(`INSERT INTO animal_weights
     (animal_id, weighed_on, weighed_time, weight_kg, stage_code, barn_id, location_code, lot_code, note, recorded_by_user_id, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(Number(context.row.id), weighedOn, weighedTime, weightKg, stageCode, context.barnId, context.locationCode,
-      context.lotCode, note, actorUserId, claim.recordedAt)], [{ entityType: 'animal', entityId: Number(context.row.id),
+      context.lotCode, note, actorUserId, claim.recordedAt));
+  statements.push(db.prepare('DELETE FROM inventory_write_guard'));
+  const committed=await commitOperation(db, claim, statements, [{ entityType: 'animal', entityId: Number(context.row.id),
       action: 'create', actorUserId, barnId: context.barnId, reason: 'Registro de pesaje', previousData: null,
-      newData: payload, effectiveDate: weighedOn, recordedAt: claim.recordedAt }]);
-  return { animal: await getAnimal(db, key, scope), replayed: false };
+      newData: {...payload,...(stageChanged?{previousStageCode:context.stageAtDate}: {})}, effectiveDate: weighedOn, recordedAt: claim.recordedAt }]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'No se puede cambiar la etapa en esa fecha: revise la ubicación, el saldo y los eventos posteriores');throw error;});
+  return { animal: await getAnimal(db, key, scope), replayed: committed.replayed };
 }
 
 export async function correctAnimalWeight(db: D1Database, actorUserId: number, key: string, weightId: number,
@@ -1833,7 +1846,7 @@ export async function transferAnimal(
   ], [{ entityType: 'animal', entityId: animalId, action: 'update', actorUserId, barnId: sourceBarnId, reason,
     previousData: { barnId: sourceBarnId, locationCode: sourceLocation, lotCode: sourceLot, stageCode },
     newData: { barnId: destinationBarnId, locationCode, lotCode, stageCode: destinationStageCode, transferGroupId }, effectiveDate, recordedAt: createdAt }]).catch((error: unknown) => {
-      if (/guard_id/.test(String(error))) throw new ApiError(409, 'La ficha o el saldo cambió, o hay servicios o actuaciones sanitarias en esa fecha o posteriores; revise la fecha antes de trasladar');
+      if (/guard_id/.test(String(error))) throw new ApiError(409, 'La ficha o el saldo cambió, o hay pesajes, servicios o actuaciones sanitarias en esa fecha o posteriores; revise la fecha antes de trasladar');
       throw error;
     });
   return { animal: await getAnimal(db, key, scope), transferGroupId, warning, replayed: false };
