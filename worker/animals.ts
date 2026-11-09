@@ -1736,7 +1736,7 @@ export async function transferAnimal(
   const payload = { key, destinationBarnId, locationCode, lotCode, effectiveDate };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) return { animal: await getAnimal(db, key, scope), ...(replay.result as { transferGroupId: string; warning: string | null }), replayed: true };
-  if (destinationBarnId === sourceBarnId) throw new ApiError(400, 'Seleccione un galpón destino diferente al actual');
+  if (destinationBarnId === sourceBarnId && locationCode === (row.location_code ?? null) && lotCode === (row.lot_code ?? null)) throw new ApiError(400, 'El origen y destino deben ser diferentes');
   const config = await getConfigSnapshot(db, effectiveDate);
   if (locationCode && !config.locations.some((item) => item.code === locationCode)) throw new ApiError(400, 'La ubicación no está vigente en esa fecha');
   if (lotCode && !config.lots.some((item) => item.code === lotCode)) throw new ApiError(400, 'El lote no está vigente en esa fecha');
@@ -1745,7 +1745,7 @@ export async function transferAnimal(
   if (later) throw new ApiError(409, 'El animal tiene movimientos posteriores; corrija primero la cronología para evitar reescribir historia');
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Traslado individual' });
   let warning: string | null = null;
-  if (destination.capacity !== null && destination.capacity !== undefined) {
+  if (destinationBarnId !== sourceBarnId && destination.capacity !== null && destination.capacity !== undefined) {
     const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out')
       THEN -quantity ELSE quantity END), 0) AS heads FROM inventory_movements WHERE barn_id = ? AND effective_date <= ?`)
       .bind(destinationBarnId, effectiveDate).first<{ heads: number }>();

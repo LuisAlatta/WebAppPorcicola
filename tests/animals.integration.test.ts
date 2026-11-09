@@ -638,6 +638,15 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(legs?.n).toBe(2);
   });
 
+  it('traslada una ficha entre ubicaciones del mismo galpón', async () => {
+    const created = await create({ code: 'MOVE-INTERNO', entryDate: '2026-05-01', entryStageCode: 'preinicio', originType: 'nacimiento' });
+    expect(created.status).toBe(201);
+    const response = await api('/api/animals/MOVE-INTERNO/transfer', { method: 'POST', body: JSON.stringify({ destinationBarnId: 1, locationCode: null, lotCode: null, effectiveDate: '2026-11-07', reason: 'Cambio interno', operationKey: 'move-interno' }) });
+    expect(response.status, await response.clone().text()).toBe(201);
+    const animal = await db.prepare("SELECT location_code FROM animals WHERE code = 'MOVE-INTERNO'").first<{ location_code: string }>();
+    expect(animal?.location_code).toBeNull();
+  });
+
   it('cierra venta o muerte de ficha con su descuento de inventario atómico', async () => {
     const created = await create({ code: 'T10-EXIT-01', entryDate: '2026-11-06', entryStageCode: 'preinicio', originType: 'nacimiento' });
     expect(created.status).toBe(201);
