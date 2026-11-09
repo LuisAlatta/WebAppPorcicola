@@ -9,7 +9,7 @@ import {
   type AuditRecordInput,
 } from './events';
 import { getConfigSnapshot, type ConfigSnapshot } from './config';
-import { stockGuardStatement } from './inventory';
+import { locationEventGuardStatement, stockGuardStatement } from './inventory';
 
 /**
  * Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)
@@ -1784,7 +1784,7 @@ export async function transferAnimal(
   if (!config.stages.some((stage) => stage.code === destinationStageCode)) throw new ApiError(400, 'La etapa de destino no está vigente en esa fecha');
   if (locationCode && !config.locations.some((item) => item.code === locationCode)) throw new ApiError(400, 'La ubicación no está vigente en esa fecha');
   if (lotCode && !config.lots.some((item) => item.code === lotCode)) throw new ApiError(400, 'El lote no está vigente en esa fecha');
-  const later = await db.prepare('SELECT id FROM animal_location_history WHERE animal_id = ? AND valid_from >= ? LIMIT 1')
+  const later = await db.prepare('SELECT id FROM animal_location_history WHERE animal_id = ? AND valid_from > ? LIMIT 1')
     .bind(Number(row.id), effectiveDate).first();
   if (later) throw new ApiError(409, 'El animal tiene movimientos posteriores; corrija primero la cronología para evitar reescribir historia');
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Traslado individual' });
@@ -1812,9 +1812,10 @@ export async function transferAnimal(
       `Traslado de ficha ${String(row.code)}`, animalId, actorUserId, createdAt);
   await commitOperation(db, claim, [
     db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
+    locationEventGuardStatement(db,animalId,effectiveDate),
     db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN EXISTS (
       SELECT 1 FROM animals a WHERE a.id=? AND a.barn_id=? AND a.location_code IS ? AND a.lot_code IS ? AND a.current_stage_code=?
-        AND a.exit_date IS NULL AND NOT EXISTS (SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.valid_from>=?)
+        AND a.exit_date IS NULL AND NOT EXISTS (SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.valid_from>?)
     ) THEN 0 ELSE -1 END`).bind(animalId,sourceBarnId,sourceLocation,sourceLot,stageCode,effectiveDate),
     db.prepare('UPDATE animal_location_history SET valid_until = ? WHERE animal_id = ? AND valid_until IS NULL')
       .bind(effectiveDate, animalId),
@@ -1832,7 +1833,7 @@ export async function transferAnimal(
   ], [{ entityType: 'animal', entityId: animalId, action: 'update', actorUserId, barnId: sourceBarnId, reason,
     previousData: { barnId: sourceBarnId, locationCode: sourceLocation, lotCode: sourceLot, stageCode },
     newData: { barnId: destinationBarnId, locationCode, lotCode, stageCode: destinationStageCode, transferGroupId }, effectiveDate, recordedAt: createdAt }]).catch((error: unknown) => {
-      if (/guard_id/.test(String(error))) throw new ApiError(409, 'La ficha o el saldo cambió durante el traslado. Actualice e intente nuevamente');
+      if (/guard_id/.test(String(error))) throw new ApiError(409, 'La ficha o el saldo cambió, o hay servicios o actuaciones sanitarias en esa fecha o posteriores; revise la fecha antes de trasladar');
       throw error;
     });
   return { animal: await getAnimal(db, key, scope), transferGroupId, warning, replayed: false };

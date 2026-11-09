@@ -6,6 +6,7 @@ import { currentFarmDate } from '../worker/events';
 import { applyVaccineOccurrence } from '../worker/vaccines';
 import { createHealthEvent } from '../worker/health';
 import { registerAnimalExit } from '../worker/animals';
+import { createReproductionCycle } from '../worker/reproduction';
 
 const runtime = new Miniflare({
   workers: [{
@@ -151,6 +152,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0023_report_definitions.sql',
       '0023_report_definitions.sql',
       '0024_litter_discard.sql',
+      '0025_same_day_locations.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -1030,6 +1032,46 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const summaryResponse=await api('/api/animals/T13-MADRE');
     expect((await summaryResponse.json() as {animal:{reproductiveSummary:unknown}}).animal.reproductiveSummary).toMatchObject({serviceCount:2,farrowingCount:2,totalBorn:19,maleBorn:16,femaleBorn:3,weighedBirths:9,averageBirthWeightKg:1.47,firstFarrowingDate:'2026-09-16',lastFarrowingDate:'2026-10-20'});
   }, 25000);
+
+  it('permite traslados individuales el mismo día del ingreso', async () => {
+    const created=await create({code:'MISMO-DIA',entryDate:'2026-10-15',entryStageCode:'preinicio',originType:'nacimiento',operationKey:'same-day-create'});expect(created.status,await created.clone().text()).toBe(201);
+    const move=await api('/api/animals/MISMO-DIA/transfer',{method:'POST',body:JSON.stringify({destinationBarnId:1,locationCode:null,effectiveDate:'2026-10-15',reason:'Cambio de corral el día del ingreso',operationKey:'same-day-first'})});expect(move.status,await move.clone().text()).toBe(201);
+    const second=await api('/api/animals/MISMO-DIA/transfer',{method:'POST',body:JSON.stringify({destinationBarnId:2,locationCode:null,effectiveDate:'2026-10-15',reason:'Segundo traslado del mismo día',operationKey:'same-day-second'})});expect(second.status,await second.clone().text()).toBe(201);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM animal_location_history WHERE animal_id=(SELECT id FROM animals WHERE code='MISMO-DIA') AND valid_from=valid_until").first()).toMatchObject({n:2});
+    expect((await (await api('/api/animals/MISMO-DIA')).json() as {animal:{barnId:number}}).animal.barnId).toBe(2);
+  },25000);
+
+  it('desteta fichas identificadas el mismo día del ingreso', async () => {
+    expect((await create({code:'MADRE-MISMO-DIA',animalType:'cerda',sex:'hembra',birthDate:'2024-01-01',entryDate:'2026-01-01',entryStageCode:'gestacion',originType:'compra',operationKey:'same-day-sow'})).status).toBe(201);
+    const cycle=await api('/api/reproduction/cycles',{method:'POST',body:JSON.stringify({femaleCode:'MADRE-MISMO-DIA',serviceDate:'2026-06-01',serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'Prueba',operationKey:'same-day-cycle'})});const cycleId=(await cycle.json() as {createdCycleId:string}).createdCycleId;
+    const birth=await api(`/api/reproduction/cycles/${cycleId}/farrowing`,{method:'POST',body:JSON.stringify({farrowingDate:'2026-10-20',maleAlive:1,reason:'Parto de prueba',operationKey:'same-day-birth'})});const litterId=(await birth.json() as {litterId:string}).litterId;
+    expect((await create({code:'LECHON-MISMO-DIA',animalType:'lechon',sex:'macho',birthDate:'2026-10-20',entryDate:'2026-10-20',entryStageCode:'preinicio',originType:'interna',litterId,locationCode:'galpon_a',operationKey:'same-day-child'})).status).toBe(201);
+    const weaned=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'weaning',effectiveDate:'2026-10-20',sex:'macho',quantity:1,animalCodes:['LECHON-MISMO-DIA'],weightKg:6,destinationStageCode:'inicio',destinationBarnId:1,reason:'Destete del mismo día',operationKey:'same-day-wean'})});expect(weaned.status,await weaned.clone().text()).toBe(201);
+    expect(await db.prepare("SELECT current_stage_code FROM animals WHERE code='LECHON-MISMO-DIA'").first()).toMatchObject({current_stage_code:'inicio'});
+  },25000);
+
+  it('preserva la ubicación de un servicio o tratamiento antes de un traslado', async () => {
+    expect((await create({code:'MISMO-DIA-SERVICIO',animalType:'cerda',sex:'hembra',entryDate:'2026-01-01',entryStageCode:'gestacion',originType:'compra',operationKey:'same-day-service-sow'})).status).toBe(201);
+    const service=await api('/api/reproduction/cycles',{method:'POST',body:JSON.stringify({femaleCode:'MISMO-DIA-SERVICIO',serviceDate:'2026-10-10',serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'Prueba',operationKey:'same-day-service'})});expect(service.status,await service.clone().text()).toBe(201);
+    const move={destinationBarnId:2,locationCode:null,effectiveDate:'2026-10-10',reason:'Traslado de prueba',operationKey:'same-day-service-move'};
+    expect((await api('/api/animals/MISMO-DIA-SERVICIO/transfer',{method:'POST',body:JSON.stringify(move)})).status).toBe(409);
+    expect((await api('/api/animals/MISMO-DIA-SERVICIO/transfer',{method:'POST',body:JSON.stringify({...move,effectiveDate:'2026-10-09',operationKey:'prior-service-move'})})).status).toBe(409);
+    const later=await api('/api/animals/MISMO-DIA-SERVICIO/transfer',{method:'POST',body:JSON.stringify({...move,effectiveDate:'2026-10-11',operationKey:'next-day-service-move'})});expect(later.status,await later.clone().text()).toBe(201);
+    expect((await create({code:'MISMO-DIA-SALUD',entryDate:'2026-10-01',operationKey:'same-day-health-animal'})).status).toBe(201);
+    const treatment=await api('/api/health/events',{method:'POST',body:JSON.stringify({eventType:'other',effectiveDate:'2026-10-10',animalCodes:['MISMO-DIA-SALUD'],product:'Tratamiento',dosage:1,dosageUnit:'ml',reason:'Actuación de prueba',operationKey:'same-day-health'})},veterinarioToken);expect(treatment.status,await treatment.clone().text()).toBe(201);
+    expect((await api('/api/animals/MISMO-DIA-SALUD/transfer',{method:'POST',body:JSON.stringify({...move,operationKey:'same-day-health-move'})})).status).toBe(409);
+    const healthLater=await api('/api/animals/MISMO-DIA-SALUD/transfer',{method:'POST',body:JSON.stringify({...move,effectiveDate:'2026-10-11',operationKey:'next-day-health-move'})});expect(healthLater.status,await healthLater.clone().text()).toBe(201);
+  },25000);
+
+  it('rechaza un servicio retrasado si cambia la ubicación antes de confirmarlo', async () => {
+    expect((await create({code:'MISMO-DIA-CARRERA',animalType:'cerda',sex:'hembra',entryDate:'2026-01-01',entryStageCode:'gestacion',originType:'compra',operationKey:'location-race-sow'})).status).toBe(201);
+    const actor=(await db.prepare("SELECT id FROM users WHERE username='veterinario.animales@granja.pe'").first<{id:number}>())!.id;
+    let release!:()=>void;let observed!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});const waiting=new Promise<void>(resolve=>{observed=resolve;});
+    const delayed=new Proxy(db,{get(target,key){if(key==='batch')return async(...args:Parameters<D1Database['batch']>)=>{observed();await gate;return target.batch(...args);};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}}) as D1Database;
+    const service=createReproductionCycle(delayed,actor,{femaleCode:'MISMO-DIA-CARRERA',serviceDate:'2026-10-10',serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'Prueba',operationKey:'location-race-service'});await waiting;
+    const moved=await api('/api/animals/MISMO-DIA-CARRERA/transfer',{method:'POST',body:JSON.stringify({destinationBarnId:2,locationCode:null,effectiveDate:'2026-10-10',reason:'Traslado concurrente',operationKey:'location-race-move'})});expect(moved.status,await moved.clone().text()).toBe(201);
+    release();await expect(service).rejects.toMatchObject({status:409});
+  },25000);
 
   it('vincula el plan postdestete con el destete real de la camada anterior', async () => {
     expect((await create({code:'POSTDESTETE-MADRE',animalType:'cerda',sex:'hembra',birthDate:'2024-01-01',entryDate:'2026-01-01',entryStageCode:'gestacion',originType:'compra',operationKey:'postwean-sow'})).status).toBe(201);

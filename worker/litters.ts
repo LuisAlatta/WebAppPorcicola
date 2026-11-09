@@ -1,6 +1,6 @@
 import { getConfigSnapshot } from './config';
 import { ApiError, commitOperation, createOperationClaim, currentFarmDate, isValidDateString, lookupExistingOperation, normalizeReason } from './events';
-import { stockGuardStatement } from './inventory';
+import { locationEventGuardStatement, stockGuardStatement } from './inventory';
 
 type Row = Record<string, unknown>;
 export type FarrowingInput = {
@@ -121,7 +121,7 @@ export async function recordLitterEvent(db: D1Database, actorUserId: number, lit
     if (selectedAnimals.length !== animalCodes.length || selectedAnimals.some(animal => animal.status!=='activo' || animal.current_stage_code!=='preinicio' || Number(animal.barn_id)!==Number(litter.barn_id) || (animal.location_code??null)!==(litter.location_code??null) || (animal.lot_code??null)!==(litter.lot_code??null))) throw new ApiError(409,'Seleccione únicamente animales de la camada presentes en la ubicación de origen');
     if (quantity - selectedAnimals.length > available - candidates.length) throw new ApiError(409,eventType === 'weaning' ? 'Seleccione las fichas identificadas que participan en el destete' : 'La operación incluye animales identificados; gestione sus fichas antes de continuar');
     for (const animal of selectedAnimals) {
-      const later = await db.prepare('SELECT id FROM animal_location_history WHERE animal_id=? AND valid_from>=? LIMIT 1').bind(animal.id,effectiveDate).first();
+      const later = await db.prepare('SELECT id FROM animal_location_history WHERE animal_id=? AND valid_from>? LIMIT 1').bind(animal.id,effectiveDate).first();
       if (later) throw new ApiError(409,`El animal ${String(animal.code)} tiene movimientos posteriores`);
     }
   }
@@ -154,7 +154,7 @@ export async function recordLitterEvent(db: D1Database, actorUserId: number, lit
       statements.unshift(db.prepare(`INSERT INTO litter_event_guard (guard_id) SELECT CASE WHEN EXISTS (
         SELECT 1 FROM animals a WHERE a.id=? AND a.litter_id=? AND a.sex=? AND a.status='activo' AND a.current_stage_code='preinicio'
           AND a.barn_id=? AND a.location_code IS ? AND a.lot_code IS ?
-          AND NOT EXISTS (SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.valid_from>=?)
+          AND NOT EXISTS (SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.valid_from>?)
           AND NOT EXISTS (SELECT 1 FROM inventory_movements m JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=a.id AND m.litter_id=a.litter_id AND m.quantity<0 AND m.effective_date<=? AND o.operation_type='litter.weaning')
       ) THEN 0 ELSE -1 END`).bind(animal.id,litterId,sex,litter.barn_id,litter.location_code,litter.lot_code,effectiveDate,effectiveDate));
       statements.push(db.prepare('UPDATE animal_location_history SET valid_until=? WHERE animal_id=? AND valid_until IS NULL').bind(effectiveDate,animal.id));
@@ -182,13 +182,14 @@ export async function recordLitterEvent(db: D1Database, actorUserId: number, lit
   }
   if (eventType === 'death' || eventType === 'weaning') {
     statements.unshift(db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'));
+    if(eventType==='weaning')for(const animal of selectedAnimals)statements.unshift(locationEventGuardStatement(db,Number(animal.id),effectiveDate));
     statements.push(stockGuardStatement(db,Number(litter.barn_id),litter.location_code===null?null:String(litter.location_code),litter.lot_code===null?null:String(litter.lot_code),'preinicio',sex));
     if (eventType === 'weaning') statements.push(stockGuardStatement(db,targetBarnId!,destinationLocation,destinationLot,destinationStage!,sex));
     statements.push(db.prepare('DELETE FROM inventory_write_guard'));
   }
   statements.push(db.prepare('DELETE FROM litter_event_guard'));
   await commitOperation(db,claim,statements,[{entityType:'litter',entityId:0,action:'update',actorUserId,barnId:Number(litter.barn_id),reason,
-    previousData:{available,sex},newData:payload,effectiveDate,recordedAt:now}]);
+    previousData:{available,sex},newData:payload,effectiveDate,recordedAt:now}]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La camada o una ficha cambió, o existe un servicio o actuación sanitaria en esa fecha o posterior; revise los datos');throw error;});
   return {replayed:false,balance:await litterBalance(db,litter,sex)};
 }
 

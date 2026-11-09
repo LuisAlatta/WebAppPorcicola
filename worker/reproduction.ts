@@ -70,6 +70,10 @@ async function assertSireAccess(db: D1Database, sire: Row, effectiveDate: string
   if (!location) throw new ApiError(409, 'No existe ubicación histórica del verraco para esa fecha');
   const allowed = await barnIds(db, scope);
   if (allowed !== null && !allowed.includes(Number(location.barn_id))) throw new ApiError(403, 'No tiene acceso al galpón del verraco en la fecha del servicio');
+  return Number(location.barn_id);
+}
+function serviceLocationGuard(db:D1Database,context:Awaited<ReturnType<typeof femaleAtDate>>,sire:Row|null,sireBarnId:number|null,effectiveDate:string){
+  return db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?) AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ?) AND (? IS NULL OR EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?) AND h.barn_id=?)) THEN 0 ELSE -1 END`).bind(context.female.id,effectiveDate,effectiveDate,effectiveDate,effectiveDate,context.barnId,context.locationCode,context.lotCode,sire?.id??null,sire?.id??null,effectiveDate,effectiveDate,effectiveDate,effectiveDate,sireBarnId);
 }
 function mapService(row: Row) {
   return { id: Number(row.id), serviceNumber: Number(row.service_number), serviceDate: String(row.service_date),
@@ -168,10 +172,11 @@ export async function createReproductionCycle(db: D1Database, actorUserId: numbe
   if (source === 'internal' && !sireCode) throw new ApiError(400, 'Seleccione el verraco o indique que el material es externo');
   const context = await femaleAtDate(db, femaleCode, serviceDate, scope);
   let sire: Row | null = null;
+  let sireBarnId:number|null=null;
   if (source === 'internal') {
     sire = await db.prepare(`SELECT id, code, sex, animal_type, breed, entry_date, exit_date FROM animals WHERE code = ?`).bind(sireCode).first<Row>();
     if (!sire || sire.sex !== 'macho' || sire.animal_type !== 'verraco') throw new ApiError(400, 'El reproductor interno debe ser un verraco existente');
-    await assertSireAccess(db, sire, serviceDate, scope);
+    sireBarnId=await assertSireAccess(db, sire, serviceDate, scope);
   }
   const gestationDays = await getGestationDays(db, serviceDate);
   const suppliedDue = input.dueDate ? date(input.dueDate, 'Fecha probable de parto') : null;
@@ -201,7 +206,7 @@ export async function createReproductionCycle(db: D1Database, actorUserId: numbe
   if (openCycle) throw new ApiError(409, 'La hembra ya tiene un ciclo abierto; agregue el servicio al ciclo existente');
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'reproduction.cycle.create', authorUserId: actorUserId,
     entityType: 'reproduction_cycle', entityId: Number(context.female.id), barnId: context.barnId, effectiveDate: serviceDate, payload, result: { id, cycleNumber, dueDate } });
-  const statements: D1PreparedStatement[] = [db.prepare(`INSERT INTO inventory_write_guard(guard_id)
+  const statements: D1PreparedStatement[] = [serviceLocationGuard(db,context,sire,sireBarnId,serviceDate),db.prepare(`INSERT INTO inventory_write_guard(guard_id)
     SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM reproduction_cycles WHERE female_animal_id=? AND last_farrowing_date>?)
       AND NOT EXISTS(SELECT 1 FROM litters WHERE female_animal_id=? AND farrowing_date>?) THEN 0 ELSE -1 END`)
     .bind(context.female.id,serviceDate,context.female.id,serviceDate),db.prepare(`INSERT INTO reproduction_cycles
@@ -217,7 +222,7 @@ export async function createReproductionCycle(db: D1Database, actorUserId: numbe
     VALUES (?,'manual_due_date',?,?,?, ?,?)`).bind(id, serviceDate, dueDateReason, `Fecha probable: ${dueDate}`, actorUserId, claim.recordedAt));
   statements.push(db.prepare('DELETE FROM inventory_write_guard'));
   await commitOperation(db, claim, statements, [{ entityType: 'reproduction_cycle', entityId: Number(context.female.id), action: 'create', actorUserId, barnId: context.barnId,
-    reason: 'Apertura de ciclo reproductivo', previousData: null, newData: { ...payload, cycleId: id }, effectiveDate: serviceDate, recordedAt: claim.recordedAt }]);
+    reason: 'Apertura de ciclo reproductivo', previousData: null, newData: { ...payload, cycleId: id }, effectiveDate: serviceDate, recordedAt: claim.recordedAt }]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La ubicación o permanencia de un reproductor cambió; actualice antes de guardar');throw error;});
   const result = await listReproductionCycles(db, { from: '0001-01-01', to: '9999-12-31' }, scope);
   return { ...result, createdCycleId: id, replayed: false };
 }
@@ -240,7 +245,7 @@ export async function addReproductionService(db: D1Database, actorUserId: number
   if (source === 'internal' && !sireCode) throw new ApiError(400, 'Seleccione el verraco o use material externo');
   const sire = source === 'internal' ? await db.prepare(`SELECT id,code,sex,animal_type,breed,entry_date,exit_date FROM animals WHERE code=?`).bind(sireCode).first<Row>() : null;
   if (source === 'internal' && (!sire || sire.sex !== 'macho' || sire.animal_type !== 'verraco')) throw new ApiError(400, 'El reproductor interno debe ser un verraco existente');
-  if (sire) await assertSireAccess(db, sire, serviceDate, scope);
+  const sireBarnId=sire?await assertSireAccess(db, sire, serviceDate, scope):null;
   const latest = await db.prepare('SELECT MAX(service_number) AS n FROM reproduction_services WHERE cycle_id=?').bind(cycleId).first<{ n: number | null }>();
   const serviceNumber = Number(latest?.n ?? 0) + 1;
   const days = Number(cycle.gestation_days);
@@ -253,7 +258,7 @@ export async function addReproductionService(db: D1Database, actorUserId: number
   if (replay) return { replayed: true, cycle: (await listReproductionCycles(db, {}, scope)).cycles.find((item) => item.id === cycleId) ?? null };
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'reproduction.service.add', authorUserId: actorUserId,
     entityType: 'reproduction_cycle', entityId: Number(cycle.female_animal_id), barnId: context.barnId, effectiveDate: serviceDate, payload, result: { cycleId, serviceNumber, due } });
-  const statements: D1PreparedStatement[] = [db.prepare(`INSERT INTO reproduction_services
+  const statements: D1PreparedStatement[] = [serviceLocationGuard(db,context,sire,sireBarnId,serviceDate),db.prepare(`INSERT INTO reproduction_services
     (cycle_id,service_number,service_date,service_type,sire_animal_id,sire_code_snapshot,sire_breed_snapshot,material_source,external_source,aptitude,observations,created_by_user_id,created_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(cycleId, serviceNumber, serviceDate, serviceType, sire?.id ?? null,
       sire?.code ?? (source === 'external' ? external : null), sireBreed, source, external, aptitude, observations, actorUserId, claim.recordedAt),
@@ -262,8 +267,9 @@ export async function addReproductionService(db: D1Database, actorUserId: number
   statements.push(db.prepare(`INSERT INTO reproduction_events (cycle_id,event_type,event_date,service_id,observations,created_by_user_id,created_at)
     VALUES (?,'repeat',?,(SELECT id FROM reproduction_services WHERE cycle_id=? AND service_number=?),?,?,?)`)
     .bind(cycleId, serviceDate, cycleId, serviceNumber, observations ?? `Servicio número ${serviceNumber}`, actorUserId, claim.recordedAt));
+  statements.push(db.prepare('DELETE FROM inventory_write_guard'));
   await commitOperation(db, claim, statements, [{ entityType: 'reproduction_cycle', entityId: Number(context.female.id), action: 'update', actorUserId, barnId: context.barnId,
-    reason: 'Nuevo servicio del ciclo', previousData: { dueDate: cycle.probable_farrowing_date }, newData: payload, effectiveDate: serviceDate, recordedAt: claim.recordedAt }]);
+    reason: 'Nuevo servicio del ciclo', previousData: { dueDate: cycle.probable_farrowing_date }, newData: payload, effectiveDate: serviceDate, recordedAt: claim.recordedAt }]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La ubicación o permanencia de un reproductor cambió; actualice antes de guardar');throw error;});
   return { replayed: false, cycle: (await listReproductionCycles(db, {}, scope)).cycles.find((item) => item.id === cycleId) ?? null };
 }
 

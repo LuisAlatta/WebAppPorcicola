@@ -184,6 +184,17 @@ export function stockGuardStatement(
     .bind(barnId, locationCode, lotCode, stageCode, sex);
 }
 
+/** Evita reasignar por fecha eventos clínicos o servicios ya registrados. */
+export function locationEventGuardStatement(db:D1Database,animalId:number,effectiveDate:string){
+  return db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN NOT EXISTS(
+    SELECT 1 FROM reproduction_services s JOIN reproduction_cycles c ON c.id=s.cycle_id
+    WHERE s.service_date>=? AND (c.female_animal_id=? OR s.sire_animal_id=?)
+  ) AND NOT EXISTS(
+    SELECT 1 FROM health_event_animals ha JOIN health_events h ON h.id=ha.health_event_id JOIN operation_log o ON o.id=h.operation_log_id
+    WHERE ha.animal_id=? AND h.effective_date>=? AND o.status='committed'
+  ) THEN 0 ELSE -1 END`).bind(effectiveDate,animalId,animalId,animalId,effectiveDate);
+}
+
 function mapMovement(row: Row): InventoryMovement {
   const type = String(row.movement_type) as MovementType;
   return {
