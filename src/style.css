@@ -390,6 +390,83 @@ body {
   background-color: rgba(19, 111, 91, 0.08);
 }
 
+.login-remember-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  min-height: 42px;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.login-remember-row.is-active {
+  background-color: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.login-remember-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  cursor: pointer;
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #334155;
+  user-select: none;
+  flex: 1;
+}
+
+.login-remember-row.is-active .login-remember-label {
+  color: #166534;
+}
+
+.login-remember-checkbox {
+  width: 18px !important;
+  height: 18px !important;
+  margin: 0 !important;
+  accent-color: var(--color-primary, #136f5b) !important;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.login-remember-text {
+  line-height: 1.3;
+}
+
+.btn-forget-credentials {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+}
+
+.btn-forget-credentials:hover:not(:disabled) {
+  color: #dc2626;
+  border-color: #fecaca;
+  background-color: #fef2f2;
+}
+
+.btn-forget-credentials:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .btn-login-submit {
   width: 100%;
   height: 46px;

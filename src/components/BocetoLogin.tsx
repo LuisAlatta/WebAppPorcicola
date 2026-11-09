@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Perfil } from '../types';
 import {
@@ -11,7 +11,10 @@ import {
   IconShield,
   IconLogIn,
   IconRefreshCw,
+  IconX,
 } from './icons';
+
+export const REMEMBER_CREDENTIALS_KEY = 'porcicola_saved_credentials';
 
 interface LoginProps {
   onLogin: (perfil: Perfil, username?: string) => void;
@@ -21,8 +24,43 @@ export function BocetoLogin({ onLogin }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(false);
+  const [hasSaved, setHasSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(REMEMBER_CREDENTIALS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as { username?: string; password?: string };
+        if (parsed && typeof parsed === 'object') {
+          if (typeof parsed.username === 'string' && parsed.username) {
+            setUsername(parsed.username);
+          }
+          if (typeof parsed.password === 'string' && parsed.password) {
+            setPassword(parsed.password);
+          }
+          setRemember(true);
+          setHasSaved(true);
+        }
+      }
+    } catch {
+      // Entorno restringido o sin acceso a almacenamiento local
+    }
+  }, []);
+
+  const clearSavedCredentials = () => {
+    try {
+      localStorage.removeItem(REMEMBER_CREDENTIALS_KEY);
+    } catch {
+      // Ignorar
+    }
+    setUsername('');
+    setPassword('');
+    setRemember(false);
+    setHasSaved(false);
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -43,6 +81,26 @@ export function BocetoLogin({ onLogin }: LoginProps) {
           data.error || 'No se pudo iniciar sesión. Comprueba tus credenciales.',
         );
       }
+
+      if (remember) {
+        try {
+          localStorage.setItem(
+            REMEMBER_CREDENTIALS_KEY,
+            JSON.stringify({ username, password, savedAt: Date.now() }),
+          );
+          setHasSaved(true);
+        } catch {
+          // Ignorar problemas de cuota
+        }
+      } else {
+        try {
+          localStorage.removeItem(REMEMBER_CREDENTIALS_KEY);
+          setHasSaved(false);
+        } catch {
+          // Ignorar
+        }
+      }
+
       onLogin(data.user.role, data.user.username);
     } catch (err) {
       setError(
@@ -122,6 +180,47 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
               </button>
             </div>
+          </div>
+
+          <div className={`login-remember-row ${remember ? 'is-active' : ''}`}>
+            <label htmlFor="login-remember" className="login-remember-label">
+              <input
+                id="login-remember"
+                className="login-remember-checkbox"
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setRemember(checked);
+                  if (!checked) {
+                    try {
+                      localStorage.removeItem(REMEMBER_CREDENTIALS_KEY);
+                      setHasSaved(false);
+                    } catch {
+                      // Ignorar
+                    }
+                  }
+                }}
+                disabled={loading}
+              />
+              <span className="login-remember-text">
+                Recordar usuario y contraseña en esta PWA
+              </span>
+            </label>
+            {hasSaved && (
+              <button
+                type="button"
+                className="btn-forget-credentials"
+                onClick={clearSavedCredentials}
+                title="Olvidar credenciales guardadas en este dispositivo"
+                disabled={loading}
+              >
+                <span className="inline-flex items-center justify-center gap-1 leading-none">
+                  <IconX size={13} />
+                  <span>Olvidar</span>
+                </span>
+              </button>
+            )}
           </div>
 
           {error && (

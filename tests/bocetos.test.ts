@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Perfil, Vista, EstadoUI } from '../src/types';
+import { REMEMBER_CREDENTIALS_KEY } from '../src/components/BocetoLogin';
 
 describe('Bocetos navegables · T02', () => {
   it('define los cuatro perfiles operativos de la granja', () => {
@@ -37,5 +38,9 @@ describe('Bocetos navegables · T02', () => {
   it('soporta la vista exclusiva de administración T05', () => {
     const vistaAdmin: Vista = 'administracion';
     expect(vistaAdmin).toBe('administracion');
+  });
+
+  it('cuenta con la clave constante para recordar credenciales en la PWA', () => {
+    expect(REMEMBER_CREDENTIALS_KEY).toBe('porcicola_saved_credentials');
   });
 });
