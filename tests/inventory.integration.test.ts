@@ -483,6 +483,21 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
     expect(after.balances.find((b) => b.barnId === 1 && b.locationCode === 'galpon_a' && b.lotCode === null && b.stageCode === 'levante' && b.sex === 'macho')?.heads).toBe(3);
   });
 
+  it('cambia la etapa de un grupo sin cambiar el total de la granja', async () => {
+    const seeded = await register({ movementType: 'initial', barnId: 1, locationCode: null, lotCode: null, effectiveDate: '2026-05-04', quantity: 4, operationKey: 'stage-group-seed' });
+    expect(seeded.status).toBe(201);
+    const before = await snapshot('2026-05-04');
+    const payload = { effectiveDate: '2026-05-04', sourceBarnId: 1, destinationBarnId: 1, sourceLocationCode: null, sourceLotCode: null, destinationLocationCode: null, destinationLotCode: null, stageCode: 'levante', destinationStageCode: 'engorde', sex: 'macho', quantity: 4, reason: 'Cambio de etapa', operationKey: 'stage-group' };
+    const response = await api('/api/inventory/transfers', { method: 'POST', body: JSON.stringify(payload) });
+    expect(response.status, await response.clone().text()).toBe(201);
+    const after = await snapshot('2026-05-04');
+    expect(after.summary.total.available).toBe(before.summary.total.available);
+    expect(after.balances.find((row) => row.barnId === 1 && row.locationCode === null && row.lotCode === null && row.stageCode === 'engorde' && row.sex === 'macho')?.heads).toBe(4);
+    expect(after.summary.byStage.find((row) => row.stageCode === 'engorde')?.available).toBe((before.summary.byStage.find((row) => row.stageCode === 'engorde')?.available ?? 0) + 4);
+    const replay = await api('/api/inventory/transfers', { method: 'POST', body: JSON.stringify(payload) });
+    expect(replay.status).toBe(200);
+  });
+
   it('concilia el conteo físico con un ajuste aprobado y auditable', async () => {
     const seed = await register({ movementType: 'initial', barnId: 1, effectiveDate: '2026-06-01', quantity: 12, operationKey: 't10-count-seed' });
     expect(seed.status).toBe(201);

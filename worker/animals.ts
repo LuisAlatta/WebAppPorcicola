@@ -1700,6 +1700,7 @@ export async function correctAnimalWeight(db: D1Database, actorUserId: number, k
 }
 
 export interface TransferAnimalInput {
+  destinationStageCode?: unknown;
   destinationBarnId?: unknown;
   locationCode?: unknown;
   lotCode?: unknown;
@@ -1732,12 +1733,15 @@ export async function transferAnimal(
   const locationCode = optionalCode(input.locationCode);
   const lotCode = optionalCode(input.lotCode);
   const stageCode = String(row.current_stage_code);
+  const requestedStageCode = optionalCode(input.destinationStageCode);
+  const destinationStageCode = requestedStageCode ?? stageCode;
   const sex = String(row.sex) as Sex;
-  const payload = { key, destinationBarnId, locationCode, lotCode, effectiveDate };
+  const payload = { key, destinationBarnId, locationCode, lotCode, effectiveDate, ...(requestedStageCode ? { destinationStageCode: requestedStageCode } : {}) };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) return { animal: await getAnimal(db, key, scope), ...(replay.result as { transferGroupId: string; warning: string | null }), replayed: true };
-  if (destinationBarnId === sourceBarnId && locationCode === (row.location_code ?? null) && lotCode === (row.lot_code ?? null)) throw new ApiError(400, 'El origen y destino deben ser diferentes');
+  if (destinationBarnId === sourceBarnId && locationCode === (row.location_code ?? null) && lotCode === (row.lot_code ?? null) && destinationStageCode === stageCode) throw new ApiError(400, 'El origen y destino deben ser diferentes');
   const config = await getConfigSnapshot(db, effectiveDate);
+  if (!config.stages.some((stage) => stage.code === destinationStageCode)) throw new ApiError(400, 'La etapa de destino no está vigente en esa fecha');
   if (locationCode && !config.locations.some((item) => item.code === locationCode)) throw new ApiError(400, 'La ubicación no está vigente en esa fecha');
   if (lotCode && !config.lots.some((item) => item.code === lotCode)) throw new ApiError(400, 'El lote no está vigente en esa fecha');
   const later = await db.prepare('SELECT id FROM animal_location_history WHERE animal_id = ? AND valid_from > ? LIMIT 1')
@@ -1764,7 +1768,7 @@ export async function transferAnimal(
     INSERT INTO inventory_movements (operation_log_id, movement_type, effective_date, barn_id, location_code,
       lot_code, stage_code, sex, quantity, transfer_group_id, notes, animal_id, created_by_user_id, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`)
-    .bind(claim.id, movementType, effectiveDate, barnId, location, lot, stageCode, sex, transferGroupId,
+    .bind(claim.id, movementType, effectiveDate, barnId, location, lot, movementType === 'transfer_in' ? destinationStageCode : stageCode, sex, transferGroupId,
       `Traslado de ficha ${String(row.code)}`, animalId, actorUserId, createdAt);
   await commitOperation(db, claim, [
     db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
@@ -1773,17 +1777,17 @@ export async function transferAnimal(
     db.prepare(`INSERT INTO animal_location_history
       (animal_id, barn_id, location_code, lot_code, stage_code, valid_from, valid_until, operation_log_id, created_by_user_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`)
-      .bind(animalId, destinationBarnId, locationCode, lotCode, stageCode, effectiveDate, claim.id, actorUserId, createdAt),
-    db.prepare('UPDATE animals SET barn_id = ?, location_code = ?, lot_code = ?, updated_at = ? WHERE id = ?')
-      .bind(destinationBarnId, locationCode, lotCode, createdAt, animalId),
+      .bind(animalId, destinationBarnId, locationCode, lotCode, destinationStageCode, effectiveDate, claim.id, actorUserId, createdAt),
+    db.prepare('UPDATE animals SET barn_id = ?, location_code = ?, lot_code = ?, current_stage_code = ?, updated_at = ? WHERE id = ?')
+      .bind(destinationBarnId, locationCode, lotCode, destinationStageCode, createdAt, animalId),
     insertLeg(sourceBarnId, sourceLocation, sourceLot, 'transfer_out'),
     insertLeg(destinationBarnId, locationCode, lotCode, 'transfer_in'),
     stockGuardStatement(db, sourceBarnId, sourceLocation, sourceLot, stageCode, sex),
-    stockGuardStatement(db, destinationBarnId, locationCode, lotCode, stageCode, sex),
+    stockGuardStatement(db, destinationBarnId, locationCode, lotCode, destinationStageCode, sex),
     db.prepare('DELETE FROM inventory_write_guard'),
   ], [{ entityType: 'animal', entityId: animalId, action: 'update', actorUserId, barnId: sourceBarnId, reason,
-    previousData: { barnId: sourceBarnId, locationCode: sourceLocation, lotCode: sourceLot },
-    newData: { barnId: destinationBarnId, locationCode, lotCode, transferGroupId }, effectiveDate, recordedAt: createdAt }]);
+    previousData: { barnId: sourceBarnId, locationCode: sourceLocation, lotCode: sourceLot, stageCode },
+    newData: { barnId: destinationBarnId, locationCode, lotCode, stageCode: destinationStageCode, transferGroupId }, effectiveDate, recordedAt: createdAt }]);
   return { animal: await getAnimal(db, key, scope), transferGroupId, warning, replayed: false };
 }
 

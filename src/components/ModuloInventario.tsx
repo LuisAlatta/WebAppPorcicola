@@ -213,6 +213,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
   const [filterType, setFilterType] = useState<string>('');
   const [transferDestination, setTransferDestination] = useState<string>('');
   const [transferCoordinates, setTransferCoordinates] = useState({ sourceLocationCode: '', sourceLotCode: '', destinationLocationCode: '', destinationLotCode: '' });
+  const [transferStage, setTransferStage] = useState('');
   const [inventoryOperationMode, setInventoryOperationMode] = useState<'transfer' | 'reconcile'>('transfer');
   const [correctionForm, setCorrectionForm] = useState({ movementId: '', correctedQuantity: '', reason: '' });
   const [correctionPreview, setCorrectionPreview] = useState<{ allowed: boolean; originalQuantity: number; correctedQuantity: number; incompatibleMovements: { id: number; date: string; type: string; quantity: number; balanceAfter: number }[] } | null>(null);
@@ -297,7 +298,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
     try {
       const res = await fetch('/api/inventory/transfers', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sourceBarnId: Number(form.barnId), destinationBarnId: Number(transferDestination),
-          effectiveDate: form.effectiveDate, stageCode: form.stageCode, sex: form.sex, quantity: Number(form.quantity),
+          effectiveDate: form.effectiveDate, stageCode: form.stageCode, destinationStageCode: transferStage || form.stageCode, sex: form.sex, quantity: Number(form.quantity),
           ...Object.fromEntries(Object.entries(transferCoordinates).map(([key, value]) => [key, value || null])), reason: form.reason,
           operationKey }) });
       const body = await res.json() as { error?: string; replayed?: boolean; warning?: string | null };
@@ -995,6 +996,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                 <div className="form-group"><label className="form-label" htmlFor="t10-source">Galpón</label><select id="t10-source" className="form-select" value={form.barnId} onChange={(event) => setField('barnId', event.target.value)} required>{options?.barns.map((barn) => <option key={barn.id} value={barn.id}>{barn.name}</option>)}</select></div>
                 {inventoryOperationMode === 'transfer' && <div className="form-group"><label className="form-label" htmlFor="t10-dest">Galpón destino</label><select id="t10-dest" className="form-select" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} required><option value="">Seleccione destino</option>{options?.barns.map((barn) => <option key={barn.id} value={barn.id}>{barn.name}</option>)}</select></div>}
                 <div className="form-group"><label className="form-label" htmlFor="t10-stage">Etapa</label><select id="t10-stage" className="form-select" value={form.stageCode} onChange={(event) => setField('stageCode', event.target.value)} required>{options?.stages.map((stage) => <option key={stage.code} value={stage.code}>{stage.name}</option>)}</select></div>
+                {inventoryOperationMode === 'transfer' && <div className="form-group"><label className="form-label" htmlFor="t10-destination-stage">Etapa de destino</label><select id="t10-destination-stage" className="form-select" value={transferStage || form.stageCode} onChange={(event) => setTransferStage(event.target.value)}>{options?.stages.map((stage) => <option key={stage.code} value={stage.code}>{stage.name}</option>)}</select></div>}
                 <div className="form-group"><label className="form-label" htmlFor="t10-sex">Sexo</label><select id="t10-sex" className="form-select" value={form.sex} onChange={(event) => setField('sex', event.target.value as Sex)}>{Object.entries(SEX_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></div>
                 <div className="form-group"><label className="form-label" htmlFor="t10-quantity">{inventoryOperationMode === 'transfer' ? 'Cabezas a trasladar' : 'Cabezas contadas'}</label><input id="t10-quantity" type="number" min={inventoryOperationMode === 'transfer' ? 1 : 0} step="1" className="form-input" value={form.quantity} onChange={(event) => setField('quantity', event.target.value)} required /></div>
                 {inventoryOperationMode === 'transfer' ? <>

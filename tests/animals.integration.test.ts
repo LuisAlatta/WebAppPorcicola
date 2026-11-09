@@ -647,6 +647,30 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(animal?.location_code).toBeNull();
   });
 
+  it('cambia la etapa de un animal conservando el total y el historial', async () => {
+    const created = await create({ code: 'CAMBIO-ETAPA', entryDate: '2026-05-01', entryStageCode: 'preinicio', originType: 'nacimiento' });
+    expect(created.status).toBe(201);
+    const before = await inventoryTotals('2026-11-07');
+    const payload = { destinationBarnId: 1, locationCode: 'galpon_a', lotCode: null, destinationStageCode: 'inicio', effectiveDate: '2026-11-07', reason: 'Cambio de etapa', operationKey: 'cambio-etapa-individual' };
+    const response = await api('/api/animals/CAMBIO-ETAPA/transfer', { method: 'POST', body: JSON.stringify(payload) });
+    expect(response.status, await response.clone().text()).toBe(201);
+    const after = await inventoryTotals('2026-11-07');
+    expect(after.summary.total.available).toBe(before.summary.total.available);
+    const animal = await db.prepare("SELECT current_stage_code FROM animals WHERE code = 'CAMBIO-ETAPA'").first<{ current_stage_code: string }>();
+    expect(animal?.current_stage_code).toBe('inicio');
+    const history = await db.prepare("SELECT stage_code FROM animal_location_history WHERE animal_id = (SELECT id FROM animals WHERE code = 'CAMBIO-ETAPA') ORDER BY id").all<{stage_code:string}>();
+    expect(history.results.map(row => row.stage_code)).toEqual(['preinicio', 'inicio']);
+    const replay = await api('/api/animals/CAMBIO-ETAPA/transfer', { method: 'POST', body: JSON.stringify(payload) });
+    expect(replay.status).toBe(200);
+  });
+
+  it('impide cambiar por grupo una cabeza que ya tiene ficha individual', async () => {
+    const created = await create({ code: 'ETAPA-IDENTIFICADA', entryDate: '2026-11-06', entryStageCode: 'inicio', originType: 'nacimiento', locationCode: null, lotCode: 'lote_engorde_a' });
+    expect(created.status).toBe(201);
+    const response = await api('/api/inventory/transfers', { method: 'POST', body: JSON.stringify({ sourceBarnId: 1, destinationBarnId: 1, sourceLocationCode: null, sourceLotCode: 'lote_engorde_a', destinationLocationCode: null, destinationLotCode: 'lote_engorde_a', stageCode: 'inicio', destinationStageCode: 'engorde', sex: 'hembra', quantity: 1, effectiveDate: '2026-11-06', reason: 'Cambio grupal', operationKey: 'grupo-identificada' }) });
+    expect(response.status, await response.clone().text()).toBe(409);
+  });
+
   it('cierra venta o muerte de ficha con su descuento de inventario atómico', async () => {
     const created = await create({ code: 'T10-EXIT-01', entryDate: '2026-11-06', entryStageCode: 'preinicio', originType: 'nacimiento' });
     expect(created.status).toBe(201);

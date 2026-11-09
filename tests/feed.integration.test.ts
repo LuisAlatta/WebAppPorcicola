@@ -65,4 +65,12 @@ describe('Almacenes y suministros · T15',()=>{
   expect(await db.prepare("SELECT COUNT(*) AS count FROM financial_entries WHERE source_type='feed_purchase' AND source_id=(SELECT CAST(id AS TEXT) FROM feed_movements WHERE operation_log_id=(SELECT id FROM operation_log WHERE operation_key='feed-ca30-purchase'))").first()).toMatchObject({count:1});
   expect(await db.prepare("SELECT total_cost_minor FROM feed_movements WHERE operation_log_id=(SELECT id FROM operation_log WHERE operation_key='feed-ca30-consumption')").first()).toMatchObject({total_cost_minor:12000});
  },15000);
+ it('actualiza la demanda alimentaria al cambiar de etapa un grupo',async()=>{
+  const before=await getFeedProjection(db,'2026-11-08');
+  const res=await api('/api/inventory/transfers',{method:'POST',body:JSON.stringify({effectiveDate:'2026-11-08',sourceBarnId:1,destinationBarnId:1,sourceLocationCode:null,sourceLotCode:null,destinationLocationCode:null,destinationLotCode:null,stageCode:'preinicio',destinationStageCode:'inicio',sex:'hembra',quantity:1,reason:'Cambio de etapa alimentaria',operationKey:'feed-stage-change'})});
+  expect(res.status,await res.clone().text()).toBe(201);
+  const after=await getFeedProjection(db,'2026-11-08');
+  expect(after.stages.find(row=>row.stageCode==='preinicio')?.heads).toBe(before.stages.find(row=>row.stageCode==='preinicio')!.heads-1);
+  expect(after.stages.find(row=>row.stageCode==='inicio')?.heads).toBe(before.stages.find(row=>row.stageCode==='inicio')!.heads+1);
+ });
 });

@@ -294,7 +294,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const [toggleReason, setToggleReason] = useState<string>('');
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
-  const [transferForm, setTransferForm] = useState({ destinationBarnId: '', locationCode: '', lotCode: '', effectiveDate: farmToday(), reason: '' });
+  const [transferForm, setTransferForm] = useState({ destinationBarnId: '', destinationStageCode: '', locationCode: '', lotCode: '', effectiveDate: farmToday(), reason: '' });
   const [exitForm, setExitForm] = useState({ exitType: 'sale' as 'sale' | 'death', purchaseReturn:false, causeCode: '', effectiveDate: farmToday(), reason: '', saleAmount: '', currencyCode: 'PEN', counterparty: '', documentReference: '' });
   const [physicalActionError, setPhysicalActionError] = useState<string | null>(null);
   const [transferOperationKey, setTransferOperationKey] = useState(() => newOperationKey('ani-transfer'));
@@ -687,11 +687,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     try {
       const res = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...transferForm, destinationBarnId: Number(transferForm.destinationBarnId),
-          locationCode: transferForm.locationCode || null, lotCode: transferForm.lotCode || null, operationKey: transferOperationKey }) });
+          destinationStageCode: transferForm.destinationStageCode || detail.stageCode, locationCode: transferForm.locationCode || null, lotCode: transferForm.lotCode || null, operationKey: transferOperationKey }) });
       const body = await res.json() as { error?: string; animal?: AnimalDetail; warning?: string | null };
       if (!res.ok || !body.animal) { setPhysicalActionError(body.error ?? 'No se pudo trasladar el animal.'); return; }
       setDetail(body.animal); setTransferOperationKey(newOperationKey('ani-transfer'));
-      setTransferForm((prev) => ({ ...prev, destinationBarnId: '', reason: '' }));
+      setTransferForm((prev) => ({ ...prev, destinationBarnId: '', destinationStageCode: '', reason: '' }));
       setSuccess([`Animal ${body.animal.code} trasladado y su historial de galpón actualizado.`, body.warning].filter(Boolean).join(' '));
       await loadList();
     } catch { setPhysicalActionError('No se pudo confirmar el traslado. Reintente con el mismo formulario.'); }
@@ -1874,6 +1874,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                       {physicalActionError && <div className="alert alert-error" role="alert">{physicalActionError}</div>}
                       <div className="form-grid">
                         <div className="form-group"><label className="form-label" htmlFor="ani-transfer-barn">Galpón destino</label><select id="ani-transfer-barn" className="form-select" value={transferForm.destinationBarnId} onChange={(event) => setTransferForm((prev) => ({ ...prev, destinationBarnId: event.target.value }))} required><option value="">Seleccione destino</option>{data?.options.barns.map((barn) => <option key={barn.id} value={barn.id}>{barn.name}</option>)}</select></div>
+                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-stage">Etapa de destino</label><select id="ani-transfer-stage" className="form-select" value={transferForm.destinationStageCode || detail.stageCode} onChange={(event) => setTransferForm((prev) => ({ ...prev, destinationStageCode: event.target.value }))}>{(options?.stages ?? []).map((stage) => <option key={stage.code} value={stage.code}>{stage.name}</option>)}</select></div>
                         <div className="form-group"><label className="form-label" htmlFor="ani-transfer-location">Ubicación</label><select id="ani-transfer-location" className="form-select" value={transferForm.locationCode} onChange={(event) => setTransferForm((prev) => ({ ...prev, locationCode: event.target.value }))}><option value="">Sin asignar</option>{data?.options.locations.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
                         <div className="form-group"><label className="form-label" htmlFor="ani-transfer-lot">Lote</label><select id="ani-transfer-lot" className="form-select" value={transferForm.lotCode} onChange={(event) => setTransferForm((prev) => ({ ...prev, lotCode: event.target.value }))}><option value="">Sin lote</option>{data?.options.lots.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
                         <div className="form-group"><label className="form-label" htmlFor="ani-transfer-date">Fecha efectiva</label><input id="ani-transfer-date" type="date" className="form-input" value={transferForm.effectiveDate} max={farmToday()} onChange={(event) => setTransferForm((prev) => ({ ...prev, effectiveDate: event.target.value }))} required /></div>

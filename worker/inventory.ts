@@ -496,7 +496,7 @@ export async function getInventorySnapshot(
   }
 
   for (const stage of stageMap.values()) {
-    stage.available = stage.entries - stage.exits;
+    stage.available = balances.filter((balance) => balance.stageCode === stage.stageCode).reduce((sum, balance) => sum + balance.heads, 0);
     stage.mortalityDenominator = stage.entries;
     stage.mortalityPct = stage.entries > 0 ? round1((stage.deaths / stage.entries) * 100) : null;
   }
@@ -811,6 +811,7 @@ export interface TransferInput {
   destinationLocationCode?: unknown;
   destinationLotCode?: unknown;
   stageCode?: unknown;
+  destinationStageCode?: unknown;
   sex?: unknown;
   quantity?: unknown;
   notes?: unknown;
@@ -835,6 +836,8 @@ export async function transferInventory(
   const quantity = Number(input.quantity);
   if (!Number.isInteger(quantity) || quantity <= 0) throw new ApiError(400, 'La cantidad debe ser un entero positivo');
   const stageCode = requireText(input.stageCode, 'Etapa', 60);
+  const requestedStageCode = optionalCode(input.destinationStageCode);
+  const destinationStageCode = requestedStageCode ?? stageCode;
   const sex = String(input.sex ?? '') as Sex;
   if (!SEXES.includes(sex)) throw new ApiError(400, 'Sexo inválido');
   const locationCode = optionalCode(input.locationCode);
@@ -843,7 +846,7 @@ export async function transferInventory(
   const sourceLotCode = optionalCode(input.sourceLotCode ?? lotCode);
   const destinationLocationCode = optionalCode(input.destinationLocationCode ?? locationCode);
   const destinationLotCode = optionalCode(input.destinationLotCode ?? lotCode);
-  if (sourceBarnId === destinationBarnId && sourceLocationCode === destinationLocationCode && sourceLotCode === destinationLotCode) {
+  if (sourceBarnId === destinationBarnId && sourceLocationCode === destinationLocationCode && sourceLotCode === destinationLotCode && stageCode === destinationStageCode) {
     throw new ApiError(400, 'El origen y destino deben ser diferentes');
   }
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Traslado interno' });
@@ -856,6 +859,7 @@ export async function transferInventory(
   }
   const config = await getConfigSnapshot(db, effectiveDate);
   if (!config.stages.some((stage) => stage.code === stageCode)) throw new ApiError(400, 'La etapa no está vigente en la fecha del traslado');
+  if (!config.stages.some((stage) => stage.code === destinationStageCode)) throw new ApiError(400, 'La etapa de destino no está vigente en la fecha del traslado');
   for (const code of [sourceLocationCode, destinationLocationCode]) {
     if (code && !config.locations.some((item) => item.code === code)) throw new ApiError(400, 'Una ubicación no está vigente en la fecha del traslado');
   }
@@ -863,7 +867,7 @@ export async function transferInventory(
     if (code && !config.lots.some((item) => item.code === code)) throw new ApiError(400, 'Un lote no está vigente en la fecha del traslado');
   }
   const payload = { effectiveDate, sourceBarnId, destinationBarnId, sourceLocationCode, sourceLotCode,
-    destinationLocationCode, destinationLotCode, stageCode, sex, quantity };
+    destinationLocationCode, destinationLotCode, stageCode, sex, quantity, ...(requestedStageCode ? { destinationStageCode: requestedStageCode } : {}) };
   const existing = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (existing) return { ...(existing.result as { transferGroupId: string; warning: string | null }), replayed: true };
 
@@ -878,10 +882,10 @@ export async function transferInventory(
   }
 
   // Evita aceptar una corrección que deje saldo negativo en cualquier fecha posterior.
-  for (const [barnId, location, lot, delta] of [[sourceBarnId, sourceLocationCode, sourceLotCode, -quantity], [destinationBarnId, destinationLocationCode, destinationLotCode, quantity]] as const) {
+  for (const [barnId, location, lot, stage, delta] of [[sourceBarnId, sourceLocationCode, sourceLotCode, stageCode, -quantity], [destinationBarnId, destinationLocationCode, destinationLotCode, destinationStageCode, quantity]] as const) {
     const rows = await db.prepare(`SELECT effective_date, movement_type, quantity FROM inventory_movements
       WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
-      ORDER BY effective_date, id`).bind(barnId, location, lot, stageCode, sex).all<Row>();
+      ORDER BY effective_date, id`).bind(barnId, location, lot, stage, sex).all<Row>();
     const timeline = (rows.results ?? []).map((row) => ({ date: String(row.effective_date), delta: movementDelta(String(row.movement_type) as MovementType, Number(row.quantity)) }));
     timeline.push({ date: effectiveDate, delta });
     timeline.sort((a, b) => a.date.localeCompare(b.date));
@@ -908,14 +912,25 @@ export async function transferInventory(
     INSERT INTO inventory_movements (operation_log_id, movement_type, effective_date, barn_id,
       location_code, lot_code, stage_code, sex, quantity, transfer_group_id, notes, created_by_user_id, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(claim.id, type, effectiveDate, barnId, location, lot, stageCode, sex, quantity,
+  `).bind(claim.id, type, effectiveDate, barnId, location, lot, type === 'transfer_in' ? destinationStageCode : stageCode, sex, quantity,
     transferGroupId, typeof input.notes === 'string' ? input.notes.slice(0, 300) : null, actorUserId, claim.recordedAt);
   const commit = await commitOperation(db, claim, [
     db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
     insert(sourceBarnId, sourceLocationCode, sourceLotCode, 'transfer_out'),
     insert(destinationBarnId, destinationLocationCode, destinationLotCode, 'transfer_in'),
     stockGuardStatement(db, sourceBarnId, sourceLocationCode, sourceLotCode, stageCode, sex),
-    stockGuardStatement(db, destinationBarnId, destinationLocationCode, destinationLotCode, stageCode, sex),
+    stockGuardStatement(db, destinationBarnId, destinationLocationCode, destinationLotCode, destinationStageCode, sex),
+    // Un movimiento colectivo solo puede consumir cabezas sin ficha individual.
+    db.prepare(`INSERT INTO inventory_write_guard (guard_id)
+      SELECT CASE WHEN
+        (SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out') THEN -quantity ELSE quantity END),0)
+         FROM inventory_movements WHERE barn_id=? AND location_code IS ? AND lot_code IS ? AND stage_code=? AND sex=? AND effective_date<=?)
+        >= (SELECT COUNT(*) FROM animals a WHERE a.sex=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>?) AND (
+          EXISTS (SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ? AND h.stage_code=? AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?))
+          OR (NOT EXISTS (SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id) AND a.barn_id=? AND a.location_code IS ? AND a.lot_code IS ? AND a.current_stage_code=?)
+        )) THEN 0 ELSE -1 END`).bind(sourceBarnId, sourceLocationCode, sourceLotCode, stageCode, sex, effectiveDate,
+          sex, effectiveDate, effectiveDate, sourceBarnId, sourceLocationCode, sourceLotCode, stageCode, effectiveDate, effectiveDate,
+          sourceBarnId, sourceLocationCode, sourceLotCode, stageCode),
     db.prepare('DELETE FROM inventory_write_guard'),
   ], [
     { entityType: 'inventory_transfer', entityId: 1, action: 'create', actorUserId, barnId: sourceBarnId,
