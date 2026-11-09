@@ -742,7 +742,7 @@ export function ModuloConfiguracion() {
             <div className="card p-4 mt-4">
               <h4 className="font-bold mb-2">Aplicación en Dispositivo y Acceso Directo</h4>
               <p className="text-xs text-muted mb-3">
-                Instale Mi Granja Pro en la pantalla de inicio o escritorio para una experiencia completa y acceso rápido sin barras de navegador.
+                Instale Mi Granja PRO en la pantalla de inicio o escritorio para una experiencia completa y acceso rápido sin barras de navegador.
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 {canInstall ? (

@@ -217,11 +217,11 @@ export function BocetoLogin({ onLogin }: LoginProps) {
           <div className="login-logo-wrap">
             <img
               src="/logo.jpg"
-              alt="Logo Mi Granja Pro"
+              alt="Logo Mi Granja PRO"
               className="login-brand-logo"
             />
           </div>
-          <h1 className="login-title">Mi Granja Pro</h1>
+          <h1 className="login-title">Mi Granja PRO</h1>
           <p className="login-subtitle">Sistema integral de gestión porcícola</p>
         </header>
 
