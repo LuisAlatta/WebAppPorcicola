@@ -1029,6 +1029,29 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect((await summaryResponse.json() as {animal:{reproductiveSummary:unknown}}).animal.reproductiveSummary).toMatchObject({serviceCount:2,farrowingCount:2,totalBorn:19,maleBorn:16,femaleBorn:3,weighedBirths:9,averageBirthWeightKg:1.47,firstFarrowingDate:'2026-09-16',lastFarrowingDate:'2026-10-20'});
   }, 25000);
 
+  it('corrige y anula tratamientos conservando auditoría y retiros coherentes', async () => {
+    expect((await create({code:'SALUD-CORRECCION',entryDate:'2026-10-01',entryStageCode:'preinicio',originType:'nacimiento',operationKey:'health-correct-animal'})).status).toBe(201);
+    const treatment={eventType:'treatment',effectiveDate:'2026-11-01',animalCodes:['SALUD-CORRECCION'],product:'Producto anterior',dosage:1,dosageUnit:'ml',withdrawalUntil:'2026-11-08',nextDueDate:'2026-11-08',reason:'Tratamiento inicial',operationKey:'health-correct-create'};
+    const created=await api('/api/health/events',{method:'POST',body:JSON.stringify(treatment)},veterinarioToken);expect(created.status,await created.clone().text()).toBe(201);
+    const id=(await created.json() as {event:{id:number}}).event.id;
+    const correction={...treatment,product:'Producto corregido',dosage:2,withdrawalUntil:'2026-11-06',reason:'Corregir dosis y retiro',operationKey:'health-correct-update'};
+    const updated=await api(`/api/health/events/${id}/correction`,{method:'POST',body:JSON.stringify(correction)},veterinarioToken);expect(updated.status,await updated.clone().text()).toBe(201);
+    const replacement=(await updated.json() as {event:{id:number}}).event.id;
+    expect((await api(`/api/health/events/${id}/correction`,{method:'POST',body:JSON.stringify(correction)},veterinarioToken)).status).toBe(200);
+    const history=await api('/api/health/events?animalCode=SALUD-CORRECCION');expect((await history.json() as {events:unknown[]}).events).toEqual([expect.objectContaining({id:replacement,product:'Producto corregido',dosage:2})]);
+    expect((await (await api('/api/health/withdrawals?asOf=2026-11-08')).json() as {alerts:{animalCode:string}[]}).alerts.some(item=>item.animalCode==='SALUD-CORRECCION')).toBe(false);
+    const cancel={reason:'Registro duplicado',operationKey:'health-correct-cancel'};const cancelled=await api(`/api/health/events/${replacement}/annul`,{method:'POST',body:JSON.stringify(cancel)},veterinarioToken);expect(cancelled.status,await cancelled.clone().text()).toBe(201);
+    expect((await (await api('/api/health/events?animalCode=SALUD-CORRECCION')).json() as {events:unknown[]}).events).toHaveLength(0);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE entity_type='health_event' AND action IN ('correct','annul')").first()).toMatchObject({n:2});
+    const backdatedExit=await api('/api/animals/SALUD-CORRECCION/exit',{method:'POST',body:JSON.stringify({exitType:'discard',causeCode:'edad',effectiveDate:'2026-10-30',reason:'Descarte anterior al evento anulado',operationKey:'health-correct-backdated-exit'})});expect(backdatedExit.status,await backdatedExit.clone().text()).toBe(201);
+    expect((await create({code:'SALUD-VENTA',entryDate:'2026-10-01',entryStageCode:'preinicio',originType:'nacimiento',operationKey:'health-sold-animal'})).status).toBe(201);
+    const schedule=await api('/api/vaccines/schedules/manual',{method:'POST',body:JSON.stringify({animalCode:'SALUD-VENTA',vaccineName:'Vacuna prueba',scheduledDate:'2026-11-01',reason:'Programación de prueba',operationKey:'health-sold-vaccine'})},veterinarioToken);expect(schedule.status,await schedule.clone().text()).toBe(201);
+    const vaccineId=(await schedule.json() as {schedule:{id:number}}).schedule.id;
+    const sale=await api('/api/animals/SALUD-VENTA/exit',{method:'POST',body:JSON.stringify({exitType:'sale',causeCode:'edad',effectiveDate:'2026-11-05',saleAmount:'100',reason:'Venta de prueba',operationKey:'health-sold-sale'})});expect(sale.status,await sale.clone().text()).toBe(201);
+    const invalidTreatment=await api('/api/health/events',{method:'POST',body:JSON.stringify({...treatment,animalCodes:['SALUD-VENTA'],operationKey:'health-sold-treatment'})},veterinarioToken);expect(invalidTreatment.status).toBe(409);
+    const invalidVaccine=await api(`/api/vaccines/schedules/${vaccineId}/apply`,{method:'POST',body:JSON.stringify({appliedDate:'2026-11-01',dosage:1,dosageUnit:'ml',withdrawalUntil:'2026-11-08',reason:'Vacuna con retiro incompatible',operationKey:'health-sold-vaccine-apply'})},veterinarioToken);expect(invalidVaccine.status,await invalidVaccine.clone().text()).toBe(409);
+  },25000);
+
   it('filtra padrón por progenitores, aptitud, raza, procedencia y etapa de ingreso', async () => {
     const created=await create({code:'FILTRO-EXCEL',breed:'Duroc',aptitude:'engorde',motherExternal:'MADRE-EXTERNA',fatherExternal:'PADRE-EXTERNO',originType:'inicial',entryStageCode:'preinicio',operationKey:'filter-excel'});expect(created.status,await created.clone().text()).toBe(201);
     for(const filter of ['mother=MADRE-EXTERNA','father=PADRE-EXTERNO','breed=Duroc','aptitude=engorde','originType=inicial','entryStage=preinicio']){const result=await list(`?q=FILTRO-EXCEL&${filter}`);expect(result.animals.map(animal=>animal.code)).toContain('FILTRO-EXCEL');}

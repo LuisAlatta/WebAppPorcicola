@@ -72,7 +72,7 @@ import {
 } from './reproduction';
 import { correctLitter, correctLitterDate, recordFarrowing, recordLitterEvent } from './litters';
 import { createFeedWarehouse, getFeedInventory, getFeedProjection, listFeedMovements, listFeedWarehouses, registerFeedMovement } from './feed';
-import { createHealthEvent, listHealthEvents, listUpcomingHealthEvents, listWithdrawalAlerts } from './health';
+import { correctHealthEvent, createHealthEvent, listHealthEvents, listUpcomingHealthEvents, listWithdrawalAlerts } from './health';
 import { applyVaccineOccurrence, createManualVaccineSchedule, deactivateVaccineRule, generateAnimalVaccineSchedules, generateVaccineSchedules, listVaccineRules, listVaccineSchedules, saveVaccineRule, updateVaccineOccurrence } from './vaccines';
 import { createFinancialEntry, createFinancialOpeningBalance, createFinancialSettlement, listFinancialCashflow, listFinancialEntries, reverseFinancialEntry } from './finance';
 import { attendAlert, createManualAlert, listAlertNotificationHistory, listAlerts, listEscalationRules, listNotifications, markNotificationRead, reconcileAlerts, saveEscalationRule } from './alerts';
@@ -605,11 +605,16 @@ const worker = {
     }
 
     // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
-    if(path==='/api/health/events'||path==='/api/health/withdrawals'||path==='/api/health/upcoming'){
+    const healthCorrection=path.match(/^\/api\/health\/events\/(\d+)\/(correction|annul)$/);
+    if(path==='/api/health/events'||path==='/api/health/withdrawals'||path==='/api/health/upcoming'||healthCorrection){
       const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});
       const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});
       const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
       try{
+        if(healthCorrection&&request.method==='POST'){
+          if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo el veterinario o administrador puede corregir actuaciones sanitarias'},{status:403});
+          const body=await request.json() as Parameters<typeof correctHealthEvent>[3];const result=await correctHealthEvent(env.DB,session.user.id,Number(healthCorrection[1]),body,healthCorrection[2]==='annul',scope);await reconcileAlerts(env.DB);return Response.json({ok:true,...result},{status:result.replayed?200:201});
+        }
         if(path==='/api/health/events'&&request.method==='GET')return Response.json({ok:true,events:await listHealthEvents(env.DB,{animalCode:url.searchParams.get('animalCode'),lotCode:url.searchParams.get('lotCode'),product:url.searchParams.get('product'),from:url.searchParams.get('from'),to:url.searchParams.get('to'),limit:url.searchParams.get('limit')},scope)});
         if(path==='/api/health/events'&&request.method==='POST'){
           if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo el veterinario o administrador puede registrar tratamientos'},{status:403});

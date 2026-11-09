@@ -671,7 +671,7 @@ export async function getAnimal(
       SELECT h.id, h.event_type, h.effective_date, h.product, h.dosage, h.dosage_unit
       FROM health_events h
       JOIN health_event_animals a ON a.health_event_id = h.id
-      WHERE a.animal_id = ?
+      WHERE a.animal_id = ? AND EXISTS(SELECT 1 FROM operation_log o WHERE o.id=h.operation_log_id AND o.status='committed')
       ORDER BY h.effective_date ASC, h.id ASC
     `).bind(id).all<Row>().catch(() => ({ results: [] })),
   ]);
@@ -1880,7 +1880,7 @@ export async function registerAnimalExit(
   const lotCode = row.lot_code === null || row.lot_code === undefined ? null : String(row.lot_code);
   if(exitType==='sale'){
     const restriction=await db.prepare(`SELECT h.product,h.withdrawal_until FROM health_events h JOIN health_event_animals ha ON ha.health_event_id=h.id
-      WHERE ha.animal_id=? AND h.event_type<>'death' AND h.effective_date<=? AND ha.withdrawal_until>=? ORDER BY ha.withdrawal_until DESC LIMIT 1`).bind(animalId,effectiveDate,effectiveDate).first<{product:string;withdrawal_until:string}>();
+      WHERE ha.animal_id=? AND h.event_type<>'death' AND h.effective_date<=? AND ha.withdrawal_until>=? AND EXISTS(SELECT 1 FROM operation_log o WHERE o.id=h.operation_log_id AND o.status='committed') ORDER BY ha.withdrawal_until DESC LIMIT 1`).bind(animalId,effectiveDate,effectiveDate).first<{product:string;withdrawal_until:string}>();
     if(restriction)throw new ApiError(409,`No se puede vender: retiro sanitario de ${restriction.product} hasta ${restriction.withdrawal_until}`);
   }
   let originalPurchase:Row|null=null;
@@ -1902,7 +1902,7 @@ export async function registerAnimalExit(
   if (replay) return { animal: await getAnimal(db, key, scope), replayed: true };
   if(purchaseReturn&&originalPurchase?.reversed_at!==null)throw new ApiError(409,'La compra ya tiene una devolución registrada');
   if (!exitedCheck(row)) throw new ApiError(409, 'La ficha ya tiene una salida física');
-  const laterHistory=await db.prepare(`SELECT 1 AS found WHERE EXISTS(SELECT 1 FROM animal_location_history WHERE animal_id=? AND valid_from>?) OR EXISTS(SELECT 1 FROM animal_weights WHERE animal_id=? AND weighed_on>?) OR EXISTS(SELECT 1 FROM health_event_animals ha JOIN health_events h ON h.id=ha.health_event_id WHERE ha.animal_id=? AND h.effective_date>?) OR EXISTS(SELECT 1 FROM inventory_movements WHERE animal_id=? AND effective_date>?)`).bind(animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate).first();
+  const laterHistory=await db.prepare(`SELECT 1 AS found WHERE EXISTS(SELECT 1 FROM animal_location_history WHERE animal_id=? AND valid_from>?) OR EXISTS(SELECT 1 FROM animal_weights WHERE animal_id=? AND weighed_on>?) OR EXISTS(SELECT 1 FROM health_event_animals ha JOIN health_events h ON h.id=ha.health_event_id WHERE ha.animal_id=? AND h.effective_date>? AND EXISTS(SELECT 1 FROM operation_log ho WHERE ho.id=h.operation_log_id AND ho.status='committed')) OR EXISTS(SELECT 1 FROM inventory_movements WHERE animal_id=? AND effective_date>?)`).bind(animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate).first();
   if(laterHistory)throw new ApiError(409,'El animal tiene eventos posteriores a la salida; reconcilie primero su historial');
   const pendingLitter = row.litter_id && stageCode==='preinicio' ? await db.prepare(`SELECT l.id,l.farrowing_date,l.barn_id FROM litters l WHERE l.id=? AND l.historical_only=0 AND NOT EXISTS(SELECT 1 FROM inventory_movements m JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=? AND m.litter_id=l.id AND m.quantity<0 AND o.operation_type='litter.weaning')`).bind(row.litter_id,animalId).first<{id:string;farrowing_date:string;barn_id:number}>() : null;
   if(pendingLitter&&barnIds!==null&&!barnIds.includes(Number(pendingLitter.barn_id)))throw new ApiError(403,'No tiene acceso a la camada de origen');
@@ -1919,7 +1919,8 @@ export async function registerAnimalExit(
   const statements: D1PreparedStatement[] = [
     db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
     db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM animals WHERE id=? AND exit_date IS NULL AND status='activo' AND is_active=1 AND updated_at=?) THEN 0 ELSE -1 END`).bind(animalId,row.updated_at),
-    db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM animal_location_history WHERE animal_id=? AND valid_from>?) AND NOT EXISTS(SELECT 1 FROM animal_weights WHERE animal_id=? AND weighed_on>?) AND NOT EXISTS(SELECT 1 FROM health_event_animals ha JOIN health_events h ON h.id=ha.health_event_id WHERE ha.animal_id=? AND h.effective_date>?) AND NOT EXISTS(SELECT 1 FROM inventory_movements WHERE animal_id=? AND effective_date>?) THEN 0 ELSE -1 END`).bind(animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate),
+    db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM animal_location_history WHERE animal_id=? AND valid_from>?) AND NOT EXISTS(SELECT 1 FROM animal_weights WHERE animal_id=? AND weighed_on>?) AND NOT EXISTS(SELECT 1 FROM health_event_animals ha JOIN health_events h ON h.id=ha.health_event_id WHERE ha.animal_id=? AND h.effective_date>? AND EXISTS(SELECT 1 FROM operation_log ho WHERE ho.id=h.operation_log_id AND ho.status='committed')) AND NOT EXISTS(SELECT 1 FROM inventory_movements WHERE animal_id=? AND effective_date>?) THEN 0 ELSE -1 END`).bind(animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate),
+    ...(exitType==='sale'?[db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM health_event_animals ha JOIN health_events h ON h.id=ha.health_event_id JOIN operation_log o ON o.id=h.operation_log_id WHERE ha.animal_id=? AND o.status='committed' AND h.event_type<>'death' AND h.effective_date<=? AND ha.withdrawal_until>=?) THEN 0 ELSE -1 END`).bind(animalId,effectiveDate,effectiveDate)]:[]),
     ...(pendingLitter ? [db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM litters l WHERE l.id=? AND l.farrowing_date<=? AND (CASE ? WHEN 'macho' THEN l.male_alive WHEN 'hembra' THEN l.female_alive ELSE l.unsexed_alive END)+COALESCE((SELECT SUM(CASE WHEN event_type IN ('adoption_in','sale_return') THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=l.id AND sex=?),0)>0) AND NOT EXISTS(SELECT 1 FROM litter_events WHERE litter_id=? AND sex=? AND effective_date>?) THEN 0 ELSE -1 END`).bind(pendingLitter.id,effectiveDate,sex,sex,pendingLitter.id,sex,effectiveDate),db.prepare(`INSERT INTO litter_events(operation_log_id,litter_id,event_type,effective_date,sex,quantity,cause,reason,created_by_user_id,created_at) VALUES(?,?,?,?,?,1,?,?,?,?)`).bind(claim.id,pendingLitter.id,exitType,effectiveDate,sex,causeCode,reason,actorUserId,createdAt)] : []),
     db.prepare(`UPDATE animals SET status = ?, exit_date = ?, exit_type = ?, is_active = 0,
       deactivated_at = ?, deactivation_reason = ?, updated_at = ? WHERE id = ? AND exit_date IS NULL`)
