@@ -12,7 +12,52 @@ import {
   IconLogIn,
   IconRefreshCw,
   IconX,
+  IconStethoscope,
 } from './icons';
+
+export interface DemoAccount {
+  role: Perfil;
+  label: string;
+  username: string;
+  password: string;
+  badge: string;
+  description: string;
+}
+
+export const DEMO_ACCOUNTS: DemoAccount[] = [
+  {
+    role: 'administrador',
+    label: 'Administrador',
+    username: 'admin@granja.pe',
+    password: 'Password123!',
+    badge: 'Control Total',
+    description: 'Acceso total a todos los módulos, reportes, configuración y administración.',
+  },
+  {
+    role: 'responsable',
+    label: 'Responsable',
+    username: 'responsable@granja.pe',
+    password: 'Password123!',
+    badge: 'Gestión Operativa',
+    description: 'Control de animales, reproducción, raciones, inventario y finanzas.',
+  },
+  {
+    role: 'operario',
+    label: 'Operario',
+    username: 'operario@granja.pe',
+    password: 'Password123!',
+    badge: 'Labores de Campo',
+    description: 'Registro de pesajes, alimentación e inventario de galpones asignados.',
+  },
+  {
+    role: 'veterinario',
+    label: 'Veterinario',
+    username: 'veterinario@granja.pe',
+    password: 'Password123!',
+    badge: 'Salud y Vacunas',
+    description: 'Gestión sanitaria, tratamientos clínicos y planes de vacunación.',
+  },
+];
 
 export const REMEMBERED_USERNAME_KEY = 'porcicola_remembered_username';
 const LEGACY_REMEMBER_CREDENTIALS_KEY = 'porcicola_saved_credentials';
@@ -74,7 +119,21 @@ export function BocetoLogin({ onLogin }: LoginProps) {
   const [hasSaved, setHasSaved] = useState(remembered.hasSaved);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [selectedRole, setSelectedRole] = useState<Perfil | null>(() => {
+    const found = DEMO_ACCOUNTS.find(
+      (a) => a.username.toLowerCase() === remembered.username.toLowerCase(),
+    );
+    return found ? found.role : null;
+  });
   const userStartedEditing = useRef(false);
+
+  const fillDemoAccount = (acc: DemoAccount) => {
+    userStartedEditing.current = true;
+    setUsername(acc.username);
+    setPassword(acc.password);
+    setSelectedRole(acc.role);
+    setError('');
+  };
 
   useEffect(() => {
     if (!remembered.hasSaved) return;
@@ -187,6 +246,51 @@ export function BocetoLogin({ onLogin }: LoginProps) {
           <p className="login-subtitle">Sistema integral de gestión porcícola</p>
         </header>
 
+        <section className="login-demo-section" aria-label="Cuentas demo de prueba">
+          <div className="login-demo-header">
+            <span className="login-demo-title">Acceso rápido de prueba (Demo)</span>
+          </div>
+          <div className="login-demo-grid">
+            {DEMO_ACCOUNTS.map((acc) => {
+              const isSelected = selectedRole === acc.role;
+              return (
+                <button
+                  key={acc.role}
+                  type="button"
+                  className={`btn-demo-role ${isSelected ? 'is-selected' : ''}`}
+                  onClick={() => fillDemoAccount(acc)}
+                  title={`Cargar datos de ${acc.label} (${acc.username})`}
+                  disabled={loading}
+                >
+                  <span className="demo-role-head">
+                    {acc.role === 'administrador' && <IconShield size={16} />}
+                    {acc.role === 'responsable' && <IconUser size={16} />}
+                    {acc.role === 'operario' && <IconPig size={16} />}
+                    {acc.role === 'veterinario' && <IconStethoscope size={16} />}
+                    <span className="demo-role-name">{acc.label}</span>
+                  </span>
+                  <span className="demo-role-badge">{acc.badge}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedRole && (
+            <div className="login-demo-scope" role="status">
+              {(() => {
+                const acc = DEMO_ACCOUNTS.find((a) => a.role === selectedRole);
+                if (!acc) return null;
+                return (
+                  <>
+                    <strong className="demo-scope-title">{acc.label}:</strong>{' '}
+                    <span>{acc.description}</span>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+        </section>
+
         <form onSubmit={submit} className="login-form" autoComplete="on">
           <div className="form-group">
             <label htmlFor="login-username" className="login-label">
@@ -206,7 +310,16 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 name="username"
                 placeholder="ej. admin@granja.pe"
                 value={username}
-                onChange={(e) => { userStartedEditing.current = true; setUsername(e.target.value); }}
+                onChange={(e) => {
+                  userStartedEditing.current = true;
+                  const val = e.target.value;
+                  setUsername(val);
+                  const found = DEMO_ACCOUNTS.find(
+                    (a) => a.username.toLowerCase() === val.toLowerCase() ||
+                           a.role.toLowerCase() === val.toLowerCase(),
+                  );
+                  setSelectedRole(found ? found.role : null);
+                }}
                 required
                 disabled={loading}
               />

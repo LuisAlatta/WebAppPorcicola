@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Perfil, Vista, EstadoUI } from '../src/types';
-import { REMEMBERED_USERNAME_KEY } from '../src/components/BocetoLogin';
+import { REMEMBERED_USERNAME_KEY, DEMO_ACCOUNTS } from '../src/components/BocetoLogin';
 
 describe('Bocetos navegables · T02', () => {
   it('define los cuatro perfiles operativos de la granja', () => {
@@ -42,5 +42,16 @@ describe('Bocetos navegables · T02', () => {
 
   it('cuenta con una clave exclusiva para el usuario recordado en la PWA', () => {
     expect(REMEMBERED_USERNAME_KEY).toBe('porcicola_remembered_username');
+  });
+
+  it('cuenta con cuentas demo de acceso rápido para los 4 perfiles operativos', () => {
+    expect(DEMO_ACCOUNTS).toHaveLength(4);
+    const roles = DEMO_ACCOUNTS.map((a) => a.role);
+    expect(roles).toEqual(['administrador', 'responsable', 'operario', 'veterinario']);
+    for (const acc of DEMO_ACCOUNTS) {
+      expect(acc.username).toBeTruthy();
+      expect(acc.password).toBeTruthy();
+      expect(acc.description).toBeTruthy();
+    }
   });
 });
