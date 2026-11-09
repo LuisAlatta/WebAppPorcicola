@@ -228,54 +228,71 @@ body {
   box-shadow: none;
 }
 
-/* Modern Login Screen */
+/* Modern Login Screen - Full White & Uncontained */
+body:has(.login-page-container),
+.app-shell:has(.login-page-container) {
+  background-color: #ffffff !important;
+}
+
+.app-shell:has(.login-page-container) .main-content {
+  max-width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background-color: #ffffff !important;
+}
+
 .login-page-container {
-  min-height: calc(100vh - 8rem);
+  min-height: 100vh;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem 0.5rem;
+  background-color: #ffffff;
+  padding: 2.5rem 1.5rem;
 }
 
-.login-card {
+.login-card,
+.login-card-uncontained {
   width: 100%;
-  max-width: 430px;
+  max-width: 380px;
   margin: 0 auto;
-  padding: 2.25rem 2rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg, 16px);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+  padding: 0;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 
 .login-header {
   text-align: center;
-  margin-bottom: 1.75rem;
+  margin-bottom: 2rem;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-.login-emblem-wrap {
+.login-logo-wrap {
   display: flex;
   justify-content: center;
-  margin-bottom: 0.875rem;
-}
-
-.login-emblem {
-  width: 54px;
-  height: 54px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #136f5b 0%, #0d5243 100%);
-  display: flex;
   align-items: center;
-  justify-content: center;
-  color: #ffffff;
-  box-shadow: 0 8px 18px -4px rgba(19, 111, 91, 0.35);
+  margin-bottom: 1rem;
+  background: transparent;
+  border: none !important;
+  box-shadow: none !important;
 }
 
-.login-emblem-icon {
-  color: #ffffff;
+.login-brand-logo {
+  display: block;
+  max-width: 180px;
+  width: 100%;
+  height: auto;
+  max-height: 140px;
+  object-fit: contain;
+  background-color: #ffffff;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  filter: none !important;
 }
 
 .login-title {

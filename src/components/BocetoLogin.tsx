@@ -212,12 +212,14 @@ export function BocetoLogin({ onLogin }: LoginProps) {
 
   return (
     <div className="login-page-container">
-      <div className="card login-card">
+      <div className="login-card login-card-uncontained">
         <header className="login-header">
-          <div className="login-emblem-wrap">
-            <div className="login-emblem" aria-hidden="true">
-              <IconPig size={30} className="login-emblem-icon" />
-            </div>
+          <div className="login-logo-wrap">
+            <img
+              src="/logo.jpg"
+              alt="Logo Mi Granja Pro"
+              className="login-brand-logo"
+            />
           </div>
           <h1 className="login-title">Mi Granja Pro</h1>
           <p className="login-subtitle">Sistema integral de gestión porcícola</p>
