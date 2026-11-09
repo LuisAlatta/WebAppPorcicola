@@ -1042,6 +1042,13 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(death.status,await death.clone().text()).toBe(201);
     const deathReplay=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'death',effectiveDate:'2026-10-24',sex:'macho',quantity:1,cause:'Debilidad neonatal',reason:'Baja observada en lactancia',operationKey:'rep-t14-death'})});
     expect(deathReplay.status).toBe(200);
+    const birthsReport=await api('/api/reports/births?motherCode=T14-MADRE');
+    expect((await birthsReport.json() as {totals:unknown}).totals).toMatchObject({totalBorn:8,deaths:0,lactationDeaths:1,globalMortalityPct:0});
+    const birthsAtFarrowing=await api('/api/reports/births?motherCode=T14-MADRE&to=2026-10-23');
+    expect((await birthsAtFarrowing.json() as {totals:unknown}).totals).toMatchObject({totalBorn:8,deaths:0,lactationDeaths:0,globalMortalityPct:0});
+    const savedReport=await api('/api/reports/preview',{method:'POST',body:JSON.stringify({source:'litters',name:'Camadas',purpose:'Consultar muertes al corte',from:'2026-10-23',to:'2026-10-23',columns:['motherCode','deaths','mortalityPct'],filters:{motherCode:'T14-MADRE'}})});
+    expect(savedReport.status,await savedReport.clone().text()).toBe(200);
+    expect((await savedReport.json() as {rows:unknown[]}).rows).toContainEqual({motherCode:'T14-MADRE',deaths:0,mortalityPct:0});
     const identified=await create({code:'T14-LECHONA',animalType:'lechon',sex:'hembra',birthDate:'2026-10-23',entryDate:'2026-10-23',entryStageCode:'preinicio',originType:'interna',litterId,locationCode:'galpon_a',operationKey:'rep-t14-identificada'});
     expect(identified.status,await identified.clone().text()).toBe(201);
     const listed=await api('/api/reproduction/cycles?from=2026-06-01&to=2026-06-01&status=all');
