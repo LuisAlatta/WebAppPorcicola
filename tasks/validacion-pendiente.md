@@ -4,9 +4,11 @@ Actualizado el 8 de noviembre de 2026. Este documento distingue comprobaciones t
 
 ## Evidencia ejecutada en esta revisión
 
-- En la revisión actual, `npm test -- --maxWorkers=1`: **103/103** en 26 archivos; la repetición se ejecutó sola después de que una primera ejecución paralela alcanzara el timeout de T22. Los casos T22 y T23 pasaron al repetirse juntos de forma aislada (28,20 s).
-- `npm run test:e2e`: **15/15** en Chrome móvil emulado; incluye control de foco y restauración al cerrar el diálogo de actualización PWA.
-- `npm run typecheck`, `npm run lint`, `npm run build` y `git diff --check`: correctos en el árbol local revisado tras corregir el JSX de la ficha de animales y consolidar los diálogos accesibles.
+- `npm test -- --maxWorkers=1`: **112/112** en 30 archivos.
+- `npm run test:integration`: **86/86** en 20 archivos.
+- `npm run test:e2e`: **20/20** en Chrome móvil emulado de 412×915; incluye control de foco y restauración al cerrar el diálogo PWA, reintentos de alertas/animales/informes y corrección de fecha.
+- `npm run typecheck`, `npm run lint`, `npm run build`, `git diff --check` y el dry-run de Wrangler para producción: correctos. El dry-run mostró el binding `env.DB` a `webporcicola-produccion` y no subió el Worker.
+- Vitest usa un timeout predeterminado de 15 s; T17, T22 y T25 tienen límites explícitos de 15 s, 60 s y 120 s. Las aserciones no se redujeron.
 - `npx vitest run tests/operations.test.ts tests/restore.integration.test.ts --maxWorkers=1`: **5/5**, dos archivos; duración total 9,33 s, tiempo de pruebas 7,06 s en esta máquina. Son mediciones locales, no objetivos garantizados de recuperación remota.
 - ESLint de los cuatro componentes modificados, `src/utils/operations.ts` y los dos tests: correcto.
 - Ayuda local de Wrangler 4.156.1 para `d1 export`, `d1 execute` y `d1 time-travel`: consultada. No se ejecutó ninguna exportación, importación ni restauración remota durante esta revisión.
@@ -15,7 +17,7 @@ Actualizado el 8 de noviembre de 2026. Este documento distingue comprobaciones t
 
 No se habilita captura sin red ni sincronización de borradores. `fetchOperation` conserva en memoria una clave por método, ruta y hash del contenido hasta recibir y leer una respuesta JSON de éxito. El mapa no guarda el contenido del formulario y se limpia al aceptar una nueva sesión o cerrar sesión correctamente.
 
-Los formularios de Finanzas, Alimentación, Sanidad y Vacunas usan esa protección. La prueba simula un servidor que confirma el registro y después pierde la respuesta: el reenvío usa la misma clave y conserva un solo evento. También comprueba cambio de cantidad, dispositivo sin conexión sin petición y cuerpo JSON interrumpido después de recibir cabeceras de éxito.
+Los formularios de Finanzas, Alimentación, Sanidad, Vacunas, Alertas, Animales e Informes usan esa protección. Las pruebas de backend verifican replay de alertas atendidas/manuales, cambios de arete y disponibilidad, y creación/actualización/duplicación de informes; reutilizar una clave con contenido distinto da 409. Los E2E simulan persistencia seguida de pérdida de respuesta y verifican que el formulario conserva datos y clave. También se comprueba el intento sin conexión sin petición.
 
 Una recarga o cierre de pestaña pierde formularios e intentos en memoria. No hay reenvío automático después de recargar. Si el resultado anterior quedó incierto, el operario debe volver a consultar el listado antes de introducir una nueva operación. No presentar este alcance como captura offline ni como recuperación persistente de borradores.
 
@@ -32,11 +34,13 @@ Resultados comprobados:
 
 Esta prueba valida una copia lógica pequeña en el runtime local. **No acredita** Time Travel remoto, retención del plan Cloudflare, restauración de una base de producción, volumen real, ni un RPO/RTO operativo. El backup de la prueba es efímero: no contiene ni recupera información real de la granja.
 
+`tests/migrations-upgrade.integration.test.ts` aplica las migraciones 0001–0023 por etapas a una D1 sintética con datos ficticios; verifica backfills seleccionados, relaciones y `PRAGMA foreign_key_check`. No modifica ni valida la base de producción.
+
 ## Pendientes que impiden afirmar aceptación completa
 
 | Área | Evidencia disponible | Pendiente de cierre |
 |---|---|---|
-| Navegador real | Playwright Chrome móvil emulado15/15; `tests/routes.smoke.test.ts` conserva solo smoke de rutas. | Falta recorrido completo de formularios y evidencia del Android físico. |
+| Navegador real | Playwright Chrome móvil emulado 20/20; `tests/routes.smoke.test.ts` conserva solo smoke de rutas. | Falta recorrido completo de formularios y evidencia del Android físico. |
 | Android físico | Dispositivo objetivo confirmado: Samsung Galaxy A54. | Registrar Android y versión de Chrome reales; instalar desde HTTPS, icono, enlace directo, actualización con formulario abierto, teclado decimal, foco, scroll y descargas. |
 | Desconexión física | Prueba automatizada de intento estable y no envío offline. | Modo avión real, pérdida de respuesta, recarga, reinicio y cambio de cuenta; confirmar ausencia de falsas confirmaciones y duplicados. |
 | CA-20 | Implementado en `worker/litters.ts` y cubierto por `tests/litter-date.integration.test.ts`; E2E de formulario y reintento en `e2e/litter-date.browser.ts`. | Caso funcional cubierto automáticamente. Mantenerlo abierto solo si el informe final de T29 detecta una discrepancia; no describir la corrección como pendiente de implementación. |
@@ -48,7 +52,7 @@ Esta prueba valida una copia lógica pequeña en el runtime local. **No acredita
 
 ### CA-20 implementado
 
-La corrección de fecha real conserva fecha previa, autor y motivo; valida secuencia e inventario; reprograma solo dosis pendientes del parto y preserva las aplicadas/canceladas. La cobertura automatizada está en `tests/litter-date.integration.test.ts` e incluye concurrencia con generación, permisos, idempotencia, conflicto y rollback. El resultado vigente de la suite completa (103/103) está registrado en la evidencia de esta revisión.
+La corrección de fecha real conserva fecha previa, autor y motivo; valida secuencia e inventario; reprograma solo dosis pendientes del parto y preserva las aplicadas/canceladas. La cobertura automatizada está en `tests/litter-date.integration.test.ts` e incluye concurrencia con generación, permisos, idempotencia, conflicto y rollback. El resultado vigente de la suite completa (112/112) está registrado en la evidencia de esta revisión.
 
 ## Matriz para el ensayo de los 32 casos
 
