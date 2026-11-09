@@ -572,12 +572,11 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                aria-label="Crear aviso manual de granja"
                 onClick={() => setSection('crear')}
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconPlus size={14} />
-                  <span>Crear aviso</span>
+                  <span>Crear aviso manual</span>
                 </span>
               </button>
             </div>
@@ -672,7 +671,6 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                               <button
                                 type="button"
                                 className="btn btn-secondary btn-sm"
-                                aria-label={`Marcar como atendido aviso: ${alert.title}`}
                                 disabled={busy}
                                 onClick={() => {
                                   setAttendTarget(alert);
@@ -680,7 +678,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                               >
                                 <span className="inline-flex items-center justify-center gap-2 leading-none text-xs">
                                   <IconCheck size={14} />
-                                  <span>Atender aviso</span>
+                                  <span>Atender</span>
                                 </span>
                               </button>
                             )}
@@ -722,12 +720,11 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                 <button
                   type="button"
                   className="btn btn-primary btn-sm mt-3"
-                  aria-label="Crear aviso manual de granja"
                   onClick={() => setSection('crear')}
                 >
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconPlus size={14} />
-                    <span>Crear aviso manual</span>
+                    <span>Registrar nuevo aviso</span>
                   </span>
                 </button>
               </div>

@@ -290,7 +290,6 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
           <div className="filter-row mb-4">
             <button
               className="btn btn-secondary btn-sm"
-              aria-label="Descargar informe productivo en formato PDF"
               disabled={busy}
               onClick={() => void download('pdf')}
             >
@@ -301,7 +300,6 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
             </button>
             <button
               className="btn btn-secondary btn-sm"
-              aria-label="Descargar informe productivo en formato Excel"
               disabled={busy}
               onClick={() => void download('xlsx')}
             >

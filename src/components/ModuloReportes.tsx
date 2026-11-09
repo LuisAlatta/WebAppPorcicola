@@ -848,7 +848,6 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                 </button>
                 <button
                   className="btn btn-secondary"
-                  aria-label={editing ? 'Actualizar plantilla de reporte guardada' : 'Guardar configuración de reporte'}
                   disabled={busy || !name.trim() || !purpose.trim() || !columns.length}
                   onClick={() => void save()}
                 >
@@ -921,7 +920,6 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                   </button>
                   <button
                     className="btn btn-secondary btn-sm"
-                    aria-label="Descargar reporte completo en formato PDF"
                     disabled={busy}
                     onClick={() => void exportReport('pdf')}
                   >
@@ -932,7 +930,6 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                   </button>
                   <button
                     className="btn btn-secondary btn-sm"
-                    aria-label="Descargar reporte completo en formato Excel"
                     disabled={busy}
                     onClick={() => void exportReport('xlsx')}
                   >
