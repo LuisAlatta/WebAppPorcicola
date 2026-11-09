@@ -6,7 +6,7 @@ Estado del proyecto: **T01–T26 cerradas técnicamente. T27–T32 y Cierres 9�
 
 Verificación local anterior del 8/11: Vitest **103/103** en 26 archivos; Playwright **15/15** en Chrome móvil emulado; typecheck, lint, build y `git diff --check` correctos. Una ejecución paralela de Vitest tuvo un timeout aislado en T22; los dos casos afectados pasaron al repetirse en forma aislada y la suite completa pasó al ejecutarse sin otros verificadores simultáneos.
 
-Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; integración **118/118** en 22 archivos; Playwright **41/41**; typecheck, lint y build correctos. GitHub Actions runs `42671508451` y `42674249350` concluyeron `failure` con cero jobs y cero check runs reportados; el conector rechazó reintentarlos por falta de permiso de Actions. Las suites locales pasaron.
+Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; integración **118/118** en 22 archivos; Playwright **41/41**; typecheck, lint y build correctos. GitHub Actions run `42674620313` terminó `success` en commit `2b838f8`; todos los pasos pasaron. Los dos runs anteriores terminaron sin jobs; el último completó la validación remota.
 
 ## Orden de lectura
 
