@@ -8,14 +8,14 @@ Para iniciar la base local se necesita Node.js 24 y npm. Ejecutar `npm ci` y des
 
 ### Comandos de desarrollo y verificación
 
-- `npm run dev`: Inicia Vite con el entorno `staging` y D1 local por defecto. Para cargar el esquema local, usar `npx wrangler d1 migrations apply webporcicola-staging --local --env staging`. La base local es independiente de la remota.
+- `npm run dev`: Inicia Vite con la configuración de producción y D1 local emulada; no conecta por defecto a la base remota. Para cargar el esquema local, usar `npx wrangler d1 migrations apply webporcicola-produccion --local --env production`.
 - `npm run typecheck`: Valida los tipos con TypeScript estricto.
 - `npm run lint`: Ejecuta el linter ESLint.
 - `npm test`: Ejecuta toda la suite de pruebas con Vitest.
 - `npm run test:integration`: Ejecuta las pruebas de integración con Miniflare y D1.
 - `npm run test:e2e`: Ejecuta pruebas de navegador con Playwright, después de compilar la aplicación.
-- En PowerShell, `$env:CLOUDFLARE_ENV='staging'; npm run build` compila para staging. Para preparar producción, seleccionar `production` explícitamente. Sin entorno, el build no contiene el binding D1.
-- Antes de cualquier despliegue, comprobar la cuenta activa y ejecutar `npx wrangler deploy --config dist/web_porcicola/wrangler.json --dry-run`; verificar que el binding sea el entorno previsto. La publicación de producción sigue las condiciones de T31.
+- Sin seleccionar otro entorno, el build y el despliegue usan `production`, incluido el binding `webporcicola-produccion` y el cron diario de las 00:05 de Lima. Para cambiar a staging cuando se solicite, en PowerShell ejecutar `$env:CLOUDFLARE_ENV='staging'; npm run build`.
+- Antes de desplegar, comprobar la cuenta activa y ejecutar `npx wrangler deploy --config dist/web_porcicola_produccion/wrangler.json --dry-run`; verificar nombre del Worker, binding D1 y cron. El despliegue normal es `npx wrangler deploy --config dist/web_porcicola_produccion/wrangler.json --keep-vars`.
 
 ### Versiones compatibles fijadas
 

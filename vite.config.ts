@@ -4,8 +4,8 @@ import { cloudflare } from '@cloudflare/vite-plugin';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-export default defineConfig(({ command }) => {
-  if (command === 'serve' && !process.env.CLOUDFLARE_ENV) process.env.CLOUDFLARE_ENV = 'staging';
+export default defineConfig(() => {
+  if (!process.env.CLOUDFLARE_ENV) process.env.CLOUDFLARE_ENV = 'production';
   return {
   plugins: [
     react(),
