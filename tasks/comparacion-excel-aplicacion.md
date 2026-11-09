@@ -1,5 +1,20 @@
 # Comparación funcional del Excel y la aplicación
 
+> **Actualización del 9 de noviembre de 2026.** La comparación de abajo conserva el diagnóstico original. Desde entonces se implementaron las mejoras indicadas en la tabla siguiente; las afirmaciones antiguas de ausencia o defecto describen el estado anterior al trabajo realizado.
+
+| Punto del diagnóstico | Estado en el código actual |
+|---|---|
+| Movimientos dentro del mismo galpón y cambios de etapa | Implementados para animales y grupos, con movimientos de origen y destino, actualización de fichas y protección del saldo. |
+| Destete y mortalidad | Los movimientos internos de destete ya no incrementan las entradas externas; el destete puede actualizar las fichas individuales seleccionadas. |
+| Ficha reproductiva | Muestra servicios, partos, fechas, crías por sexo, peso promedio y causa de salida. |
+| Informes de pesos y nacimientos | Conectados a sus consultas, filtros, gráficos y exportaciones. |
+| Alimentación | Cuenta acumulados de lotes agotados y distingue cobertura diaria, por etapa, mensual y por alimento compartido. |
+| Sanidad | Dosis con unidad y retiro futuro; los flujos de vacuna y muerte se presentan por separado. Los tratamientos generales admiten corrección o anulación auditada y recalculan sus efectos. |
+| Camadas | La corrección de cantidades está disponible en pantalla y conserva la coherencia histórica del inventario. El plan postdestete usa la fecha real de la camada anterior cuando está registrada. |
+| Descarte y filtros | Hay salida por descarte sin venta ni muerte, vinculada a la camada cuando corresponde. El padrón filtra también por progenitores, raza, aptitud, procedencia y etapa de ingreso. |
+
+Estas mejoras están en el repositorio. La migración `0024_litter_discard.sql` es necesaria para las salidas individuales conectadas a camadas; un `push` no demuestra que la base ni la aplicación publicada estén actualizadas. La validación en dispositivos y el despliegue compatible siguen requiriendo una comprobación independiente.
+
 Fecha de revisión: 8 de noviembre de 2026. Código examinado: `ab49568` en `main`, antes de añadir este informe.
 
 ## Resultado
