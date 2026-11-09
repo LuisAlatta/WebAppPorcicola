@@ -1,10 +1,12 @@
 # Estado y guía para retomar el desarrollo
 
-Actualizado el 8 de noviembre de 2026. Esta carpeta contiene el contexto necesario para continuar.
+Actualizado el 9 de noviembre de 2026. Esta carpeta contiene el contexto necesario para continuar.
 
-Estado del proyecto: **T01–T26 cerradas técnicamente. T27–T32 y Cierres 9–10 siguen abiertos por validaciones físicas y operativas.** CA-20 ya tiene implementación y cobertura automatizada.
+Estado del proyecto: **T01–T26 cerradas técnicamente. T27–T32 y Cierres 9–10 siguen abiertos por validaciones físicas y operativas.** CA-20 ya tiene implementación y cobertura automatizada. Por instrucción del usuario, producción quedó publicada el 9/11: Worker `web-porcicola-produccion`, versión `fb1b9d29-225a-4189-b02a-8f880cf0f790`; D1 tiene 0001–0026 aplicadas. El cron de producción no se pudo añadir por el límite Free de cinco triggers.
 
-Verificación local del árbol actual: Vitest **103/103** en 26 archivos; Playwright **15/15** en Chrome móvil emulado; typecheck, lint, build y `git diff --check` correctos. Una ejecución paralela de Vitest tuvo un timeout aislado en T22; los dos casos afectados pasaron al repetirse en forma aislada y la suite completa pasó al ejecutarse sin otros verificadores simultáneos.
+Verificación local anterior del 8/11: Vitest **103/103** en 26 archivos; Playwright **15/15** en Chrome móvil emulado; typecheck, lint, build y `git diff --check` correctos. Una ejecución paralela de Vitest tuvo un timeout aislado en T22; los dos casos afectados pasaron al repetirse en forma aislada y la suite completa pasó al ejecutarse sin otros verificadores simultáneos.
+
+Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; integración **118/118** en 22 archivos; Playwright **41/41**; typecheck, lint y build correctos. GitHub Actions run `42671508451` concluyó `failure` con cero jobs y cero check runs reportados por la API; se volverá a comprobar tras el siguiente push.
 
 ## Orden de lectura
 
@@ -162,17 +164,17 @@ Las configuraciones están en `wrangler.jsonc`:
 | Pruebas | `web-porcicola-staging` | `webporcicola-staging` | `0e990468-3530-4e3a-a1df-530721ce38d7` |
 | Producción | `web-porcicola-produccion` | `webporcicola-produccion` | `1a6f4451-bde8-46cf-beae-ed4dd76d34c0` |
 
-Ambas bases fueron creadas por separado. La de producción estaba vacía al crearla. La configuración por defecto no declara un binding D1. El plugin de Vite selecciona un entorno nombrado con `CLOUDFLARE_ENV=staging` o `CLOUDFLARE_ENV=production`; los datos locales y remotos son independientes. En PowerShell, para compilar staging, ejecutar `$env:CLOUDFLARE_ENV='staging'; npm run build`. Confirmar que los bindings generados corresponden al entorno deseado antes de operar.
+Ambas bases fueron creadas por separado. El build y el despliegue predeterminados usan producción; el entorno staging debe seleccionarse explícitamente con `CLOUDFLARE_ENV=staging` cuando el usuario lo pida. `npm run dev` usa D1 local emulada, no la base remota. Los datos locales y remotos son independientes. Antes de desplegar, confirmar la cuenta, el Worker, el binding D1 y el cron en la configuración generada.
 
-Todavía faltan definir y configurar los secretos separados y un dominio propio. El Worker de staging está en `https://web-porcicola-staging.luisalatta.workers.dev`, versión `95cb06c3-cfa7-448f-b524-64562ffd4cef`, con migraciones 0001–0023 y cron `5 5 * * *`; producción está en `https://web-porcicola-produccion.luisalatta.workers.dev` con migraciones 0001–0005. El administrador inicial de cada entorno se insertó directo en D1 para que `/api/auth/bootstrap` quedara cerrado antes de publicar. Cambiar la contraseña inicial débil desde el módulo de administración. No usar datos reales para pruebas ni escribir en la base de producción para comprobar una función. No poner secretos en archivos rastreados ni en el registro de avance.
+El Worker de staging está en `https://web-porcicola-staging.luisalatta.workers.dev`, versión `6e7449b2-d5e6-4def-b45d-bf9d30890bf4`, con D1 actualizado y cron `5 5 * * *`. Producción está en `https://web-porcicola-produccion.luisalatta.workers.dev`, versión `fb1b9d29-225a-4189-b02a-8f880cf0f790`, con migraciones 0001–0026 y 53 tablas. Cloudflare Free rechazó el cron productivo porque la cuenta ya alcanzó cinco triggers. El dominio propio no está configurado. El administrador inicial de cada entorno se insertó directamente en D1 para que `/api/auth/bootstrap` quedara cerrado antes de publicar. No usar datos reales para pruebas ni escribir en la base de producción para comprobar una función. No poner secretos en archivos rastreados ni en el registro de avance.
 
 ## Pasos concretos para continuar
 
-1. Repetir Vitest, Playwright, typecheck, lint y build en el mismo commit y registrar el resultado vigente.
+1. Completar y registrar las suites de regresión del commit `c3661b1` y la verificación posterior al despliegue.
 2. Cerrar T27–T28 en el Galaxy A54 con Chrome real; registrar instalación, recorrido, modo avión, pérdida de respuesta, recarga, reinicio y cambio de usuario.
 3. Cerrar T29–T30 con el informe de los 32 casos, objetivos de recuperación acordados y piloto con conteo/caja conciliados y aceptación del responsable.
-4. Completar T31–T32 después del piloto: revisar bindings/secretos/dominio, aplicar las migraciones pendientes en producción con ventana y respaldo acordados, verificar rutas y permisos, y registrar primer cierre diario y cron real.
+4. Completar T31–T32: probar producción autenticado, acordar el dominio propio si se requiere, habilitar un slot de cron sin desactivar otros Workers, observar el primer cierre diario y obtener conciliación del responsable.
 
 ## Instrucción para continuar
 
-Lee esta carpeta y continúa con los cierres físicos y operativos de T27–T32. CA-20 está implementado; no vuelvas a marcarlo como pendiente. Revisa `git status` antes de editar y conserva los cambios locales existentes. No afirmes que el piloto, la aceptación física o el primer cierre diario se ejecutaron sin evidencia. La D1 de producción requiere las migraciones 0006–0023; no desplegar ni aplicar migraciones sin revisar el respaldo, bindings y autorización vigente.
+Lee esta carpeta y continúa con los cierres físicos y operativos de T27–T32. CA-20 está implementado; no vuelvas a marcarlo como pendiente. Revisa `git status` antes de editar y conserva los cambios locales existentes. No afirmes que el piloto, la aceptación física o el primer cierre diario se ejecutaron sin evidencia. Producción es el destino predeterminado; usa staging solo cuando el usuario lo pida. D1 de producción tiene 0001–0026 aplicadas. No escribas datos de prueba en producción; revisa cuenta y bindings antes de operar. El cron requiere liberar un slot o aumentar el límite de la cuenta; no desactives otros servicios por cuenta propia.
