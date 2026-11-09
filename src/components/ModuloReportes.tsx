@@ -43,6 +43,8 @@ type Dashboard = {
   period: { from: string | null; to: string | null };
   barnsIncluded: string | number;
   totalAnimals: number;
+  identifiedAnimals: number;
+  unidentifiedAnimals: number;
   animalsByType: { type: string; total: number }[];
   barnCount: number;
   pendingVaccines: number;
@@ -519,7 +521,9 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
 
           <div className="filter-row">
             {[
-              ['Animales activos', dashboard?.totalAnimals],
+              ['Cabezas en inventario', dashboard?.totalAnimals],
+              ['Animales identificados', dashboard?.identifiedAnimals],
+              ['Pendientes de identificar', dashboard?.unidentifiedAnimals],
               ['Galpones de granja', dashboard?.barnCount],
               ['Vacunas pendientes al corte', dashboard?.pendingVaccines],
               ['Partos próximos (7 días)', dashboard?.upcomingFarrowings],
