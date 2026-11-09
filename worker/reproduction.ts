@@ -112,12 +112,17 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
     const reproductiveStatus = String(row.reproductive_status);
     let litter = null;
     if (litterRow) {
-      const litterEvents = await db.prepare('SELECT event_type,sex,quantity FROM litter_events WHERE litter_id=?').bind(litterRow.id).all<{event_type:string;sex:string;quantity:number}>();
+      const [litterEvents, identifiedAnimals] = await Promise.all([
+        db.prepare('SELECT event_type,sex,quantity FROM litter_events WHERE litter_id=?').bind(litterRow.id).all<{event_type:string;sex:string;quantity:number}>(),
+        db.prepare(`SELECT a.code,a.sex FROM animals a WHERE a.litter_id=? AND a.status='activo' AND a.current_stage_code='preinicio'
+          AND a.barn_id=? AND a.location_code IS ? AND a.lot_code IS ? AND NOT EXISTS (SELECT 1 FROM inventory_movements m
+            JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=a.id AND m.litter_id=a.litter_id AND m.quantity<0 AND o.operation_type='litter.weaning') ORDER BY a.code`).bind(litterRow.id,litterRow.barn_id,litterRow.location_code,litterRow.lot_code).all<{code:string;sex:string}>(),
+      ]);
       const counts = { macho:Number(litterRow.male_alive), hembra:Number(litterRow.female_alive), pendiente:Number(litterRow.unsexed_alive) };
       for (const item of litterEvents.results ?? []) counts[item.sex as keyof typeof counts] += item.event_type === 'adoption_in' ? Number(item.quantity) : -Number(item.quantity);
       litter = { id:String(litterRow.id), farrowingDate:String(litterRow.farrowing_date), liveCount:Number(litterRow.live_count), maleAlive:counts.macho, femaleAlive:counts.hembra, unsexedAlive:counts.pendiente,
         stillbornCount:Number(litterRow.stillborn_count), averageWeightKg:litterRow.average_weight_kg===null?null:Number(litterRow.average_weight_kg), expectedWeaningDate:litterRow.expected_weaning_date===null?null:String(litterRow.expected_weaning_date),
-        actualWeaningDate:litterRow.actual_weaning_date===null?null:String(litterRow.actual_weaning_date) };
+        actualWeaningDate:litterRow.actual_weaning_date===null?null:String(litterRow.actual_weaning_date), identifiedAnimals:identifiedAnimals.results ?? [] };
     }
     return { id: String(row.id), femaleAnimalId: Number(row.female_animal_id), femaleCode: String(row.female_code), femaleAlias: row.female_alias === null ? null : String(row.female_alias),
       cycleNumber: Number(row.cycle_number), cycleStatus: String(row.cycle_status), reproductiveStatus,

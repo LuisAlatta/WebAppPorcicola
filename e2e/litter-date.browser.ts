@@ -9,7 +9,7 @@ async function setup(page:Page,role='veterinario'){
     serviceAnchorDate:'2026-02-26',gestationDays:114,probableFarrowingDate:'2026-06-20',dueDateSource:'calculated',dueDateReason:null,
     daysRemaining:0,dueLabel:'Parto registrado',barnId:1,barnName:'Galpón A',locationCode:'galpon_a',lotCode:null,femaleBreed:null,aptitude:null,
     lastFarrowingDate:currentDate,observations:null,antecedent:false,services:[],events:[],weaningPlan:null,
-    litter:{id:'litter-date-1',farrowingDate:currentDate,liveCount:8,maleAlive:4,femaleAlive:4,unsexedAlive:0,stillbornCount:0,averageWeightKg:1.5,expectedWeaningDate:'2026-07-18',actualWeaningDate:null},
+    litter:{id:'litter-date-1',farrowingDate:currentDate,liveCount:8,maleAlive:4,femaleAlive:4,unsexedAlive:0,stillbornCount:0,averageWeightKg:1.5,expectedWeaningDate:'2026-07-18',actualWeaningDate:null,identifiedAnimals:[{code:'LECHONA-01',sex:'hembra'}]},
   }]}}));
   return{setDate:(date:string)=>{currentDate=date;}};
 }
@@ -31,6 +31,18 @@ test('conflicto de fecha preserva formulario y reintento usa la misma operación
   await expect(page.getByRole('form',{name:'Corrección de fecha real del parto'})).toHaveCount(0);
   await expect(page.getByText('Fecha real del parto: 2026-06-19.',{exact:false})).toBeVisible();
   expect(bodies).toHaveLength(2);expect(bodies[0]).toMatchObject({farrowingDate:'2026-06-19',expectedCurrentDate:'2026-06-20',reason:'Fecha comprobada en el cuaderno'});expect(bodies[1].operationKey).toBe(bodies[0].operationKey);
+});
+
+test('destete envía las fichas identificadas seleccionadas',async({page})=>{
+  await setup(page,'responsable');let body:Record<string,unknown>|undefined;
+  await page.route('**/api/reproduction/litters/litter-date-1/events',async route=>{body=route.request().postDataJSON() as Record<string,unknown>;await route.fulfill({status:201,json:{ok:true}});});
+  await page.goto('/reproduccion');await page.getByRole('button',{name:'Registrar baja, adopción o destete'}).click();
+  await page.locator('input[name="effectiveDate"]').fill('2026-06-21');
+  await page.locator('input[name="quantity"]').fill('2');await page.locator('input[name="weightKg"]').fill('6.2');
+  await page.getByRole('checkbox',{name:/LECHONA-01/}).check();await page.locator('input[name="reason"]').fill('Destete parcial registrado');
+  await page.getByRole('button',{name:'Guardar evento de camada'}).click();
+  await expect(page.getByRole('status')).toContainText('Destete parcial registrado');
+  expect(body).toMatchObject({eventType:'weaning',sex:'hembra',quantity:'2',animalCodes:['LECHONA-01']});
 });
 
 test('respuesta perdida conserva datos y clave hasta recuperar corrección confirmada',async({page})=>{

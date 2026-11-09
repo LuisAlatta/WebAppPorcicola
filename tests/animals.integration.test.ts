@@ -664,6 +664,17 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(replay.status).toBe(200);
   });
 
+  it('rechaza dos cambios concurrentes de etapa para la misma ficha', async () => {
+    const created=await create({code:'ETAPA-CONCURRENTE',entryDate:'2026-11-06',entryStageCode:'preinicio',originType:'nacimiento',locationCode:'galpon_a',lotCode:'lote_engorde_a'});
+    expect(created.status).toBe(201);
+    const seed=await api('/api/inventory/movements',{method:'POST',body:JSON.stringify({movementType:'initial',effectiveDate:'2026-11-06',barnId:1,locationCode:'galpon_a',lotCode:'lote_engorde_a',stageCode:'preinicio',sex:'hembra',quantity:2,reason:'Saldo adicional concurrente',operationKey:'etapa-concurrente-saldo'})});
+    expect(seed.status,await seed.clone().text()).toBe(201);
+    const responses=await Promise.all(['inicio','engorde'].map((stage,index)=>api('/api/animals/ETAPA-CONCURRENTE/transfer',{method:'POST',body:JSON.stringify({destinationBarnId:1,locationCode:'galpon_a',lotCode:'lote_engorde_a',destinationStageCode:stage,effectiveDate:index===0?'2026-11-07':'2026-11-08',reason:'Cambio concurrente',operationKey:`etapa-concurrente-${index}`})})));
+    expect(responses.map(response=>response.status).sort(),JSON.stringify(await Promise.all(responses.map(response=>response.clone().text())))).toEqual([201,409]);
+    const count=await db.prepare("SELECT COUNT(DISTINCT operation_log_id) AS n FROM inventory_movements WHERE animal_id=(SELECT id FROM animals WHERE code='ETAPA-CONCURRENTE') AND movement_type='transfer_in'").first();
+    expect(count).toMatchObject({n:1});
+  });
+
   it('impide cambiar por grupo una cabeza que ya tiene ficha individual', async () => {
     const created = await create({ code: 'ETAPA-IDENTIFICADA', entryDate: '2026-11-06', entryStageCode: 'inicio', originType: 'nacimiento', locationCode: null, lotCode: 'lote_engorde_a' });
     expect(created.status).toBe(201);
@@ -1005,9 +1016,29 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(death.status,await death.clone().text()).toBe(201);
     const deathReplay=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'death',effectiveDate:'2026-10-24',sex:'macho',quantity:1,cause:'Debilidad neonatal',reason:'Baja observada en lactancia',operationKey:'rep-t14-death'})});
     expect(deathReplay.status).toBe(200);
+    const identified=await create({code:'T14-LECHONA',animalType:'lechon',sex:'hembra',birthDate:'2026-10-23',entryDate:'2026-10-23',entryStageCode:'preinicio',originType:'interna',litterId,locationCode:'galpon_a',operationKey:'rep-t14-identificada'});
+    expect(identified.status,await identified.clone().text()).toBe(201);
+    const listed=await api('/api/reproduction/cycles?from=2026-06-01&to=2026-06-01&status=all');
+    const listedCycle=(await listed.json() as {cycles:{id:string;litter:{identifiedAnimals:{code:string;sex:string}[]}|null}[]}).cycles.find(item=>item.id===cycleId);
+    expect(listedCycle?.litter?.identifiedAnimals).toContainEqual({code:'T14-LECHONA',sex:'hembra'});
+    const missingSelection=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'weaning',effectiveDate:'2026-10-30',sex:'hembra',quantity:3,weightKg:6.2,destinationStageCode:'inicio',destinationBarnId:1,reason:'Destete sin identificar',operationKey:'rep-t14-missing-selection'})});
+    expect(missingSelection.status).toBe(409);
+    const invalidStage=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'weaning',effectiveDate:'2026-10-30',sex:'hembra',quantity:1,animalCodes:['T14-LECHONA'],weightKg:6.2,destinationStageCode:'preinicio',destinationBarnId:1,reason:'Destete etapa inválida',operationKey:'rep-t14-invalid-stage'})});
+    expect(invalidStage.status).toBe(400);
+    const invalidDeath=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'death',effectiveDate:'2026-10-30',sex:'hembra',quantity:3,cause:'Prueba',reason:'Baja sin seleccionar ficha',operationKey:'rep-t14-invalid-death'})});
+    expect(invalidDeath.status).toBe(409);
     const beforeWeaning=(await inventoryTotals('2026-11-08')).summary.total;
-    const femaleWean=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'weaning',effectiveDate:'2026-10-30',sex:'hembra',quantity:2,weightKg:6.2,destinationStageCode:'inicio',destinationBarnId:1,reason:'Destete parcial hembras',operationKey:'rep-t14-wean-f'})});
+    const femalePayload={eventType:'weaning',effectiveDate:'2026-10-30',sex:'hembra',quantity:2,animalCodes:['T14-LECHONA'],weightKg:6.2,destinationStageCode:'inicio',destinationBarnId:1,reason:'Destete parcial hembras',operationKey:'rep-t14-wean-f'};
+    const femaleWean=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify(femalePayload)});
     expect(femaleWean.status,await femaleWean.clone().text()).toBe(201);
+    expect(await db.prepare("SELECT current_stage_code,barn_id,location_code FROM animals WHERE code='T14-LECHONA'").first()).toMatchObject({current_stage_code:'inicio',barn_id:1,location_code:null});
+    expect(await db.prepare("SELECT stage_code FROM animal_location_history WHERE animal_id=(SELECT id FROM animals WHERE code='T14-LECHONA') AND valid_until IS NULL").first()).toMatchObject({stage_code:'inicio'});
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM inventory_movements WHERE animal_id=(SELECT id FROM animals WHERE code='T14-LECHONA') AND operation_log_id=(SELECT id FROM operation_log WHERE operation_key='rep-t14-wean-f')").first()).toMatchObject({n:2});
+    expect((await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify(femalePayload)})).status).toBe(200);
+    const returned=await api('/api/animals/T14-LECHONA/transfer',{method:'POST',body:JSON.stringify({destinationBarnId:1,locationCode:'galpon_a',lotCode:null,destinationStageCode:'preinicio',effectiveDate:'2026-10-31',reason:'Traslado posterior',operationKey:'rep-t14-return-preinicio'})});
+    expect(returned.status,await returned.clone().text()).toBe(201);
+    const repeated=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({...femalePayload,effectiveDate:'2026-11-01',quantity:1,operationKey:'rep-t14-wean-again'})});
+    expect(repeated.status).toBe(409);
     const maleWean=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'weaning',effectiveDate:'2026-10-30',sex:'macho',quantity:4,weightKg:6.4,destinationStageCode:'inicio',destinationBarnId:1,reason:'Destete parcial machos',operationKey:'rep-t14-wean-m'})});
     expect(maleWean.status,await maleWean.clone().text()).toBe(201);
     const remaining=await api(`/api/reproduction/cycles?from=2026-06-01&to=2026-06-01&status=all`);
@@ -1016,7 +1047,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const finalInventory=await inventoryTotals('2026-11-08');
     expect(finalInventory.summary.total).toMatchObject({entries:beforeWeaning.entries,exits:beforeWeaning.exits,mortalityPct:beforeWeaning.mortalityPct});
     expect(finalInventory.summary.total.available).toBe(before+7);
-    expect(finalInventory.balances.filter((row)=>row.stageCode==='inicio').reduce((sum,row)=>sum+row.heads,0)).toBeGreaterThanOrEqual(6);
+    expect(finalInventory.balances.filter((row)=>row.stageCode==='inicio').reduce((sum,row)=>sum+row.heads,0)).toBeGreaterThanOrEqual(5);
     const adoptSow=await create({code:'T14-ADOPT-MADRE',animalType:'cerda',sex:'hembra',birthDate:'2024-01-01',entryDate:'2026-01-01',entryStageCode:'gestacion',originType:'compra',operationKey:'ani-t14-adopt-sow'});
     expect(adoptSow.status).toBe(201);
     const adoptCycleRes=await api('/api/reproduction/cycles',{method:'POST',body:JSON.stringify({femaleCode:'T14-ADOPT-MADRE',serviceDate:'2026-06-02',serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'Prueba adopción',operationKey:'rep-t14-adopt-cycle'})});
@@ -1026,6 +1057,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const inventoryBeforeAdoption=(await inventoryTotals('2026-11-08')).summary.total.available;
     const adopted=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'adoption',effectiveDate:'2026-11-01',sex:'hembra',quantity:1,destinationLitterId:adoptTargetLitter,reason:'Adopción por camada numerosa',operationKey:'rep-t14-adoption'})});
     expect(adopted.status,await adopted.clone().text()).toBe(201);
+    expect((await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify(femalePayload)})).status).toBe(200);
     expect((await inventoryTotals('2026-11-08')).summary.total.available).toBe(inventoryBeforeAdoption);
     expect(await db.prepare("SELECT COUNT(*) AS n FROM litter_events WHERE operation_log_id=(SELECT id FROM operation_log WHERE operation_key='rep-t14-adoption') AND event_type IN ('adoption_in','adoption_out')").first()).toMatchObject({n:2});
     const finalWeaning=await api(`/api/reproduction/litters/${adoptTargetLitter}/events`,{method:'POST',body:JSON.stringify({eventType:'weaning',effectiveDate:'2026-11-04',sex:'hembra',quantity:2,weightKg:6.3,destinationStageCode:'inicio',destinationBarnId:1,reason:'Destete completo camada receptora',operationKey:'rep-t14-wean-final'})});
