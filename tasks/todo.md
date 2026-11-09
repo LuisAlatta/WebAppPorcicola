@@ -70,7 +70,7 @@ Estado actual: T01–T26 completadas técnicamente y cubiertas por el CI de `ba8
 
 ## 10. Lanzamiento
 
-- [ ] T29 · Pruebas integrales y ensayo de restauración · dependencias 26,27,28. Suite automatizada y restauración remota de una D1 pequeña disponibles. Falta el informe de resultados de los 32 casos y acordar/medir volumen, RPO y RTO.
+- [ ] T29 · Pruebas integrales y ensayo de restauración · dependencias 26,27,28. CI del 9/11: 145 unitarias, 118 de integración y 35 E2E aprobadas; restauración remota de copia pequeña y tamaño actual de D1 medidos. Falta el resultado esperado/observado por cada uno de los 32 casos, ensayo con volumen/concurrencia acordados y objetivos RPO/RTO validados por el responsable.
 - [ ] T30 · Piloto con datos iniciales y los cuatro perfiles · dependencias 29. Plantillas y procedimiento preparados; el piloto, conteo físico, conciliación de caja y aceptación del responsable aún no están registrados.
 - [ ] T31 · Publicar y comprobar producción · dependencias 30. Wrangler encuentra pendientes en producción las migraciones 0024–0026. Después de cerrar T30 faltan aplicar el esquema, desplegar el Worker compatible, revisar secretos/dominio/HTTPS, configurar cron de producción y ejecutar la verificación controlada.
 - [ ] T32 · Seguimiento y entrega operativa · dependencias 31. Falta observar el primer cierre diario y una ejecución real del cron, registrar responsables y obtener conciliación firmada.
