@@ -24,4 +24,4 @@ Registrar por paso: fecha/hora Lima, versión Worker/commit/esquema, actor, espe
 
 ## Condiciones de salida
 
-T29 debe cerrar el informe de sus 32 casos; CA-20 ya tiene implementación y pruebas automatizadas. Después del piloto sin incidencias de integridad/aislamiento se podrá completar T31 con respaldo, bindings y migraciones revisados. T32 exige observar el primer cierre diario y el cron reales. Objetivos de recuperación y volumen aquí propuestos deben medirse antes de una garantía operativa.
+T29 debe cerrar el informe de sus 32 casos; CA-20 ya tiene implementación y pruebas automatizadas. A solicitud del usuario, D1 de producción recibió las migraciones 0006–0023 el 8/11 hora Lima, antes de completar el piloto. Se aplicaron esquema, backfills y valores iniciales previstos; no se cargaron datos de prueba. Esto no cierra T31: después del piloto sin incidencias de integridad/aislamiento se deben verificar bindings/secretos/dominio, desplegar el Worker compatible y hacer pruebas controladas. T32 exige observar el primer cierre diario y el cron reales. Objetivos de recuperación y volumen aquí propuestos deben medirse antes de una garantía operativa.
