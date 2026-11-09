@@ -48,6 +48,25 @@ function kg(value:unknown){
   if(!Number.isFinite(n)||n<=0||Math.round(n*1000)!==n*1000) throw new ApiError(400,'Los kg deben ser positivos con hasta 3 decimales');
   return n;
 }
+
+function lotValuation(movements:Row[]){
+  let balanceKg=0;let valueMinor=0;let averageMinor=0;
+  for(const movement of movements){
+    const delta=Number(movement.stock_delta_kg);
+    if(delta>0){
+      // Preserve already valued entries, including reintegros from older ledgers.
+      const incomingValue=Number(movement.total_cost_minor);
+      balanceKg+=delta;valueMinor+=incomingValue;
+      averageMinor=balanceKg>0?valueMinor/balanceKg:averageMinor;
+    }else{
+      const outgoingValue=movement.movement_type==='return_supplier'?Number(movement.total_cost_minor):Math.round(-delta*averageMinor);
+      balanceKg=Number((balanceKg+delta).toFixed(3));valueMinor-=outgoingValue;
+      if(balanceKg===0)valueMinor=0;
+      else if(balanceKg>0)averageMinor=Math.max(0,valueMinor/balanceKg);
+    }
+  }
+  return {balanceKg,averageMinor};
+}
 export async function listFeedWarehouses(db:D1Database,scope:FeedScope={}){
   const allowed=await allowedWarehouses(db,scope);
   const rows=await db.prepare(`SELECT w.id,w.code,w.name,w.location,w.barn_id,w.is_active,b.name AS barn_name
@@ -129,9 +148,9 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
   const feedCode=text(input.feedCode,'Alimento',60,true)!;
   const lotCode=text(input.lotCode,'Lote de alimento',80,true)!;
   const quantityKg=kg(input.quantityKg);
-  const costPerKg=Number(input.costPerKg);
-  if(!Number.isFinite(costPerKg)||costPerKg<0||Math.round(costPerKg*100)!==costPerKg*100)throw new ApiError(400,'El costo por kg debe tener hasta dos decimales');
-  const unitCostMinor=Math.round(costPerKg*100);const totalCostMinor=Math.round(quantityKg*unitCostMinor);
+  const enteredCost=['opening','purchase'].includes(movementType)?Number(input.costPerKg):null;
+  if(enteredCost!==null&&(!Number.isFinite(enteredCost)||enteredCost<0||Math.round(enteredCost*100)!==enteredCost*100))throw new ApiError(400,'El costo por kg debe tener hasta dos decimales');
+  let unitCostMinor=enteredCost===null?0:Math.round(enteredCost*100);let totalCostMinor=Math.round(quantityKg*unitCostMinor);
   if(movementType==='purchase'&&totalCostMinor<=0)throw new ApiError(400,'La compra de alimento debe tener un costo positivo para generar el egreso asociado');
   const currencyCode=String(input.currencyCode??'PEN').trim().toUpperCase();if(currencyCode!=='PEN')throw new ApiError(400,'Las compras de alimento se valoran en PEN para mantener consistente el costo por lote');const documentReference=text(input.documentReference,'Referencia del documento',100);
   const supplier=text(input.supplier,'Proveedor',160);
@@ -156,13 +175,33 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
     if(scope.allowedBarnNames&&!scope.allowedBarnNames.includes(barn.name))throw new ApiError(403,'No tiene acceso al galpón destino');
   }else if(animalCode||input.destinationBarnId){throw new ApiError(400,'El destino solo se indica en una entrega/consumo');}
   if(movementType==='purchase'&&!supplier)throw new ApiError(400,'Indique el proveedor de la compra');
+  const payload={movementType,effectiveDate,warehouseId,feedCode,lotCode,supplier,quantityKg,costPerKg:enteredCost,currencyCode,documentReference,destinationBarnId,animalId,reversesMovementId:input.reversesMovementId??null,reason,turn:input.turn??null};
+  const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload).catch(async(error:unknown)=>{
+    // Existing signed operations included the former editable cost. Only an
+    // exact match of that original payload may replay after this change.
+    if(error instanceof ApiError&&error.status===409&&enteredCost===null&&input.costPerKg!==undefined){
+      return lookupExistingOperation(db,actorUserId,input.operationKey,{...payload,costPerKg:Number(input.costPerKg)});
+    }
+    throw error;
+  });
+  if(replay)return {replayed:true,movement:replay.result};
+  const lotRows=(await db.prepare('SELECT id,movement_type,effective_date,quantity_kg,stock_delta_kg,total_cost_minor FROM feed_movements WHERE warehouse_id=? AND feed_code=? AND lot_code=? ORDER BY effective_date,id').bind(warehouseId,feedCode,lotCode).all<Row>()).results??[];
+  const latest=lotRows.at(-1);
+  if(latest&&effectiveDate<String(latest.effective_date))throw new ApiError(409,'El lote tiene movimientos posteriores; registre la corrección en la última fecha o en una posterior para conservar su valorización');
+  const valuation=lotValuation(lotRows);
+  if(['delivery','waste','return_in'].includes(movementType)){
+    if(!lotRows.length)throw new ApiError(409,'El lote no tiene una entrada valorizada en el almacén');
+    unitCostMinor=Math.round(valuation.averageMinor);
+    totalCostMinor=Math.round(quantityKg*valuation.averageMinor);
+  }
   let reversedPurchase:Row|null=null;let reversedFinancial:Row|null=null;
   if(movementType==='return_supplier'){
     const originalId=Number(input.reversesMovementId);if(!Number.isInteger(originalId)||originalId<=0)throw new ApiError(400,'Seleccione la compra original que se devuelve');
     reversedPurchase=await db.prepare(`SELECT * FROM feed_movements WHERE id=? AND movement_type='purchase' AND warehouse_id=? AND feed_code=? AND lot_code=?`).bind(originalId,warehouseId,feedCode,lotCode).first<Row>();
     if(!reversedPurchase)throw new ApiError(400,'La compra original no coincide con el almacén, alimento y lote');
     if(effectiveDate<String(reversedPurchase.effective_date))throw new ApiError(400,'La devolución no puede ser anterior a la compra');
-    if(quantityKg!==Number(reversedPurchase.quantity_kg)||unitCostMinor!==Number(reversedPurchase.unit_cost_minor))throw new ApiError(400,'La devolución debe corresponder a la cantidad y costo de la compra completa');
+    if(quantityKg!==Number(reversedPurchase.quantity_kg))throw new ApiError(400,'La devolución debe corresponder a la cantidad de la compra completa');
+    unitCostMinor=Number(reversedPurchase.unit_cost_minor);totalCostMinor=Number(reversedPurchase.total_cost_minor);
     const returned=await db.prepare('SELECT id FROM feed_movements WHERE reverses_movement_id=?').bind(originalId).first();if(returned)throw new ApiError(409,'La compra de alimento ya tiene una devolución registrada');
     const purchaseFinance=await db.prepare("SELECT * FROM financial_entries WHERE source_type='feed_purchase' AND source_id=? AND reversed_at IS NULL").bind(String(originalId)).first<Row>();
     if(!purchaseFinance)throw new ApiError(409,'No se encontró un egreso vigente ligado a la compra original');if(Number(purchaseFinance.amount_minor)!==totalCostMinor)throw new ApiError(400,'El importe de devolución debe coincidir con el pago original');reversedFinancial=purchaseFinance;
@@ -172,10 +211,8 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
     if(Number(currentStock?.available??0)!==quantityKg)throw new ApiError(409,'El saldo del lote no coincide con la compra completa que se desea devolver');
   }
   if(movementType==='waste'&&!reason)throw new ApiError(400,'Indique el motivo de la merma');
-  const payload={movementType,effectiveDate,warehouseId,feedCode,lotCode,supplier,quantityKg,costPerKg,currencyCode,documentReference,destinationBarnId,animalId,reversesMovementId:input.reversesMovementId??null,reason,turn:input.turn??null};
-  const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);
-  if(replay)return {replayed:true,movement:replay.result};
-  const id=Date.now()*1000+Math.floor(Math.random()*1000);
+  const costPerKg=unitCostMinor/100;
+  const id=lotRows.reduce((next,row)=>Math.max(next,Number(row.id)+1),Date.now()*1000+Math.floor(Math.random()*1000));
   const positive=['opening','purchase','return_in'].includes(movementType);const stockDeltaKg=positive?quantityKg:-quantityKg;
   const warehouseBarnId=warehouse.barn_id===null?null:Number(warehouse.barn_id);const warehouseBarn=warehouseBarnId===null?null:await db.prepare('SELECT name FROM barns WHERE id=?').bind(warehouseBarnId).first<{name:string}>();const financialEntryId=['purchase','return_supplier'].includes(movementType)?Number((await db.prepare('SELECT COALESCE(MAX(id),0)+1 AS id FROM financial_entries').first<{id:number}>())?.id??1):null;
   const claim=await createOperationClaim({operationKey:input.operationKey,operationType:`feed.${movementType}`,authorUserId:actorUserId,entityType:'feed_movement',entityId:id,barnId:destinationBarnId??warehouseBarnId,effectiveDate,payload,result:{id,movementType,effectiveDate,warehouseId,feedCode,lotCode,quantityKg,stockDeltaKg,costPerKg,totalCost:totalCostMinor/100,destinationBarnId,animalId,financialEntryId}});
@@ -204,11 +241,12 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
     SELECT CASE WHEN COALESCE(MIN(running),0)>=0 THEN 0 ELSE -1 END FROM (
       SELECT SUM(stock_delta_kg) OVER (ORDER BY effective_date,id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running
       FROM feed_movements WHERE warehouse_id=? AND feed_code=? AND lot_code=?)`).bind(warehouseId,feedCode,lotCode);
-  const statements=[db.prepare(`INSERT INTO feed_movements(id,operation_log_id,warehouse_id,movement_type,effective_date,feed_code,lot_code,supplier,quantity_kg,stock_delta_kg,unit_cost_minor,total_cost_minor,destination_barn_id,animal_id,reason,created_by_user_id,created_at,currency_code,document_reference,reverses_movement_id)
+  const valuationGuard=db.prepare(`INSERT INTO feed_stock_guard(guard_id) SELECT CASE WHEN COUNT(*)=? AND COALESCE(MAX(id),0)=? THEN 0 ELSE -1 END FROM feed_movements WHERE warehouse_id=? AND feed_code=? AND lot_code=?`).bind(lotRows.length,lotRows.reduce((max,row)=>Math.max(max,Number(row.id)),0),warehouseId,feedCode,lotCode);
+  const statements=[valuationGuard,db.prepare(`INSERT INTO feed_movements(id,operation_log_id,warehouse_id,movement_type,effective_date,feed_code,lot_code,supplier,quantity_kg,stock_delta_kg,unit_cost_minor,total_cost_minor,destination_barn_id,animal_id,reason,created_by_user_id,created_at,currency_code,document_reference,reverses_movement_id)
     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,claim.id,warehouseId,movementType,effectiveDate,feedCode,lotCode,supplier,quantityKg,stockDeltaKg,unitCostMinor,totalCostMinor,destinationBarnId,animalId,reason,actorUserId,claim.recordedAt,currencyCode,documentReference,reversedPurchase?Number(reversedPurchase.id):null),...(financialEntryId===null?[]:[...(reversedFinancial?[db.prepare('UPDATE financial_entries SET reversed_at=? WHERE id=? AND reversed_at IS NULL').bind(claim.recordedAt,Number(reversedFinancial.id))]:[]),db.prepare(`INSERT INTO financial_entries(id,operation_log_id,direction,category,concept,operation_date,amount_minor,currency_code,counterparty,reference,notes,created_by_user_id,created_at,source_type,source_id,reversal_of_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(financialEntryId,claim.id,reversedFinancial?'income':'expense',reversedFinancial?'Devolución de compra de alimento':'Compra de alimento',`${quantityKg} kg de ${feedCode} · lote ${lotCode}`,effectiveDate,totalCostMinor,currencyCode,supplier,documentReference,reason,actorUserId,claim.recordedAt,reversedFinancial?'reversal':'feed_purchase',String(reversedFinancial?.id??id),reversedFinancial?Number(reversedFinancial.id):null),db.prepare(`INSERT INTO financial_allocations(entry_id,barn_id,barn_name_snapshot,amount_minor,supply_code,lot_code,quantity,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(financialEntryId,warehouseBarnId,warehouseBarn?.name??null,totalCostMinor,feedCode,lotCode,quantityKg,claim.recordedAt)]),...(turnStatement?[turnStatement]:[]),signCheck,db.prepare('DELETE FROM feed_stock_guard')];
-  await commitOperation(db,claim,statements,
-    [{entityType:'feed_movement',entityId:id,action:'create',actorUserId,barnId:destinationBarnId??(warehouse.barn_id===null?null:Number(warehouse.barn_id)),reason,previousData:null,newData:movement,effectiveDate,recordedAt:claim.recordedAt},...(reversedFinancial?[{entityType:'financial_entry',entityId:Number(reversedFinancial.id),action:'update' as const,actorUserId,barnId:warehouseBarnId,reason,previousData:{reversedAt:null},newData:{reversedAt:claim.recordedAt,reversalEntryId:financialEntryId},effectiveDate,recordedAt:claim.recordedAt}]:[]),...(financialEntryId===null?[]:[{entityType:'financial_entry',entityId:financialEntryId,action:'create' as const,actorUserId,barnId:warehouseBarnId,reason,previousData:null,newData:{direction:reversedFinancial?'income':'expense',category:reversedFinancial?'Devolución de compra de alimento':'Compra de alimento',sourceType:reversedFinancial?'reversal':'feed_purchase',sourceId:reversedFinancial?.id??id,reversalOfId:reversedFinancial?.id??null,amountMinor:totalCostMinor,currencyCode,counterparty:supplier,reference:documentReference},effectiveDate,recordedAt:claim.recordedAt}])]);
-  return {replayed:false,movement};
+  const committed=await commitOperation(db,claim,statements,
+    [{entityType:'feed_movement',entityId:id,action:'create',actorUserId,barnId:destinationBarnId??(warehouse.barn_id===null?null:Number(warehouse.barn_id)),reason,previousData:null,newData:movement,effectiveDate,recordedAt:claim.recordedAt},...(reversedFinancial?[{entityType:'financial_entry',entityId:Number(reversedFinancial.id),action:'update' as const,actorUserId,barnId:warehouseBarnId,reason,previousData:{reversedAt:null},newData:{reversedAt:claim.recordedAt,reversalEntryId:financialEntryId},effectiveDate,recordedAt:claim.recordedAt}]:[]),...(financialEntryId===null?[]:[{entityType:'financial_entry',entityId:financialEntryId,action:'create' as const,actorUserId,barnId:warehouseBarnId,reason,previousData:null,newData:{direction:reversedFinancial?'income':'expense',category:reversedFinancial?'Devolución de compra de alimento':'Compra de alimento',sourceType:reversedFinancial?'reversal':'feed_purchase',sourceId:reversedFinancial?.id??id,reversalOfId:reversedFinancial?.id??null,amountMinor:totalCostMinor,currencyCode,counterparty:supplier,reference:documentReference},effectiveDate,recordedAt:claim.recordedAt}])]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'El saldo o la valorización del lote cambió; actualice antes de reintentar');throw error;});
+  return {replayed:committed.replayed,movement:committed.replayed?committed.result:movement};
 }
 
 export async function getFeedProjection(db:D1Database,asOfValue:unknown,scope:FeedScope={}){

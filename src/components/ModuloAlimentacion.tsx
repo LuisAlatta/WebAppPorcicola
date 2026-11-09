@@ -311,7 +311,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
           movementType: kind,
           warehouseId: Number(warehouseId),
           quantityKg: turnMode && kind === 'delivery' ? Number(turn.servedKg) : Number(form.quantityKg),
-          costPerKg: Number(form.costPerKg || 0),
+          costPerKg: ['opening', 'purchase'].includes(kind) ? Number(form.costPerKg || 0) : undefined,
           destinationBarnId: form.destinationBarnId ? Number(form.destinationBarnId) : null,
           reversesMovementId: form.reversesMovementId ? Number(form.reversesMovementId) : undefined,
           operationKey: newOperationKey(turnMode && kind === 'delivery' ? 'alimento-turno' : 'alimento'),
@@ -1375,7 +1375,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                     </div>
                   )}
 
-                  <div className="form-group">
+                  {['opening', 'purchase'].includes(kind) ? <div className="form-group">
                     <label className="form-label" htmlFor="feed-cost">Costo por kg (S/)</label>
                     <input
                       id="feed-cost"
@@ -1388,7 +1388,12 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                       value={form.costPerKg}
                       onChange={(e) => setField('costPerKg', e.target.value)}
                     />
-                  </div>
+                  </div> : <p className="form-col-span-full text-sm text-muted">
+                    {kind === 'return_supplier'
+                      ? 'La devolución toma el importe de la compra original.'
+                      : 'El costo se calcula con el promedio ponderado del saldo del almacén para este alimento y lote. Los reintegros conservan ese valor.'}
+                    {' '}Registre los movimientos en orden de fecha para conservar los costos ya asignados.
+                  </p>}
 
                   {kind === 'delivery' && (
                     <>
