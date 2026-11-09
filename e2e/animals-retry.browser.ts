@@ -51,7 +51,7 @@ const initialAnimal = () => ({
 const listOptions = {
   barns: [{ id: 1, code: 'A', name: 'Galpón A' }],
   stages: [{ code: 'crecimiento', name: 'Crecimiento' }],
-  locations: [], lots: [], aptitudes: [], types: [], sexes: [], statuses: [], origins: [], deathCauses: [], saleCauses: [],
+  locations: [], lots: [], aptitudes: [], types: [], sexes: [], statuses: [], origins: [], deathCauses: [], saleCauses: [{code:'edad',name:'Edad'}],
 };
 
 test('el padrón envía los filtros adicionales combinados', async ({ page }) => {
@@ -69,6 +69,17 @@ test('el padrón envía los filtros adicionales combinados', async ({ page }) =>
   await page.getByLabel('Procedencia', {exact:true}).selectOption('inicial');
   await page.getByLabel('Etapa de ingreso', {exact:true}).selectOption('crecimiento');
   await expect.poll(()=>requests.some(value=>{const q=new URL(value).searchParams;return q.get('mother')==='MADRE-01'&&q.get('father')==='PADRE-02'&&q.get('breed')==='Duroc'&&q.get('aptitude')==='engorde'&&q.get('originType')==='inicial'&&q.get('entryStage')==='crecimiento';})).toBe(true);
+});
+
+test('descarte desde la ficha no solicita importe y envía su causa',async({page})=>{
+  const animal=initialAnimal();let sent:Record<string,unknown>|undefined;
+  await mockAnimalApi(page,animal);
+  await page.route('**/api/animals?**',route=>route.fulfill({status:200,json:{animals:[animal],total:1,options:{...listOptions,saleCauses:[{code:'edad',name:'Edad'}]}}}));
+  await page.route('**/api/animals/RETRY-001/exit',route=>{sent=route.request().postDataJSON() as Record<string,unknown>;return route.fulfill({status:201,json:{animal:{...animal,status:'descartado',statusLabel:'Descartado',exitType:'discard',exitDate:'2026-11-07',exitCauseLabel:'Edad',isActive:false}}});});
+  await page.goto('/animales');await page.getByRole('button',{name:'Ver ficha'}).click();
+  await page.getByLabel('Tipo de salida').selectOption('discard');await expect(page.getByLabel('Importe de venta')).toHaveCount(0);
+  await page.getByLabel('Causa',{exact:true}).selectOption('edad');await page.locator('#ani-exit-date').fill('2026-11-07');await page.locator('#ani-exit-reason').fill('Retiro por edad');await page.getByRole('button',{name:'Registrar salida'}).click();
+  await expect(page.getByRole('cell',{name:'Descarte · Edad'})).toBeVisible();expect(sent).toMatchObject({exitType:'discard',causeCode:'edad',effectiveDate:'2026-11-07'});
 });
 
 async function mockAnimalApi(page: Page, initial: ReturnType<typeof initialAnimal>) {

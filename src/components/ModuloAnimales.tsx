@@ -1908,7 +1908,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                     </form>
                   </div>
                   <div className="card">
-                    <div className="card-header-clean mb-2"><span className="section-title">Registrar salida física</span><span className="text-xs text-muted">La venta o muerte actualiza la ficha y descuenta una cabeza del inventario.</span></div>
+                    <div className="card-header-clean mb-2"><span className="section-title">Registrar salida física</span><span className="text-xs text-muted">La venta, el descarte o la muerte actualiza la ficha y descuenta una cabeza del inventario.</span></div>
                     <form className="form-stack" onSubmit={(event) => void handlePhysicalExit(event)}>
                       {physicalActionError && <div className="alert alert-error" role="alert">{physicalActionError}</div>}
                       <div className="form-grid">
