@@ -106,7 +106,7 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
   if (ids) { clauses.push(`c.barn_id IN (${ids.map(() => '?').join(',')})`); params.push(...ids); }
   if (filters.status === 'pending') clauses.push(`c.cycle_status = 'open' AND c.reproductive_status IN ('possible_pregnancy','gestation')`);
   else if (filters.status && filters.status !== 'all') { clauses.push('c.cycle_status = ?'); params.push(String(filters.status)); }
-  const result = await db.prepare(`SELECT c.*, a.code AS female_code, a.alias AS female_alias, b.name AS barn_name
+  const result = await db.prepare(`SELECT c.*, a.code AS female_code, a.alias AS female_alias,a.status AS female_status,a.is_active AS female_is_active,a.exit_date AS female_exit_date, b.name AS barn_name
     FROM reproduction_cycles c JOIN animals a ON a.id = c.female_animal_id JOIN barns b ON b.id=c.barn_id
     WHERE ${clauses.join(' AND ')} ORDER BY COALESCE(c.service_anchor_date,c.probable_farrowing_date) DESC,c.id DESC LIMIT 500`)
     .bind(...params).all<Row>();
@@ -120,7 +120,7 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
       db.prepare(`SELECT id,actual_weaning_date,barn_id,historical_only FROM litters WHERE female_animal_id=? AND cycle_id<>? AND farrowing_date<=? ORDER BY farrowing_date DESC,id DESC LIMIT 1`).bind(row.female_animal_id,row.id,row.service_anchor_date??row.cycle_opened_on).first<Row>(),
     ]);
     const remainingDays = diffDays(String(row.probable_farrowing_date), today);
-    const reproductiveStatus = String(row.reproductive_status);
+    const reproductiveStatus = row.cycle_status === 'farrowed' ? 'lactation' : String(row.reproductive_status);
     let litter = null;
     if (litterRow) {
       const [litterEvents, identifiedAnimals] = await Promise.all([
@@ -138,6 +138,7 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
     }
     return { id: String(row.id), femaleAnimalId: Number(row.female_animal_id), femaleCode: String(row.female_code), femaleAlias: row.female_alias === null ? null : String(row.female_alias),
       cycleNumber: Number(row.cycle_number), cycleStatus: String(row.cycle_status), reproductiveStatus,
+      femalePresent:row.female_status === 'activo' && Number(row.female_is_active) === 1 && row.female_exit_date === null,
       serviceAnchorDate: row.service_anchor_date === null ? null : String(row.service_anchor_date), gestationDays: Number(row.gestation_days),
       probableFarrowingDate: String(row.probable_farrowing_date), dueDateSource: String(row.due_date_source), dueDateReason: row.due_date_reason === null ? null : String(row.due_date_reason),
       daysRemaining: remainingDays, dueLabel: row.cycle_status !== 'open' ? 'cerrado' : reproductiveStatus === 'empty' ? 'sin gestación' : remainingDays < 0 ? 'vencido' : remainingDays === 0 ? 'previsto hoy' : 'próximo',

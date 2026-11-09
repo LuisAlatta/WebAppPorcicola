@@ -90,6 +90,7 @@ interface Cycle {
   cycleNumber: number;
   cycleStatus: string;
   reproductiveStatus: string;
+  femalePresent: boolean;
   serviceAnchorDate: string | null;
   gestationDays: number;
   probableFarrowingDate: string;
@@ -162,6 +163,7 @@ const statusLabels: Record<string, string> = {
   empty: 'Vacía',
   possible_pregnancy: 'Posible preñez',
   gestation: 'Gestación',
+  lactation: 'Parida · ciclo cerrado',
   abortion: 'Aborto',
 };
 
@@ -170,6 +172,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
   const [females, setFemales] = useState<AnimalOption[]>([]);
   const [sires, setSires] = useState<AnimalOption[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
+  const activeCycles = cycles.filter(cycle => cycle.cycleStatus === 'open' && cycle.femalePresent);
   const [targetLitters, setTargetLitters] = useState<LitterTarget[]>([]);
   const [form, setForm] = useState<FormState>(initialForm);
   const [isAntecedent, setIsAntecedent] = useState(false);
@@ -483,6 +486,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         liveCount?: number;
         expectedWeaningDate?: string;
         historicalOnly?: boolean;
+        motherStageCode?: string | null;
       };
       if (!response.ok) {
         setError(body.error ?? 'No se pudo registrar el parto.');
@@ -491,7 +495,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       setFarrowingKeys((previous) => ({ ...previous, [cycle.id]: newOperationKey('rep-parto') }));
       setFarrowingCycle(null);
       setNotice(
-        `${body.liveCount ?? 0} nacidos vivos registrados${body.historicalOnly ? ' como antecedente histórico' : ' en inventario'}${
+        `${body.liveCount ?? 0} nacidos vivos registrados${body.historicalOnly ? ' como antecedente histórico' : ' en inventario'}${body.motherStageCode === 'lactancia' ? ' · paso de la madre a Lactancia registrado' : ''}${
           body.expectedWeaningDate ? ` · destete previsto ${body.expectedWeaningDate}` : ''
         }.`
       );
@@ -951,7 +955,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 <span>Marranas gestantes</span>
               </span>
               <span className="kpi-value tabular-nums">
-                {cycles.filter((c) => c.reproductiveStatus === 'gestation').length}
+                {activeCycles.filter((c) => c.reproductiveStatus === 'gestation').length}
               </span>
               <span className="kpi-detail">Preñez confirmada en curso</span>
             </div>
@@ -962,7 +966,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 <span>Partos próximos (≤ 7d)</span>
               </span>
               <span className="kpi-value tabular-nums">
-                {cycles.filter((c) => c.daysRemaining >= 0 && c.daysRemaining <= 7).length}
+                {activeCycles.filter((c) => ['gestation','possible_pregnancy'].includes(c.reproductiveStatus) && c.daysRemaining >= 0 && c.daysRemaining <= 7).length}
               </span>
               <span className="kpi-detail">Atención prioritaria de maternidad</span>
             </div>
@@ -973,7 +977,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 <span>Posible preñez</span>
               </span>
               <span className="kpi-value tabular-nums">
-                {cycles.filter((c) => c.reproductiveStatus === 'possible_pregnancy').length}
+                {activeCycles.filter((c) => c.reproductiveStatus === 'possible_pregnancy').length}
               </span>
               <span className="kpi-detail">Evaluación o ecografía pendiente</span>
             </div>
@@ -983,7 +987,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 <IconHeart size={16} className="text-body" />
                 <span>Ciclos activos</span>
               </span>
-              <span className="kpi-value tabular-nums">{cycles.length}</span>
+              <span className="kpi-value tabular-nums">{activeCycles.length}</span>
               <span className="kpi-detail">Marranas en seguimiento</span>
             </div>
           </div>
@@ -1108,7 +1112,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                   <div className="reproduction-due flex flex-col items-end gap-1">
                     <span
                       className={`badge-status tabular-nums font-mono ${
-                        cycle.daysRemaining < 0
+                        cycle.cycleStatus !== 'open' ? 'badge-outline' : cycle.daysRemaining < 0
                           ? 'badge-danger'
                           : cycle.daysRemaining <= 7
                           ? 'badge-warning'
@@ -1119,8 +1123,8 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       <span>{cycle.dueLabel}</span>
                     </span>
                     <div className="text-xs text-muted">
-                      Probable parto: <strong className="tabular-nums font-mono">{cycle.probableFarrowingDate}</strong> · <span className="tabular-nums font-mono font-medium">{cycle.daysRemaining}</span> días (
-                      {cycle.dueDateSource === 'manual' ? 'manual' : <><span className="tabular-nums font-mono">{cycle.gestationDays}</span> días</>})
+                      {cycle.cycleStatus === 'open' ? 'Probable parto' : 'Fecha probable registrada'}: <strong className="tabular-nums font-mono">{cycle.probableFarrowingDate}</strong>
+                      {cycle.cycleStatus === 'open' && <> · <span className="tabular-nums font-mono font-medium">{cycle.daysRemaining}</span> días ({cycle.dueDateSource === 'manual' ? 'manual' : <><span className="tabular-nums font-mono">{cycle.gestationDays}</span> días</>})</>}
                     </div>
                     {cycle.dueDateReason && (
                       <div className="text-xs text-muted italic max-w-xs text-right">{cycle.dueDateReason}</div>
@@ -1867,7 +1871,8 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     </div>
 
                     <p className="text-xs text-muted">
-                      Solo los nacidos vivos ingresan al inventario. El destete previsto usa la duración vigente de Lactancia.
+                      La madre pasa a Lactancia desde la fecha del parto en su misma ubicación, sin aumentar su cabeza en inventario. Si tiene movimientos posteriores, reconcilie primero su cronología. Los partos previos al ingreso quedan como antecedentes históricos.
+                      {' '}Solo los nacidos vivos ingresan al inventario. El destete previsto usa la duración vigente de Lactancia.
                     </p>
 
                     <div className="form-actions">

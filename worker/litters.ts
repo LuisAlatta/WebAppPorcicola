@@ -241,7 +241,7 @@ export async function recordLitterEvent(db: D1Database, actorUserId: number, lit
 }
 
 export async function recordFarrowing(db: D1Database, actorUserId: number, cycleId: string, input: FarrowingInput, scope: { allowedBarnNames?: string[] | null } = {}) {
-  const cycle = await db.prepare(`SELECT c.*, a.code AS female_code, a.entry_date, a.exit_date
+  const cycle = await db.prepare(`SELECT c.*, a.code AS female_code, a.entry_date, a.exit_date,a.updated_at AS animal_updated_at,a.current_stage_code,a.status AS animal_status
     FROM reproduction_cycles c JOIN animals a ON a.id=c.female_animal_id WHERE c.id=?`).bind(cycleId).first<Row>();
   if (!cycle) throw new ApiError(404, 'Ciclo reproductivo no encontrado');
   const farrowingDate = String(input.farrowingDate ?? '');
@@ -250,7 +250,7 @@ export async function recordFarrowing(db: D1Database, actorUserId: number, cycle
   if (cycle.exit_date && farrowingDate > String(cycle.exit_date)) throw new ApiError(400, 'La hembra ya no estaba en la granja en la fecha del parto');
   const historicalOnly = farrowingDate < String(cycle.entry_date);
   if (historicalOnly && Number(cycle.antecedent) !== 1) throw new ApiError(400, 'Solo un ciclo antecedente admite partos previos al ingreso');
-  const location = historicalOnly ? null : await db.prepare(`SELECT barn_id,location_code,lot_code FROM animal_location_history
+  const location = historicalOnly ? null : await db.prepare(`SELECT id,barn_id,location_code,lot_code,stage_code,valid_from,valid_until FROM animal_location_history
     WHERE animal_id=? AND valid_from<=? AND (valid_until IS NULL OR valid_until>?) ORDER BY valid_from DESC,id DESC LIMIT 1`)
     .bind(cycle.female_animal_id, farrowingDate, farrowingDate).first<Row>();
   if (!historicalOnly && !location) throw new ApiError(409, 'No hay ubicación histórica de la hembra para el parto');
@@ -286,11 +286,12 @@ export async function recordFarrowing(db: D1Database, actorUserId: number, cycle
     ORDER BY service_date DESC,service_number DESC LIMIT 1`).bind(cycleId).first<Row>();
   const payload = { cycleId, farrowingDate, parityNumber, maleAlive, femaleAlive, unsexedAlive, maleStillborn, femaleStillborn, unsexedStillborn, weight, observations, historicalOnly };
   const existing = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
-  if (existing) return { replayed: true, litterId: String((existing.result as { litterId: string }).litterId), liveCount, stillbornCount, totalBorn, mortalityPercent, expectedWeaningDate, historicalOnly };
+  if (existing) return { replayed: true, litterId: String((existing.result as { litterId: string }).litterId), liveCount, stillbornCount, totalBorn, mortalityPercent, expectedWeaningDate, historicalOnly, motherStageCode: (existing.result as {motherStageCode?:string|null}).motherStageCode ?? null };
   if (cycle.cycle_status !== 'open') throw new ApiError(409, 'El ciclo ya tiene un parto registrado');
+  if (!historicalOnly && (!lactation || location?.valid_until !== null || cycle.exit_date || cycle.animal_status !== 'activo')) throw new ApiError(409, 'El parto requiere pasar la madre a Lactancia; reconcilie sus movimientos posteriores o su salida antes de guardar');
   const id = crypto.randomUUID();
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'reproduction.farrowing', authorUserId: actorUserId,
-    entityType: 'litter', entityId: null, barnId, effectiveDate: farrowingDate, payload, result: { litterId: id } });
+    entityType: 'litter', entityId: null, barnId, effectiveDate: farrowingDate, payload, result: { litterId: id,motherStageCode:historicalOnly?null:'lactancia' } });
   const statements: D1PreparedStatement[] = [db.prepare("INSERT INTO litter_identification_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM reproduction_cycles WHERE id=? AND cycle_status='open' AND updated_at=?) THEN 0 ELSE -1 END").bind(cycleId,cycle.updated_at),db.prepare('DELETE FROM litter_identification_guard'),db.prepare(`INSERT INTO litters
     (id,cycle_id,female_animal_id,parity_number,farrowing_date,barn_id,location_code,lot_code,father_code_snapshot,father_breed_snapshot,
     male_alive,female_alive,unsexed_alive,male_stillborn,female_stillborn,unsexed_stillborn,live_count,stillborn_count,total_born,mortality_percent,
@@ -300,14 +301,34 @@ export async function recordFarrowing(db: D1Database, actorUserId: number, cycle
       maleAlive,femaleAlive,unsexedAlive,maleStillborn,femaleStillborn,unsexedStillborn,liveCount,stillbornCount,totalBorn,mortalityPercent,weight,expectedWeaningDate,observations,historicalOnly?1:0,actorUserId,claim.recordedAt),
     db.prepare(`UPDATE reproduction_cycles SET cycle_status='farrowed',reproductive_status='gestation',last_farrowing_date=?,updated_at=? WHERE id=? AND cycle_status='open'`).bind(farrowingDate,claim.recordedAt,cycleId)];
   if (!historicalOnly) {
+    const motherId = Number(cycle.female_animal_id);
+    const sourceStage = String(location!.stage_code);
+    const locationCode = location?.location_code == null ? null : String(location.location_code);
+    const lotCode = location?.lot_code == null ? null : String(location.lot_code);
+    statements.push(db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(
+      SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id
+      WHERE a.id=? AND a.updated_at=? AND a.exit_date IS NULL AND a.status='activo' AND a.current_stage_code=?
+        AND h.id=? AND h.valid_from=? AND h.valid_until IS NULL AND h.stage_code=? AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ?
+    ) AND NOT EXISTS(SELECT 1 FROM animal_location_history WHERE animal_id=? AND valid_from>?) THEN 0 ELSE -1 END`)
+      .bind(motherId,cycle.animal_updated_at,sourceStage,location!.id,location!.valid_from,sourceStage,barnId,locationCode,lotCode,motherId,farrowingDate));
+    if (sourceStage !== 'lactancia') {
+      statements.push(locationEventGuardStatement(db,motherId,addDays(farrowingDate,1)),
+        db.prepare('UPDATE animal_location_history SET valid_until=? WHERE id=?').bind(farrowingDate,location!.id),
+        db.prepare(`INSERT INTO animal_location_history(animal_id,barn_id,location_code,lot_code,stage_code,valid_from,valid_until,operation_log_id,created_by_user_id,created_at)
+          VALUES(?,?,?,?,'lactancia',?,NULL,?,?,?)`).bind(motherId,barnId,locationCode,lotCode,farrowingDate,claim.id,actorUserId,claim.recordedAt),
+        db.prepare("UPDATE animals SET current_stage_code='lactancia',updated_at=? WHERE id=?").bind(claim.recordedAt,motherId));
+      const group = crypto.randomUUID();
+      for (const [type,stage] of [['transfer_out',sourceStage],['transfer_in','lactancia']] as const) statements.push(db.prepare(`INSERT INTO inventory_movements
+        (operation_log_id,movement_type,effective_date,barn_id,location_code,lot_code,stage_code,sex,quantity,transfer_group_id,notes,animal_id,created_by_user_id,created_at)
+        VALUES(?,?,?,?,?,?,?,'hembra',1,?,?,?,?,?)`).bind(claim.id,type,farrowingDate,barnId,locationCode,lotCode,stage,group,`Paso a Lactancia por parto · camada ${id}`,motherId,actorUserId,claim.recordedAt));
+      statements.push(stockGuardStatement(db,barnId,locationCode,lotCode,sourceStage,'hembra'),stockGuardStatement(db,barnId,locationCode,lotCode,'lactancia','hembra'));
+    }
     statements.push(db.prepare(`INSERT INTO litter_identification_guard(guard_id) SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM vaccine_occurrences v JOIN vaccine_rules r ON r.id=v.rule_version_id JOIN animals a ON a.id=v.animal_id WHERE v.status='pending' AND v.source_event_type='expected_farrowing' AND v.source_event_id=? AND (date(?,printf('%+d days',r.offset_days))<a.entry_date OR (a.exit_date IS NOT NULL AND date(?,printf('%+d days',r.offset_days))>a.exit_date))) THEN 0 ELSE -1 END`).bind(cycleId,farrowingDate,farrowingDate),db.prepare(`UPDATE vaccine_occurrences SET source_date=?,scheduled_date=date(?,printf('%+d days',(SELECT offset_days FROM vaccine_rules WHERE id=vaccine_occurrences.rule_version_id))),updated_at=? WHERE status='pending' AND source_event_type='expected_farrowing' AND source_event_id=? AND rule_version_id IS NOT NULL`).bind(farrowingDate,farrowingDate,claim.recordedAt,cycleId),db.prepare('DELETE FROM litter_identification_guard'));
     statements.push(db.prepare(`INSERT INTO vaccine_occurrences(rule_key,rule_version_id,animal_id,animal_code_snapshot,animal_type_snapshot,target_category_snapshot,source_event_type,source_event_id,source_date,occurrence_number,vaccine_name_snapshot,scheduled_date,status,is_manual,created_by_user_id,created_at,updated_at)
       SELECT r.rule_key,r.id,a.id,a.code,a.animal_type,r.target_category,'expected_farrowing',l.cycle_id,l.farrowing_date,1,r.vaccine_name,date(l.farrowing_date,printf('%+d days',r.offset_days)),'pending',0,?,?,?
       FROM litters l JOIN animals a ON a.id=l.female_animal_id JOIN vaccine_rules r ON r.base_event='farrowing' AND r.offset_days<0 AND r.is_active=1 AND r.is_current=1 AND r.target_category=CASE WHEN a.animal_type='cerda' THEN CASE WHEN EXISTS(SELECT 1 FROM litters older WHERE older.female_animal_id=a.id AND older.id<>l.id AND older.historical_only=0) THEN 'cerda_multipara' ELSE 'cerda_primeriza' END ELSE a.animal_type END
       WHERE l.id=? AND a.is_active=1 AND a.exit_date IS NULL AND date(l.farrowing_date,printf('%+d days',r.offset_days))>=a.entry_date AND EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.valid_from<=date(l.farrowing_date,printf('%+d days',r.offset_days)) AND (h.valid_until IS NULL OR h.valid_until>date(l.farrowing_date,printf('%+d days',r.offset_days))))
       ON CONFLICT(rule_key,animal_id,source_event_type,source_event_id,occurrence_number) DO NOTHING`).bind(actorUserId,claim.recordedAt,claim.recordedAt,id));
-    const locationCode = location?.location_code == null ? null : String(location.location_code);
-    const lotCode = location?.lot_code == null ? null : String(location.lot_code);
     const groups = [['macho',maleAlive],['hembra',femaleAlive],['pendiente',unsexedAlive]] as const;
     for (const [sex, quantity] of groups) if (quantity > 0) statements.push(db.prepare(`INSERT INTO inventory_movements
       (operation_log_id,movement_type,effective_date,barn_id,location_code,lot_code,stage_code,sex,quantity,cause_code,transfer_group_id,notes,created_by_user_id,created_at,litter_id)
@@ -317,9 +338,12 @@ export async function recordFarrowing(db: D1Database, actorUserId: number, cycle
     for (const [sex, quantity] of groups) if (quantity > 0) statements.push(stockGuardStatement(db,barnId,locationCode,lotCode,'preinicio',sex));
     statements.push(db.prepare('DELETE FROM inventory_write_guard'));
   }
-  await commitOperation(db, claim, statements, [{ entityType: 'litter', entityId: 0, action: 'create', actorUserId, barnId, reason,
-    previousData: null, newData: { ...payload, litterId:id, liveCount, stillbornCount,totalBorn,mortalityPercent,expectedWeaningDate },effectiveDate:farrowingDate,recordedAt:claim.recordedAt }]);
-  return { replayed:false,litterId:id,liveCount,stillbornCount,totalBorn,mortalityPercent,expectedWeaningDate,historicalOnly };
+  const committed = await commitOperation(db, claim, statements, [{ entityType: 'litter', entityId: 0, action: 'create', actorUserId, barnId, reason,
+    previousData: null, newData: { ...payload, litterId:id, liveCount, stillbornCount,totalBorn,mortalityPercent,expectedWeaningDate },effectiveDate:farrowingDate,recordedAt:claim.recordedAt },
+    ...(!historicalOnly && location!.stage_code !== 'lactancia' ? [{entityType:'animal',entityId:Number(cycle.female_animal_id),action:'update' as const,actorUserId,barnId,reason,
+      previousData:{stageCode:location!.stage_code},newData:{stageCode:'lactancia',litterId:id},effectiveDate:farrowingDate,recordedAt:claim.recordedAt}] : [])])
+    .catch((error: unknown) => { if (/guard_id/.test(String(error))) throw new ApiError(409,'La madre, el ciclo o el saldo cambió, o hay actividad posterior incompatible; actualice y reconcilie la cronología antes de registrar el parto'); throw error; });
+  return { replayed:committed.replayed,litterId:String((committed.result as {litterId:string}).litterId),liveCount,stillbornCount,totalBorn,mortalityPercent,expectedWeaningDate,historicalOnly,motherStageCode:(committed.result as {motherStageCode?:string|null}).motherStageCode??null };
 }
 
 export async function correctLitter(db: D1Database, actorUserId: number, litterId: string, input: FarrowingInput, scope: { allowedBarnNames?: string[] | null } = {}) {
@@ -386,6 +410,44 @@ export async function correctLitter(db: D1Database, actorUserId: number, litterI
   return {replayed:committed.replayed,litterId,liveCount,stillbornCount,totalBorn,mortalityPercent};
 }
 
+/** Desplaza el inicio de Lactancia y conserva los traslados posteriores de la madre. */
+async function maternalDateCorrection(db:D1Database,actorUserId:number,litter:Row,farrowingDate:string,reason:string,claim:{id:string;recordedAt:string}) {
+  const history = await db.prepare(`SELECT h.* FROM animal_location_history h JOIN operation_log o ON o.id=h.operation_log_id
+    WHERE h.animal_id=? AND h.stage_code='lactancia' AND o.operation_type='reproduction.farrowing' AND json_extract(o.result_payload,'$.litterId')=?`)
+    .bind(litter.female_animal_id,litter.id).first<Row>();
+  if (!history) return {statements:[] as D1PreparedStatement[],audits:[] as AuditRecordInput[]};
+  const previous = await db.prepare(`SELECT * FROM animal_location_history WHERE animal_id=? AND id<? AND valid_until=? ORDER BY id DESC LIMIT 1`)
+    .bind(litter.female_animal_id,history.id,litter.farrowing_date).first<Row>();
+  if (!previous || history.valid_from !== litter.farrowing_date || farrowingDate < String(previous.valid_from) || (history.valid_until && farrowingDate >= String(history.valid_until))) throw new ApiError(409,'La fecha corregida cruza un movimiento de la madre; reconcilie su cronología antes de guardar');
+  const first = farrowingDate < String(litter.farrowing_date) ? farrowingDate : String(litter.farrowing_date);
+  const last = farrowingDate > String(litter.farrowing_date) ? farrowingDate : String(litter.farrowing_date);
+  const statements:D1PreparedStatement[] = [db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN
+    EXISTS(SELECT 1 FROM animal_location_history WHERE id=? AND animal_id=? AND valid_from=? AND valid_until IS ? AND stage_code='lactancia')
+    AND EXISTS(SELECT 1 FROM animal_location_history WHERE id=? AND valid_from=? AND valid_until=? AND stage_code=?)
+    AND NOT EXISTS(SELECT 1 FROM health_event_animals ha JOIN health_events h ON h.id=ha.health_event_id JOIN operation_log o ON o.id=h.operation_log_id WHERE ha.animal_id=? AND h.effective_date>=? AND h.effective_date<? AND o.status='committed')
+    AND NOT EXISTS(SELECT 1 FROM animal_weights WHERE animal_id=? AND weighed_on>=? AND weighed_on<?)
+    THEN 0 ELSE -1 END`).bind(history.id,litter.female_animal_id,litter.farrowing_date,history.valid_until,previous.id,previous.valid_from,litter.farrowing_date,previous.stage_code,litter.female_animal_id,first,last,litter.female_animal_id,first,last),
+    db.prepare('UPDATE animal_location_history SET valid_until=? WHERE id=?').bind(farrowingDate,previous.id),
+    db.prepare('UPDATE animal_location_history SET valid_from=? WHERE id=?').bind(farrowingDate,history.id),
+    db.prepare('UPDATE animals SET updated_at=? WHERE id=?').bind(claim.recordedAt,litter.female_animal_id)];
+  const movements = (await db.prepare(`SELECT m.* FROM inventory_movements m JOIN operation_log o ON o.id=m.operation_log_id
+    WHERE m.animal_id=? AND json_extract(o.result_payload,'$.litterId')=? AND o.operation_type IN ('reproduction.farrowing','reproduction.litter.date_correction')
+      AND m.movement_type IN ('transfer_out','transfer_in') AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=m.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%')`)
+    .bind(litter.female_animal_id,litter.id).all<Row>()).results ?? [];
+  if (movements.length !== 2) throw new ApiError(409,'El cambio a Lactancia requiere reconciliar sus movimientos antes de corregir la fecha');
+  const group = crypto.randomUUID();
+  for (const movement of movements) {
+    const reversal = movement.movement_type === 'transfer_out' ? 1 : -1;
+    statements.push(db.prepare(`INSERT INTO inventory_movements(operation_log_id,movement_type,effective_date,barn_id,location_code,lot_code,stage_code,sex,quantity,reverses_movement_id,notes,animal_id,created_by_user_id,created_at)
+      VALUES(?,'adjustment',?,?,?,?,?,'hembra',?,?,?,?,?,?)`).bind(claim.id,movement.effective_date,movement.barn_id,movement.location_code,movement.lot_code,movement.stage_code,reversal,movement.id,`Reversión del movimiento #${movement.id}`,litter.female_animal_id,actorUserId,claim.recordedAt),
+      db.prepare(`INSERT INTO inventory_movements(operation_log_id,movement_type,effective_date,barn_id,location_code,lot_code,stage_code,sex,quantity,reverses_movement_id,transfer_group_id,notes,animal_id,created_by_user_id,created_at)
+        VALUES(?,?,?,?,?,?,?,'hembra',1,?,?,?,?,?,?)`).bind(claim.id,movement.movement_type,farrowingDate,movement.barn_id,movement.location_code,movement.lot_code,movement.stage_code,movement.reverses_movement_id??movement.id,group,`Corrección de fecha del movimiento #${movement.id}: ${reason}`,litter.female_animal_id,actorUserId,claim.recordedAt));
+  }
+  for (const stage of [String(previous.stage_code),'lactancia']) statements.push(stockGuardStatement(db,Number(history.barn_id),history.location_code==null?null:String(history.location_code),history.lot_code==null?null:String(history.lot_code),stage,'hembra'));
+  return {statements,audits:[{entityType:'animal',entityId:Number(litter.female_animal_id),action:'correct' as const,actorUserId,barnId:Number(history.barn_id),reason,
+    previousData:{litterId:litter.id,lactationFrom:litter.farrowing_date},newData:{litterId:litter.id,lactationFrom:farrowingDate},effectiveDate:farrowingDate,recordedAt:claim.recordedAt}]};
+}
+
 /** Rebooks the original birth quantities without modifying any original ledger row. */
 export async function correctLitterDate(db:D1Database,actorUserId:number,litterId:string,input:LitterDateCorrectionInput,scope:{allowedBarnNames?:string[]|null}={}){
   const farrowingDate=String(input.farrowingDate??'');const expectedCurrentDate=String(input.expectedCurrentDate??'');
@@ -418,10 +480,12 @@ export async function correctLitterDate(db:D1Database,actorUserId:number,litterI
   const originalBirths=(await db.prepare("SELECT b.id,b.sex,b.quantity,b.effective_date,(SELECT MIN(root.id) FROM inventory_movements root WHERE root.litter_id=b.litter_id AND root.sex=b.sex AND root.movement_type='birth') AS root_id FROM inventory_movements b WHERE b.litter_id=? AND b.movement_type='birth' AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=b.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%')").bind(litterId).all<{id:number;sex:'macho'|'hembra'|'pendiente';quantity:number;effective_date:string;root_id:number}>()).results??[];
   const config=await getConfigSnapshot(db,farrowingDate);const lactation=config.stages.find(stage=>stage.code==='lactancia');const expectedWeaningDate=lactation?.durationDays?addDays(farrowingDate,lactation.durationDays):null;
   const result={litterId,farrowingDate,expectedWeaningDate};const claim=await createOperationClaim({operationKey:input.operationKey,operationType:'reproduction.litter.date_correction',authorUserId:actorUserId,entityType:'litter',entityId:null,barnId:Number(litter.barn_id),effectiveDate:currentFarmDate(),payload,result});
+  const maternal = await maternalDateCorrection(db,actorUserId,litter,farrowingDate,reason,claim);
   const statements:D1PreparedStatement[]=[db.prepare(`INSERT INTO litter_identification_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM litters l JOIN animals a ON a.id=l.female_animal_id JOIN reproduction_cycles c ON c.id=l.cycle_id WHERE l.id=? AND l.farrowing_date=? AND a.updated_at=? AND c.updated_at=?) AND NOT EXISTS(SELECT 1 FROM animals WHERE litter_id=?) AND (SELECT COALESCE(MAX(id),0) FROM inventory_movements WHERE litter_id=?)=? AND (SELECT COALESCE(MAX(id),0) FROM litter_events WHERE litter_id=?)=? AND (SELECT COALESCE(MAX(id),0) FROM litter_corrections WHERE litter_id=?)=? AND (SELECT COALESCE(MAX(id),0) FROM animal_location_history WHERE animal_id=?)=? THEN 0 ELSE -1 END`).bind(litterId,expectedCurrentDate,litter.animal_updated_at,litter.cycle_updated_at,litterId,litterId,snapshot?.movements,litterId,snapshot?.events,litterId,snapshot?.corrections,litter.female_animal_id,snapshot?.history),db.prepare('INSERT INTO inventory_write_guard(guard_id) VALUES(1)')];
   statements.unshift(db.prepare('INSERT INTO litter_identification_guard(guard_id) SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM litter_identified_adoptions WHERE source_litter_id=? OR target_litter_id=?) THEN 0 ELSE -1 END').bind(litterId,litterId));
   statements.unshift(db.prepare(`INSERT INTO litter_identification_guard(guard_id) SELECT CASE WHEN (SELECT COUNT(*) FROM litters WHERE female_animal_id=?)=? AND (SELECT COALESCE(MAX(lc.id),0) FROM litter_corrections lc JOIN litters l ON l.id=lc.litter_id WHERE l.female_animal_id=?)=? THEN 0 ELSE -1 END`).bind(litter.female_animal_id,snapshot?.parities,litter.female_animal_id,snapshot?.family_corrections));
   statements.unshift(db.prepare(`INSERT INTO litter_identification_guard(guard_id) SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM reproduction_cycles c WHERE c.female_animal_id=? AND c.cycle_number>? AND (c.cycle_opened_on<? OR EXISTS(SELECT 1 FROM reproduction_services s WHERE s.cycle_id=c.id AND s.service_date<?))) THEN 0 ELSE -1 END`).bind(litter.female_animal_id,litter.cycle_number,farrowingDate,farrowingDate));
+  statements.push(...maternal.statements);
   for(const birth of originalBirths){
     for(const [date,quantity,type,notes]of [[birth.effective_date,-Number(birth.quantity),'adjustment',`Reversión del movimiento #${birth.id}`],[farrowingDate,Number(birth.quantity),'birth',`Corrección de fecha del movimiento #${birth.id}: ${reason}`]] as const)statements.push(db.prepare(`INSERT INTO inventory_movements(operation_log_id,movement_type,effective_date,barn_id,location_code,lot_code,stage_code,sex,quantity,reverses_movement_id,notes,created_by_user_id,created_at,litter_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(claim.id,type,date,litter.barn_id,litter.location_code,litter.lot_code,'preinicio',birth.sex,quantity,type==='birth'?birth.root_id:birth.id,notes,actorUserId,claim.recordedAt,litterId));
     statements.push(stockGuardStatement(db,Number(litter.barn_id),litter.location_code===null?null:String(litter.location_code),litter.lot_code===null?null:String(litter.lot_code),'preinicio',birth.sex));
@@ -434,6 +498,7 @@ export async function correctLitterDate(db:D1Database,actorUserId:number,litterI
     FROM litters l JOIN animals a ON a.id=l.female_animal_id JOIN vaccine_rules r ON r.base_event='farrowing' AND r.is_active=1 AND r.is_current=1 AND r.target_category=CASE WHEN a.animal_type='cerda' THEN CASE WHEN (SELECT COALESCE(MAX(parity_number),0) FROM litters WHERE female_animal_id=a.id AND historical_only=0)>0 THEN 'cerda_multipara' ELSE 'cerda_primeriza' END ELSE a.animal_type END
     WHERE l.id=? AND l.historical_only=0 AND a.is_active=1 AND a.exit_date IS NULL AND NOT EXISTS(SELECT 1 FROM vaccine_occurrences v WHERE v.rule_key=r.rule_key AND v.animal_id=a.id AND v.source_event_type='expected_farrowing' AND v.source_event_id=l.cycle_id) AND date(l.farrowing_date,printf('%+d days',r.offset_days))>=a.entry_date AND EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.valid_from<=date(l.farrowing_date,printf('%+d days',r.offset_days)) AND (h.valid_until IS NULL OR h.valid_until>date(l.farrowing_date,printf('%+d days',r.offset_days))))
     ON CONFLICT(rule_key,animal_id,source_event_type,source_event_id,occurrence_number) DO NOTHING`).bind(actorUserId,claim.recordedAt,claim.recordedAt,litterId));
-  const committed=await commitOperation(db,claim,statements,[{entityType:'litter',entityId:0,action:'correct',actorUserId,barnId:Number(litter.barn_id),reason,previousData:{litterId,farrowingDate:expectedCurrentDate},newData:result,effectiveDate:currentFarmDate(),recordedAt:claim.recordedAt}]);
+  const committed=await commitOperation(db,claim,statements,[{entityType:'litter',entityId:0,action:'correct',actorUserId,barnId:Number(litter.barn_id),reason,previousData:{litterId,farrowingDate:expectedCurrentDate},newData:result,effectiveDate:currentFarmDate(),recordedAt:claim.recordedAt},...maternal.audits])
+    .catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La camada o la cronología de la madre cambió, o hay actuaciones incompatibles entre las fechas; actualice antes de corregir');throw error;});
   return{...result,replayed:committed.replayed};
 }
