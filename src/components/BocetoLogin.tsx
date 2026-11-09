@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Perfil } from '../types';
 import {
@@ -16,39 +16,38 @@ import {
 
 export const REMEMBER_CREDENTIALS_KEY = 'porcicola_saved_credentials';
 
+function readRememberedCredentials() {
+  try {
+    const stored = localStorage.getItem(REMEMBER_CREDENTIALS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as { username?: string; password?: string };
+      if (parsed && typeof parsed === 'object') {
+        return {
+          username: typeof parsed.username === 'string' ? parsed.username : '',
+          password: typeof parsed.password === 'string' ? parsed.password : '',
+          hasSaved: true,
+        };
+      }
+    }
+  } catch {
+    // Entorno restringido o sin acceso a almacenamiento local
+  }
+  return { username: '', password: '', hasSaved: false };
+}
+
 interface LoginProps {
   onLogin: (perfil: Perfil, username?: string) => void;
 }
 
 export function BocetoLogin({ onLogin }: LoginProps) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [remembered] = useState(readRememberedCredentials);
+  const [username, setUsername] = useState(remembered.username);
+  const [password, setPassword] = useState(remembered.password);
   const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(false);
-  const [hasSaved, setHasSaved] = useState(false);
+  const [remember, setRemember] = useState(remembered.hasSaved);
+  const [hasSaved, setHasSaved] = useState(remembered.hasSaved);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(REMEMBER_CREDENTIALS_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as { username?: string; password?: string };
-        if (parsed && typeof parsed === 'object') {
-          if (typeof parsed.username === 'string' && parsed.username) {
-            setUsername(parsed.username);
-          }
-          if (typeof parsed.password === 'string' && parsed.password) {
-            setPassword(parsed.password);
-          }
-          setRemember(true);
-          setHasSaved(true);
-        }
-      }
-    } catch {
-      // Entorno restringido o sin acceso a almacenamiento local
-    }
-  }, []);
 
   const clearSavedCredentials = () => {
     try {

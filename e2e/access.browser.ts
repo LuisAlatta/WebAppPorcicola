@@ -7,6 +7,26 @@ test('credenciales rechazadas o red caída nunca abren sesión',async({page})=>{
  await page.getByLabel('Usuario',{exact:true}).fill('operario@prueba.pe');await page.getByLabel('Contraseña',{exact:true}).fill('incorrecta');await page.getByRole('button',{name:'Entrar',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Credenciales incorrectas');await expect(page.getByRole('navigation')).toHaveCount(0);
  await page.route('**/api/auth/login',route=>route.abort('failed'));await page.getByRole('button',{name:'Entrar',exact:true}).click();await expect(page.getByRole('navigation')).toHaveCount(0);await expect(page.getByRole('button',{name:'Entrar',exact:true})).toBeEnabled();
 });
+test('recordar credenciales precarga el formulario y permite olvidarlas',async({page})=>{
+ await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{error:'Sin sesión'}}));
+ await page.route('**/api/auth/login',route=>route.fulfill({status:200,json:{ok:true,user:{role:'administrador',username:'admin@prueba.pe'}}}));
+ await page.goto('/login');
+ await page.getByLabel('Usuario',{exact:true}).fill('admin@prueba.pe');
+ await page.getByLabel('Contraseña',{exact:true}).fill('ClaveSoloPrueba2026!');
+ await page.getByLabel('Recordar usuario y contraseña en esta PWA').check();
+ await page.getByRole('button',{name:'Entrar',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Cerrar sesión'})).toBeVisible();
+ const key='porcicola_saved_credentials';
+ await expect.poll(()=>page.evaluate((storageKey)=>JSON.parse(localStorage.getItem(storageKey)??'null'),key)).toMatchObject({username:'admin@prueba.pe',password:'ClaveSoloPrueba2026!'});
+ await page.goto('/login');
+ await expect(page.getByLabel('Usuario',{exact:true})).toHaveValue('admin@prueba.pe');
+ await expect(page.getByLabel('Contraseña',{exact:true})).toHaveValue('ClaveSoloPrueba2026!');
+ await expect(page.getByLabel('Recordar usuario y contraseña en esta PWA')).toBeChecked();
+ await page.getByRole('button',{name:'Olvidar'}).click();
+ await expect(page.getByLabel('Usuario',{exact:true})).toHaveValue('');
+ await expect(page.getByLabel('Contraseña',{exact:true})).toHaveValue('');
+ await expect.poll(()=>page.evaluate((storageKey)=>localStorage.getItem(storageKey),key)).toBeNull();
+});
 test('el rol del servidor limita menú y acceso directo',async({page})=>{
  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{error:'Sin sesión'}}));
  await page.route('**/api/auth/login',route=>route.fulfill({status:200,json:{ok:true,user:{role:'operario',username:'operario@prueba.pe'}}}));
