@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {ModalDialog} from './ModalDialog';
 
 declare global {
@@ -15,6 +15,7 @@ interface InstallPrompt extends Event {
 export function PwaControls() {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
   const [confirmUpdate, setConfirmUpdate] = useState(false);
+  const updateButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const prompt = (event: Event) => {
@@ -73,6 +74,11 @@ export function PwaControls() {
     waiting.postMessage({ type: 'ACTIVATE_UPDATE' });
   };
 
+  const dismissUpdate = () => {
+    setConfirmUpdate(false);
+    window.requestAnimationFrame(() => updateButtonRef.current?.focus());
+  };
+
   if (!waiting) return null;
 
   return (
@@ -81,6 +87,7 @@ export function PwaControls() {
         <aside aria-label="Actualización disponible" className="pwa-update-toast">
           <span className="text-xs font-semibold">Nueva versión disponible</span>
           <button
+            ref={updateButtonRef}
             type="button"
             className="btn btn-primary btn-sm"
             onClick={() => setConfirmUpdate(true)}
@@ -92,13 +99,13 @@ export function PwaControls() {
       )}
 
       {confirmUpdate && (
-        <ModalDialog labelledBy="pwa-update-dialog-title" onDismiss={() => setConfirmUpdate(false)}>
+        <ModalDialog labelledBy="pwa-update-dialog-title" onDismiss={dismissUpdate}>
           <h4 id="pwa-update-dialog-title" className="text-lg font-bold mb-2">Actualizar Aplicación</h4>
           <p className="text-sm text-muted mb-4">
             La actualización recargará la página para cargar la versión más reciente. Guarda tus formularios pendientes antes de continuar. ¿Deseas recargar ahora?
           </p>
           <div className="flex justify-end gap-2">
-            <button type="button" className="btn btn-outline" onClick={() => setConfirmUpdate(false)}>Más tarde</button>
+            <button type="button" className="btn btn-outline" onClick={dismissUpdate}>Más tarde</button>
             <button type="button" className="btn btn-primary" onClick={performUpdate}>Actualizar ahora</button>
           </div>
         </ModalDialog>

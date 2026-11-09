@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Miniflare } from 'miniflare';
 import worker from '../worker/index';
+import { findUserByUsername, hashPassword, verifyPassword } from '../worker/auth';
 
 const runtime = new Miniflare({
   workers: [{
@@ -95,6 +96,32 @@ describe('Autenticación, sesiones y primer administrador · T04', () => {
     expect(resRepetido.status).toBe(403);
     const bodyRepetido = await resRepetido.json() as { error: string };
     expect(bodyRepetido.error).toContain('cerrado');
+  });
+
+  it('prioriza el usuario exacto antes de resolver el alias de un correo', async () => {
+    const credentials = await hashPassword('ClaveAlias2026!');
+    const now = new Date().toISOString();
+    await db.prepare(`INSERT INTO users (username,name,role,password_hash,password_salt,is_active,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?)`)
+      .bind('admin', 'Cuenta alias', 'operario', credentials.hash, credentials.salt, 1, now, now)
+      .run();
+
+    try {
+      const exact = await findUserByUsername(db, 'admin@granja.pe');
+      const alias = await findUserByUsername(db, 'admin@otra-granja.pe');
+      expect(exact?.username).toBe('admin@granja.pe');
+      expect(alias?.username).toBe('admin');
+    } finally {
+      await db.prepare('DELETE FROM users WHERE username = ?').bind('admin').run();
+    }
+  });
+
+  it('no acepta contraseñas administrativas conocidas como alternativas', async () => {
+    const adminCredential = await hashPassword('admin');
+    const defaultCredential = await hashPassword('Password123!');
+    expect(await verifyPassword('admin', adminCredential.hash, adminCredential.salt)).toBe(true);
+    expect(await verifyPassword('Password123!', adminCredential.hash, adminCredential.salt)).toBe(false);
+    expect(await verifyPassword('admin', defaultCredential.hash, defaultCredential.salt)).toBe(false);
   });
 
   it('rechaza login con credenciales inválidas y acepta credenciales válidas', async () => {
