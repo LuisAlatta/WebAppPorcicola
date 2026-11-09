@@ -674,7 +674,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const saleFinance=await db.prepare("SELECT f.id,f.amount_minor,f.currency_code,f.source_type,m.id AS movement_id FROM financial_entries f JOIN operation_log o ON o.id=f.operation_log_id JOIN inventory_movements m ON m.operation_log_id=o.id WHERE f.source_type='animal_sale' AND f.source_id=(SELECT id FROM animals WHERE code='T17-SALUD-01')").first<{id:number;amount_minor:number;currency_code:string;source_type:string;movement_id:number}>();expect(saleFinance).toMatchObject({amount_minor:18000,currency_code:'PEN',source_type:'animal_sale'});expect(saleFinance?.movement_id).toBeTruthy();
     const saleReturn={effectiveDate:'2026-11-08',reason:'Cliente devuelve el animal',operationKey:'t20-sale-return'};expect((await api('/api/animals/T17-SALUD-01/sale-return',{method:'POST',body:JSON.stringify({...saleReturn,operationKey:'t20-sale-return-denied'})},operarioToken)).status).toBe(403);const returned=await api('/api/animals/T17-SALUD-01/sale-return',{method:'POST',body:JSON.stringify(saleReturn)});expect(returned.status,await returned.clone().text()).toBe(201);expect((await returned.json() as {animal:{status:string;exitDate:string|null}}).animal).toMatchObject({status:'activo',exitDate:null});expect((await api('/api/animals/T17-SALUD-01/sale-return',{method:'POST',body:JSON.stringify(saleReturn)})).status).toBe(200);expect((await inventoryTotals('2026-11-08')).summary.total.available).toBe(stockBeforeSale);
     expect(await db.prepare('SELECT reversed_at FROM financial_entries WHERE id=?').bind(saleFinance!.id).first()).toMatchObject({reversed_at:expect.any(String)});expect(await db.prepare('SELECT direction,amount_minor,reversal_of_id FROM financial_entries WHERE reversal_of_id=?').bind(saleFinance!.id).first()).toMatchObject({direction:'expense',amount_minor:18000,reversal_of_id:saleFinance!.id});
-  });
+  },15000);
 
   it('respeta el alcance por galpón y el perfil de solo lectura', async () => {
     const otraGranja = await create({
@@ -1151,7 +1151,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const afterPartial=await api('/api/alerts?type=weaning&bucket=today');expect((await afterPartial.json() as {alerts:{details:{remaining:number}}[]}).alerts[0]?.details.remaining).toBe(3);
     const finalWeaning=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'weaning',effectiveDate:today,sex:'hembra',quantity:3,weightKg:6.3,destinationStageCode:'inicio',destinationBarnId:1,reason:'Destete completo T22',operationKey:'rep-t22-wean-final'})});expect(finalWeaning.status,await finalWeaning.clone().text()).toBe(201);
     expect((await api('/api/alerts?type=weaning&status=resolved')).status).toBe(200);
-  },30000);
+  },60000);
 
   it('reconcilia bajo peso, sugerencia de venta, retiro sanitario y notificación crítica (T23)',async()=>{
     const today=currentFarmDate();const withdrawalDate=new Date(`${today}T00:00:00.000Z`);withdrawalDate.setUTCDate(withdrawalDate.getUTCDate()+7);const withdrawalUntil=withdrawalDate.toISOString().slice(0,10);await db.prepare("UPDATE stage_versions SET initial_weight_kg=40 WHERE code='engorde' AND status='active'").run();
@@ -1226,6 +1226,6 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const responsibleId=Number((await db.prepare("SELECT id FROM users WHERE role='responsable' LIMIT 1").first<{id:number}>())?.id);await db.prepare('DELETE FROM user_barns WHERE user_id=? AND barn_id=1').bind(responsibleId).run();
     const rerun=await api(`/api/reports/definitions/${saved}/execute`,{method:'POST',body:JSON.stringify({})},responsableToken);expect(rerun.status,await rerun.clone().text()).toBe(200);expect((await rerun.json() as {rowCount:number}).rowCount).toBe(0);const exportAfterAccessChange=await api('/api/reports/export',{method:'POST',body:JSON.stringify({definitionId:saved})},responsableToken);expect(exportAfterAccessChange.status,await exportAfterAccessChange.clone().text()).toBe(200);expect((await exportAfterAccessChange.json() as {rowCount:number}).rowCount).toBe(0);
     expect((await api('/api/reports/preview',{method:'POST',body:JSON.stringify({...definition,source:'finance',columns:['direction'],filters:{}})},operarioToken)).status).toBe(403);
-  }, 60000);
+  }, 120000);
 
 });

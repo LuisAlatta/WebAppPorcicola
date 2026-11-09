@@ -18,7 +18,7 @@ import {
   IconTrash,
 } from './icons';
 import { ModalDialog } from './ModalDialog';
-import { farmToday, newOperationKey } from '../utils/operations';
+import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
 import type { Perfil } from '../types';
 
 type AnimalType = 'cerda' | 'verraco' | 'lechon' | 'reemplazo';
@@ -613,14 +613,13 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
     setBusy(true);
     try {
-      const res = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/tags`, {
+      const res = await fetchOperation(`/api/animals/${encodeURIComponent(detail.code)}/tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tag: tagForm.tag.trim(),
           effectiveDate: tagForm.effectiveDate,
           reason: tagForm.reason.trim(),
-          operationKey: newOperationKey('ani-arete'),
         }),
       });
       const body = await res.json() as { error?: string; animal?: AnimalDetail; warning?: string | null };
@@ -632,8 +631,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
       setTagForm({ tag: '', effectiveDate: farmToday(), reason: '' });
       setSuccess(`Arete actualizado a ${body.animal.currentTag}. El anterior se conserva con su fecha.`);
       await loadList();
-    } catch {
-      setTagError('No se pudo conectar con el servidor.');
+    } catch (e) {
+      setTagError(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.');
     } finally {
       setBusy(false);
     }
@@ -650,14 +649,13 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
     setBusy(true);
     try {
-      const res = await fetch(
+      const res = await fetchOperation(
         `/api/animals/${encodeURIComponent(detail.code)}/${active ? 'reactivate' : 'deactivate'}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             reason: toggleReason.trim(),
-            operationKey: newOperationKey(active ? 'ani-reactivar' : 'ani-baja'),
           }),
         },
       );
@@ -672,8 +670,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
         ? `La ficha ${body.animal.code} vuelve al padrón de selección.`
         : `La ficha ${body.animal.code} quedó inactiva sin registrar venta ni muerte.`);
       await loadList();
-    } catch {
-      setToggleError('No se pudo conectar con el servidor.');
+    } catch (e) {
+      setToggleError(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.');
     } finally {
       setBusy(false);
     }

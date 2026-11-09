@@ -14,6 +14,7 @@ import {
   IconCalendar,
 } from './icons';
 import { farmToday, newOperationKey } from '../utils/operations';
+import { ModalDialog } from './ModalDialog';
 
 interface CatalogItem {
   id: number;
@@ -1139,58 +1140,64 @@ export function ModuloConfiguracion() {
       )}
 
       {retireTarget && (
-        <div className="modal-backdrop">
-          <div className="modal-content card p-4">
-            <h4 className="text-lg font-bold mb-2">Retirar de las opciones nuevas</h4>
-            <p className="text-xs text-muted mb-3">
-              <strong>{retireTarget.label}</strong> dejará de ofrecerse desde la fecha indicada.
-              Las fechas anteriores conservan este valor en los informes.
-            </p>
-            {retireError && (
-              <div className="banner-alert banner-alert-error mb-3" role="alert">
+        <ModalDialog
+          labelledBy="config-retire-dialog-title"
+          onDismiss={() => setRetireTarget(null)}
+          dismissDisabled={retireSaving}
+        >
+          <h4 id="config-retire-dialog-title" className="text-lg font-bold mb-2">Retirar de las opciones nuevas</h4>
+          <p className="text-xs text-muted mb-3">
+            <strong>{retireTarget.label}</strong> dejará de ofrecerse desde la fecha indicada.
+            Las fechas anteriores conservan este valor en los informes.
+          </p>
+          {retireError && (
+            <div className="banner-alert banner-alert-error mb-3" role="alert">
+              <span className="inline-flex items-center justify-center gap-2 leading-none">
+                <IconAlertCircle size={16} />
+                <span>{retireError}</span>
+              </span>
+            </div>
+          )}
+          <form onSubmit={submitRetire}>
+            <div className="form-group mb-2">
+              <label className="form-label text-sm" htmlFor="config-retire-date">Vigente hasta (nueva fecha efectiva):</label>
+              <input id="config-retire-date" type="date" className="form-input" required value={retireDate} onChange={(e) => setRetireDate(e.target.value)} />
+            </div>
+            <div className="form-group mb-3">
+              <label className="form-label text-sm" htmlFor="config-retire-reason">Motivo del retiro:</label>
+              <input
+                id="config-retire-reason"
+                type="text"
+                className="form-input"
+                required
+                minLength={5}
+                value={retireReason}
+                onChange={(e) => setRetireReason(e.target.value)}
+                placeholder="Ej. Reemplazado por un nuevo valor del catálogo"
+              />
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button type="button" className="btn btn-outline" onClick={() => setRetireTarget(null)} disabled={retireSaving}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-danger" disabled={retireSaving}>
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconAlertCircle size={16} />
-                  <span>{retireError}</span>
+                  <IconCheck size={16} />
+                  <span>{retireSaving ? 'Guardando…' : 'Confirmar Retiro'}</span>
                 </span>
-              </div>
-            )}
-            <form onSubmit={submitRetire}>
-              <div className="form-group mb-2">
-                <label className="form-label text-sm">Vigente hasta (nueva fecha efectiva):</label>
-                <input type="date" className="form-input" required value={retireDate} onChange={(e) => setRetireDate(e.target.value)} />
-              </div>
-              <div className="form-group mb-3">
-                <label className="form-label text-sm">Motivo del retiro:</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  required
-                  minLength={5}
-                  value={retireReason}
-                  onChange={(e) => setRetireReason(e.target.value)}
-                  placeholder="Ej. Reemplazado por un nuevo valor del catálogo"
-                />
-              </div>
-              <div className="flex justify-end gap-2 mt-4">
-                <button type="button" className="btn btn-outline" onClick={() => setRetireTarget(null)} disabled={retireSaving}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-danger" disabled={retireSaving}>
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconCheck size={16} />
-                    <span>{retireSaving ? 'Guardando…' : 'Confirmar Retiro'}</span>
-                  </span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+              </button>
+            </div>
+          </form>
+        </ModalDialog>
       )}
 
       {historyTarget && (
-        <div className="modal-backdrop">
-          <div className="modal-content card p-4" style={{ maxWidth: '760px' }}>
-            <h4 className="text-lg font-bold mb-2">Historial de versiones</h4>
+        <ModalDialog
+          labelledBy="config-history-dialog-title"
+          onDismiss={() => setHistoryTarget(null)}
+        >
+          <div style={{ maxWidth: '760px', width: '100%' }}>
+            <h4 id="config-history-dialog-title" className="text-lg font-bold mb-2">Historial de versiones</h4>
             <p className="text-xs text-muted mb-3">{historyTarget.label}</p>
             {historyLoading ? (
               <p className="text-muted text-center p-3">Cargando historial...</p>
@@ -1214,7 +1221,7 @@ export function ModuloConfiguracion() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalDialog>
       )}
     </div>
   );

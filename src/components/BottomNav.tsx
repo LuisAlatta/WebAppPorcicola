@@ -80,6 +80,7 @@ export function BottomNav({ vistaActual, onNavigate }: BottomNavProps) {
               type="button"
               className={`bottom-nav-button ${active ? 'bottom-nav-active' : ''}`}
               aria-current={active ? 'page' : undefined}
+              aria-label={item.label}
               onClick={() => onNavigate(item.view)}
             >
               <div className="bottom-nav-icon-wrap">

@@ -40,6 +40,7 @@ export function Navbar({ perfilActual, usuario, onNavigate, onLogout }: NavbarPr
             className="brand-link-btn"
             onClick={() => onNavigate('inicio')}
             title="Ir al Menú Principal"
+            aria-label="Ir al Menú Principal"
           >
             <span className="brand-text">Mi Granja Pro</span>
           </button>
@@ -52,8 +53,9 @@ export function Navbar({ perfilActual, usuario, onNavigate, onLogout }: NavbarPr
             className="btn btn-ghost btn-sm btn-logout"
             onClick={onLogout}
             title="Cerrar sesión"
+            aria-label="Cerrar sesión"
           >
-            <span className="inline-flex items-center justify-center gap-1 leading-none">
+            <span className="inline-flex items-center justify-center gap-2 leading-none">
               <IconLogOut size={16} />
               <span>Salir</span>
             </span>

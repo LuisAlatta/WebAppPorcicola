@@ -244,7 +244,12 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     </div>
     {error && <div className="alert alert-error" role="alert">{error}</div>}{notice && <div className="alert alert-success" role="status">{notice}</div>}
     {!soloLectura && <div className="card mb-4"><div className="card-header-clean mb-3"><span className="section-title">{isAntecedent ? 'Ingreso gestante / antecedente' : 'Registrar servicio'}</span>
-      <button type="button" className="btn btn-outline btn-sm" onClick={() => { setIsAntecedent(!isAntecedent); setForm(initialForm()); }}><IconPlus size={14} />{isAntecedent ? 'Registrar servicio' : 'Registrar antecedente'}</button></div>
+      <button type="button" className="btn btn-outline btn-sm" onClick={() => { setIsAntecedent(!isAntecedent); setForm(initialForm()); }}>
+        <span className="inline-flex items-center justify-center gap-2 leading-none">
+          <IconPlus size={14} />
+          <span>{isAntecedent ? 'Registrar servicio' : 'Registrar antecedente'}</span>
+        </span>
+      </button></div>
       <form onSubmit={submitCycle} className="form-stack"><div className="grid-3">
         <div className="form-group"><label className="form-label">Hembra</label><select className="form-select" required value={form.femaleCode} onChange={(e) => setForm((prev) => ({ ...prev, femaleCode: e.target.value }))}><option value="">Seleccione</option>{females.map((animal) => <option key={animal.code} value={animal.code}>{animal.code}{animal.alias ? ` · ${animal.alias}` : ''} · {animal.barnName}</option>)}</select></div>
         <div className="form-group"><label className="form-label">{isAntecedent ? 'Fecha de ingreso/antecedente' : 'Fecha del servicio'}</label><input type="date" className="form-input" required max={farmToday()} value={form.serviceDate} onChange={(e) => setForm((prev) => ({ ...prev, serviceDate: e.target.value }))} /></div>
@@ -257,11 +262,26 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         {form.dueDate && <div className="form-group"><label className="form-label">Motivo de fecha manual</label><input className="form-input" required value={form.dueDateReason} onChange={(e) => setForm((prev) => ({ ...prev, dueDateReason: e.target.value }))} maxLength={300} /></div>}
         <div className="form-group"><label className="form-label">Último parto conocido</label><input type="date" className="form-input" value={form.lastFarrowingDate} onChange={(e) => setForm((prev) => ({ ...prev, lastFarrowingDate: e.target.value }))} /></div></div>
       <div className="form-group"><label className="form-label">Observaciones / antecedentes</label><textarea className="form-input" rows={2} value={form.observations} onChange={(e) => setForm((prev) => ({ ...prev, observations: e.target.value }))} maxLength={1000} /></div>
-      <button type="submit" className="btn btn-primary" disabled={busy}><IconCheck size={16} />{isAntecedent ? 'Guardar antecedente' : 'Abrir ciclo y registrar servicio'}</button></form>
+      <button type="submit" className="btn btn-primary" disabled={busy}>
+        <span className="inline-flex items-center justify-center gap-2 leading-none">
+          <IconCheck size={16} />
+          <span>{busy ? 'Guardando…' : isAntecedent ? 'Guardar antecedente' : 'Abrir ciclo y registrar servicio'}</span>
+        </span>
+      </button></form>
     </div>}
     <div className="card"><div className="card-header-clean mb-3"><span className="section-title">Ciclos reproductivos</span><span className="text-xs text-muted">Rango inclusivo por fecha del último servicio (antecedente: fecha probable)</span></div>
       <div className="grid-3 mb-3"><div className="form-group"><label className="form-label">Desde</label><input type="date" className="form-input" value={from} onChange={(e) => setFrom(e.target.value)} /></div><div className="form-group"><label className="form-label">Hasta</label><input type="date" className="form-input" value={to} onChange={(e) => setTo(e.target.value)} /></div><div className="form-group"><label className="form-label">Estado</label><select className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}><option value="pending">Pendientes</option><option value="all">Todos</option><option value="aborted">Abortados</option><option value="farrowed">Paridos</option><option value="closed">Cerrados</option></select></div></div>
-      {!cycles.length ? <p className="text-sm text-muted">No hay ciclos en este rango.</p> : cycles.map((cycle) => <article className="reproduction-cycle" key={cycle.id}>
+      {!cycles.length ? (
+        <div className="empty-state-card">
+          <div className="empty-icon-wrap">
+            <IconHeart size={26} className="text-primary" />
+          </div>
+          <p className="font-semibold">Sin ciclos reproductivos para los filtros seleccionados</p>
+          <p className="text-sm text-muted">
+            Ajusta las fechas o el estado, o registra un nuevo servicio reproductivo.
+          </p>
+        </div>
+      ) : cycles.map((cycle) => <article className="reproduction-cycle" key={cycle.id}>
         <div className="flex flex-wrap justify-between gap-2"><div><strong>{cycle.femaleCode}{cycle.femaleAlias ? ` · ${cycle.femaleAlias}` : ''}</strong><div className="text-sm text-muted">Ciclo #{cycle.cycleNumber} · {cycle.barnName} · {cycle.locationCode ?? 'Ubicación sin asignar'} · {cycle.lotCode ?? 'Sin lote'} · {cycle.femaleBreed ?? 'Raza sin registrar'}{cycle.aptitude ? ` · ${cycle.aptitude}` : ''}</div></div>
           <div className="reproduction-due"><strong>{cycle.dueLabel}</strong><div className="text-sm">Probable: {cycle.probableFarrowingDate} · {cycle.daysRemaining} días · {cycle.dueDateSource === 'manual' ? 'manual' : `${cycle.gestationDays} días configurados`}</div>{cycle.dueDateReason && <div className="text-xs text-muted">{cycle.dueDateReason}</div>}</div></div>
         <div className="mt-2 text-sm">Estado: {statusLabels[cycle.reproductiveStatus] ?? cycle.reproductiveStatus} · {cycle.antecedent ? 'Antecedente (sin servicios inventados)' : `${cycle.services.length} servicio(s)`}{cycle.lastFarrowingDate ? ` · Último parto ${cycle.lastFarrowingDate}` : ''}</div>
@@ -299,7 +319,12 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
           <label className="text-xs">Palpación <select className="form-select form-select-sm inline-block ml-1" defaultValue="" onChange={(e) => { if (e.target.value) void recordEvent(cycle, 'palpation', e.target.value); e.currentTarget.value = ''; }}><option value="">Registrar estado</option>{Object.entries(statusLabels).filter(([key]) => key !== 'abortion').map(([key,label]) => <option key={key} value={key}>{label}</option>)}</select></label>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => void recordEvent(cycle, 'pregnancy_confirmed', 'gestation')}>Confirmar gestación</button>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => setRepeatCycle(repeatCycle === cycle.id ? null : cycle.id)}>Agregar repetición/servicio</button>
-          <button type="button" className="btn btn-outline btn-sm" onClick={() => setManualCycle(manualCycle === cycle.id ? null : cycle.id)}><IconCalendar size={14} /> Fecha probable manual</button>
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => setManualCycle(manualCycle === cycle.id ? null : cycle.id)}>
+            <span className="inline-flex items-center justify-center gap-2 leading-none">
+              <IconCalendar size={14} />
+              <span>Fecha probable manual</span>
+            </span>
+          </button>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => setClosureForm({ cycleId: cycle.id, eventType: 'abortion', reason: '' })}>Registrar aborto</button>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => setClosureForm({ cycleId: cycle.id, eventType: 'closed', reason: '' })}>Cerrar ciclo</button>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => setFarrowingCycle(farrowingCycle === cycle.id ? null : cycle.id)}>Registrar parto y camada</button>

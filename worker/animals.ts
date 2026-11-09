@@ -1541,7 +1541,7 @@ export async function changeTag(
   if (effectiveDate > today()) throw new ApiError(400, 'La fecha del cambio no puede ser futura');
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Cambio de arete' });
 
-  const payload = { key, tag, effectiveDate };
+  const payload = { key, tag, effectiveDate, reason };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) {
     return { animal: await getAnimal(db, key, scope), replayed: true };
@@ -1942,7 +1942,7 @@ export async function setAnimalAvailability(
   scope: ScopeOptions = {},
 ): Promise<{ animal: AnimalDetail; replayed: boolean }> {
   const reason = normalizeReason(input.reason, { required: true, fallback: active ? 'Reactivación de ficha' : 'Desactivación de ficha' });
-  const payload = { key, active };
+  const payload = { key, active, reason };
 
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) {
