@@ -4,6 +4,8 @@ import { Miniflare } from 'miniflare';
 import worker from '../worker/index';
 import { currentFarmDate } from '../worker/events';
 import { applyVaccineOccurrence } from '../worker/vaccines';
+import { createHealthEvent } from '../worker/health';
+import { registerAnimalExit } from '../worker/animals';
 
 const runtime = new Miniflare({
   workers: [{
@@ -1065,6 +1067,20 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const sale=await api('/api/animals/SALUD-VENTA/exit',{method:'POST',body:JSON.stringify({exitType:'sale',causeCode:'edad',effectiveDate:'2026-10-05',saleAmount:'100',reason:'Venta de prueba',operationKey:'health-sold-sale'})});expect(sale.status,await sale.clone().text()).toBe(201);
     const invalidTreatment=await api('/api/health/events',{method:'POST',body:JSON.stringify({...treatment,effectiveDate:'2026-10-01',withdrawalUntil:'2026-10-08',nextDueDate:'2026-10-08',animalCodes:['SALUD-VENTA'],operationKey:'health-sold-treatment'})},veterinarioToken);expect(invalidTreatment.status).toBe(409);
     const invalidVaccine=await api(`/api/vaccines/schedules/${vaccineId}/apply`,{method:'POST',body:JSON.stringify({appliedDate:'2026-10-01',dosage:1,dosageUnit:'ml',withdrawalUntil:'2026-10-08',reason:'Vacuna con retiro incompatible',operationKey:'health-sold-vaccine-apply'})},veterinarioToken);expect(invalidVaccine.status,await invalidVaccine.clone().text()).toBe(409);
+  },25000);
+
+  it('evita que una venta y un tratamiento con retiro se confirmen a la vez', async () => {
+    const vet=(await db.prepare("SELECT id FROM users WHERE username='veterinario.animales@granja.pe'").first<{id:number}>())!.id;
+    const admin=(await db.prepare("SELECT id FROM users WHERE username='admin.animales@granja.pe'").first<{id:number}>())?.id??1;
+    const delayedDb=()=>{let release!:()=>void;let observed!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});const waiting=new Promise<void>(resolve=>{observed=resolve;});const delayed=new Proxy(db,{get(target,key){if(key==='batch')return async(...args:Parameters<D1Database['batch']>)=>{observed();await gate;return target.batch(...args);};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}}) as D1Database;return{delayed,release,waiting};};
+    const treatment={eventType:'treatment',effectiveDate:'2026-10-01',product:'Tratamiento en carrera',dosage:1,dosageUnit:'ml',withdrawalUntil:'2026-10-08',reason:'Tratamiento en carrera'};
+    const sale={exitType:'sale',causeCode:'edad',effectiveDate:'2026-10-05',saleAmount:'100',reason:'Venta en carrera'};
+    expect((await create({code:'SALUD-CARRERA-A',entryDate:'2026-10-01',operationKey:'health-race-a'})).status).toBe(201);
+    const a=delayedDb();const slowTreatment=createHealthEvent(a.delayed,vet,{...treatment,animalCodes:['SALUD-CARRERA-A'],operationKey:'health-race-treatment-a'});await a.waiting;
+    expect((await api('/api/animals/SALUD-CARRERA-A/exit',{method:'POST',body:JSON.stringify({...sale,operationKey:'health-race-sale-a'})})).status).toBe(201);a.release();await expect(slowTreatment).rejects.toMatchObject({status:409});
+    expect((await create({code:'SALUD-CARRERA-B',entryDate:'2026-10-01',operationKey:'health-race-b'})).status).toBe(201);
+    const b=delayedDb();const slowSale=registerAnimalExit(b.delayed,admin,'SALUD-CARRERA-B',{...sale,operationKey:'health-race-sale-b'});await b.waiting;
+    expect((await api('/api/health/events',{method:'POST',body:JSON.stringify({...treatment,animalCodes:['SALUD-CARRERA-B'],operationKey:'health-race-treatment-b'})},veterinarioToken)).status).toBe(201);b.release();await expect(slowSale).rejects.toMatchObject({status:409});
   },25000);
 
   it('filtra padrón por progenitores, aptitud, raza, procedencia y etapa de ingreso', async () => {
