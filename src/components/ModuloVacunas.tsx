@@ -40,6 +40,11 @@ interface Schedule {
   appliedDate: string | null;
   barnName: string;
   observations: string | null;
+  dosage: number | null;
+  dosageUnit: string | null;
+  productLot: string | null;
+  withdrawalUntil: string | null;
+  applicationObservations: string | null;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -93,6 +98,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
   });
 
   const [applyTarget, setApplyTarget] = useState<Schedule | null>(null);
+  const [correctingApplication, setCorrectingApplication] = useState(false);
   const [applyForm, setApplyForm] = useState({
     dosage: '2',
     dosageUnit: 'ml',
@@ -100,8 +106,12 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
     productLot: '',
     withdrawalUntil: '',
     observations: '',
+    reason: '',
   });
   const [applyOperationKey, setApplyOperationKey] = useState(() => newOperationKey('vaccine-apply'));
+  const [annulTarget, setAnnulTarget] = useState<Schedule | null>(null);
+  const [annulReason, setAnnulReason] = useState('');
+  const [annulOperationKey, setAnnulOperationKey] = useState(() => newOperationKey('vaccine-annul'));
 
   const [scheduleTarget, setScheduleTarget] = useState<{ row: Schedule; cancel: boolean } | null>(null);
   const [scheduleChangeForm, setScheduleChangeForm] = useState({ date: '', reason: '' });
@@ -221,7 +231,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
     event.preventDefault();
     if (!applyTarget) return;
     const result = await send(
-      `/api/vaccines/schedules/${applyTarget.id}/apply`,
+      `/api/vaccines/schedules/${applyTarget.id}/${correctingApplication ? 'correction' : 'apply'}`,
       {
         appliedDate: applyForm.appliedDate,
         dosage: Number(applyForm.dosage),
@@ -229,10 +239,10 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
         productLot: applyForm.productLot || undefined,
         withdrawalUntil: applyForm.withdrawalUntil || undefined,
         observations: applyForm.observations || undefined,
-        reason: 'Aplicación de vacuna',
+        reason: correctingApplication ? applyForm.reason : 'Aplicación de vacuna',
         operationKey: applyOperationKey,
       },
-      'Vacuna aplicada e incorporada al historial sanitario.'
+      correctingApplication ? 'Aplicación corregida; el original se conserva en la auditoría.' : 'Vacuna aplicada e incorporada al historial sanitario.'
     );
     if (!result) return;
     setApplyTarget(null);
@@ -243,6 +253,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
       productLot: '',
       withdrawalUntil: '',
       observations: '',
+      reason: '',
     });
     setApplyOperationKey(newOperationKey('vaccine-apply'));
   };
@@ -486,6 +497,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                         aria-label={`Aplicar vacuna ${row.vaccineName} al animal ${row.animalCode}`}
                         onClick={() => {
                           setApplyTarget(row);
+                          setCorrectingApplication(false);
                           setApplyForm({
                             dosage: '2',
                             dosageUnit: 'ml',
@@ -493,6 +505,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                             productLot: '',
                             withdrawalUntil: '',
                             observations: '',
+                            reason: '',
                           });
                           setApplyOperationKey(newOperationKey('vaccine-apply'));
                         }}
@@ -533,6 +546,24 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                           <IconX size={12} />
                           <span>Cancelar</span>
                         </span>
+                      </button>
+                    </div>
+                  )}
+                  {row.status === 'applied' && canWrite && (
+                    <div className="inline-flex items-center justify-center gap-1.5 flex-wrap">
+                      <button type="button" className="btn btn-outline btn-xs" disabled={busy}
+                        aria-label={`Corregir aplicación de ${row.vaccineName} al animal ${row.animalCode}`}
+                        onClick={() => {
+                          setApplyTarget(row);setCorrectingApplication(true);
+                          setApplyForm({dosage:String(row.dosage ?? ''),dosageUnit:row.dosageUnit ?? '',appliedDate:row.appliedDate ?? '',productLot:row.productLot ?? '',withdrawalUntil:row.withdrawalUntil ?? '',observations:row.applicationObservations ?? '',reason:''});
+                          setApplyOperationKey(newOperationKey('vaccine-correction'));
+                        }}>
+                        <span className="inline-flex items-center justify-center gap-2 leading-none"><IconEdit size={12}/><span>Corregir aplicación</span></span>
+                      </button>
+                      <button type="button" className="btn btn-outline btn-xs text-danger" disabled={busy}
+                        aria-label={`Anular aplicación de ${row.vaccineName} al animal ${row.animalCode}`}
+                        onClick={() => {setAnnulTarget(row);setAnnulReason('');setAnnulOperationKey(newOperationKey('vaccine-annul'));}}>
+                        <span className="inline-flex items-center justify-center gap-2 leading-none"><IconX size={12}/><span>Anular aplicación</span></span>
                       </button>
                     </div>
                   )}
@@ -951,7 +982,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
           dismissDisabled={busy}
         >
           <h4 id="vaccine-apply-dialog-title" className="text-lg font-bold mb-2">
-            Registrar Aplicación de Vacuna
+            {correctingApplication ? 'Corregir Aplicación de Vacuna' : 'Registrar Aplicación de Vacuna'}
           </h4>
           <p className="text-xs text-muted mb-3">
             Animal <strong className="text-body font-numeric">{applyTarget.animalCode}</strong> · Vacuna{' '}
@@ -1036,6 +1067,13 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                   onChange={(e) => setApplyForm({ ...applyForm, observations: e.target.value })}
                 />
               </div>
+              {correctingApplication && (
+                <div className="form-group form-span-2">
+                  <label className="form-label text-xs" htmlFor="apply-correction-reason">Motivo de corrección:</label>
+                  <input id="apply-correction-reason" className="form-input" required value={applyForm.reason} onChange={(e)=>setApplyForm({...applyForm,reason:e.target.value})}/>
+                  <p className="text-xs text-muted">La aplicación anterior se conserva en la auditoría y se sustituye su retiro.</p>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2">
               <button
@@ -1053,14 +1091,35 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
               <button
                 type="submit"
                 className="btn btn-primary btn-sm"
-                disabled={busy}
-                aria-label="Confirmar aplicación de vacuna e integrar al historial"
+                disabled={busy || (correctingApplication && !applyForm.reason.trim())}
+                aria-label={correctingApplication ? 'Guardar corrección de aplicación' : 'Confirmar aplicación de vacuna e integrar al historial'}
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconCheck size={14} />
-                  <span>{busy ? 'Guardando…' : 'Confirmar Aplicación'}</span>
+                  <span>{busy ? 'Guardando…' : correctingApplication ? 'Guardar corrección' : 'Confirmar Aplicación'}</span>
                 </span>
               </button>
+            </div>
+          </form>
+        </ModalDialog>
+      )}
+
+      {annulTarget && (
+        <ModalDialog labelledBy="vaccine-annul-title" onDismiss={()=>setAnnulTarget(null)} dismissDisabled={busy}>
+          <h4 id="vaccine-annul-title" className="text-lg font-bold mb-2">Anular Aplicación de Vacuna</h4>
+          <p className="text-xs text-muted mb-3">{annulTarget.vaccineName} · {annulTarget.animalCode}. Se retirará su efecto clínico y su retiro. La dosis volverá a pendientes; las siguientes dosis recurrentes pendientes se retirarán hasta registrar la aplicación real.</p>
+          <form onSubmit={async(event)=>{
+            event.preventDefault();
+            const result=await send(`/api/vaccines/schedules/${annulTarget.id}/annul`,{reason:annulReason,operationKey:annulOperationKey},'Aplicación anulada; la dosis volvió a pendientes y el original se conserva en la auditoría.');
+            if(result)setAnnulTarget(null);
+          }}>
+            <div className="form-group mb-4">
+              <label className="form-label text-xs" htmlFor="vaccine-annul-reason">Motivo de anulación:</label>
+              <input id="vaccine-annul-reason" className="form-input" required autoFocus value={annulReason} onChange={(event)=>setAnnulReason(event.target.value)}/>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={()=>setAnnulTarget(null)}>Cancelar</button>
+              <button type="submit" className="btn btn-danger btn-sm" disabled={busy||!annulReason.trim()} aria-label="Confirmar anulación de aplicación">{busy?'Guardando…':'Anular aplicación'}</button>
             </div>
           </form>
         </ModalDialog>

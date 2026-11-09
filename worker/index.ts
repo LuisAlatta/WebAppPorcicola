@@ -73,7 +73,7 @@ import {
 import { correctLitter, correctLitterDate, recordFarrowing, recordLitterEvent } from './litters';
 import { createFeedWarehouse, getFeedInventory, getFeedProjection, listFeedMovements, listFeedWarehouses, registerFeedMovement } from './feed';
 import { correctHealthEvent, createHealthEvent, listHealthEvents, listUpcomingHealthEvents, listWithdrawalAlerts } from './health';
-import { applyVaccineOccurrence, createManualVaccineSchedule, deactivateVaccineRule, generateAnimalVaccineSchedules, generateVaccineSchedules, listVaccineRules, listVaccineSchedules, saveVaccineRule, updateVaccineOccurrence } from './vaccines';
+import { applyVaccineOccurrence, correctVaccineApplication, createManualVaccineSchedule, deactivateVaccineRule, generateAnimalVaccineSchedules, generateVaccineSchedules, listVaccineRules, listVaccineSchedules, saveVaccineRule, updateVaccineOccurrence } from './vaccines';
 import { createFinancialEntry, createFinancialOpeningBalance, createFinancialSettlement, listFinancialCashflow, listFinancialEntries, reverseFinancialEntry } from './finance';
 import { attendAlert, createManualAlert, listAlertNotificationHistory, listAlerts, listEscalationRules, listNotifications, markNotificationRead, reconcileAlerts, saveEscalationRule } from './alerts';
 import { duplicateReportDefinition, exportCustomReport, getReportDefinition, listReportCatalog, listReportDefinitions, previewCustomReport, reportBirths, reportDashboard, reportWeights, saveReportDefinition, validateReportParams } from './reports';
@@ -589,6 +589,13 @@ const worker = {
         if(path==='/api/vaccines/schedules/manual'&&request.method==='POST'){
           if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo veterinario o administrador puede programar vacunas'},{status:403});
           const body=await request.json() as Parameters<typeof createManualVaccineSchedule>[2];const result=await createManualVaccineSchedule(env.DB,session.user.id,body,scope);await reconcileAlerts(env.DB);return Response.json(result.conflictDetected?{ok:true,...result,error:'Ya existe una programación pendiente para esa vacuna y fecha; revise el registro existente.'}:{ok:true,...result},{status:result.conflictDetected?409:result.replayed?200:201});
+        }
+        const applicationCorrection=path.match(/^\/api\/vaccines\/schedules\/(\d+)\/(correction|annul)$/);
+        if(applicationCorrection&&request.method==='POST'){
+          if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo veterinario o administrador puede corregir vacunas'},{status:403});
+          const body=await request.json() as Parameters<typeof correctVaccineApplication>[3];
+          const result=await correctVaccineApplication(env.DB,session.user.id,Number(applicationCorrection[1]),body,applicationCorrection[2]==='annul',scope);
+          await reconcileAlerts(env.DB);return Response.json({ok:true,...result});
         }
         const occurrenceMatch=path.match(/^\/api\/vaccines\/schedules\/(\d+)\/apply$/);
         if(occurrenceMatch&&request.method==='POST'){
