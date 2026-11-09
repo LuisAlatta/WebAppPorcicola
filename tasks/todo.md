@@ -72,7 +72,7 @@ Estado actual: T01–T26 completadas técnicamente y cubiertas por el CI de `ba8
 
 - [ ] T29 · Pruebas integrales y ensayo de restauración · dependencias 26,27,28. Suite automatizada y restauración remota de una D1 pequeña disponibles. Falta el informe de resultados de los 32 casos y acordar/medir volumen, RPO y RTO.
 - [ ] T30 · Piloto con datos iniciales y los cuatro perfiles · dependencias 29. Plantillas y procedimiento preparados; el piloto, conteo físico, conciliación de caja y aceptación del responsable aún no están registrados.
-- [ ] T31 · Publicar y comprobar producción · dependencias 30. D1 de producción ya tiene aplicadas las migraciones 0001–0023. Después de cerrar T30 faltan desplegar el Worker compatible, revisar secretos/dominio/HTTPS, configurar cron de producción y ejecutar la verificación controlada.
+- [ ] T31 · Publicar y comprobar producción · dependencias 30. Wrangler encuentra pendientes en producción las migraciones 0024–0026. Después de cerrar T30 faltan aplicar el esquema, desplegar el Worker compatible, revisar secretos/dominio/HTTPS, configurar cron de producción y ejecutar la verificación controlada.
 - [ ] T32 · Seguimiento y entrega operativa · dependencias 31. Falta observar el primer cierre diario y una ejecución real del cron, registrar responsables y obtener conciliación firmada.
 - [ ] Cierre 10: Pendiente hasta cerrar el piloto, la matriz integral, producción y seguimiento con conciliación aceptada.
 
@@ -110,9 +110,9 @@ Estado actual: T01–T26 completadas técnicamente y cubiertas por el CI de `ba8
 | ALI-07 | T15 | Verificado en `tests/feed.integration.test.ts`: costo imputado una vez (123 kg × S/ 2,50 = S/ 307,50); inventario físico separado del costo asignado |
 | ANI-01 | T09 | Verificado en tests/animals.integration.test.ts: ficha con código, arete, alias, tipo, raza, sexo, nacimiento, pesos, estado, origen, galpón, etapa, ubicación, lote, genealogía y observaciones |
 | ANI-02 | T09 | Verificado en tests/animals.integration.test.ts: código permanente con ceros, historial de aretes, progenitores internos/externos, sexo compatible, fechas válidas y rechazo de ciclos |
-| ANI-03 | T09, T12 | Parcial: ficha y búsqueda muestran edad, pesos, estado, origen y ubicación; el módulo de reproducción lista servicios y ciclos; partos y métricas de camada se incorporan con T13–T14 |
-| ANI-04 | T09 | Parcial: edad a la fecha, edad hasta salida y último peso derivado; la ubicación por movimientos se completa en T10 |
-| ANI-05 | T09, T12 | Parcial: filtros y cronología de alta, pesos, aretes, tipos e inventario verificados; reproducción tiene listado propio por rango; integrar todos los eventos a cronología y agregar clínica en T13–T18 |
+| ANI-03 | T09, T12–T14 | Verificado en `tests/animals.integration.test.ts`: la ficha de la hembra resume servicios, partos, primer/último parto, crías por sexo y peso promedio ponderado; el detalle muestra también fecha, tipo y causa de salida. |
+| ANI-04 | T09–T11 | Verificado en `tests/animals.integration.test.ts`: edad hasta la fecha de salida, peso actual desde el pesaje válido más reciente y contexto histórico de ubicación/etapa. |
+| ANI-05 | T09, T12–T18 | Verificado en `tests/animals.integration.test.ts` y `tests/cierre4.integration.test.ts`: la cronología enlaza alta, pesajes, aretes, tipos, inventario, servicios, partos y sanidad; los filtros de padrón incluyen progenitores y atributos productivos. |
 | ANI-06 | T09 | Verificado en tests/animals.integration.test.ts: tipos cerda/verraco/lechón/reemplazo, sexo propio, código textual, alias y pesos de nacimiento/destete opcionales |
 | ANI-07 | T09 | Verificado en tests/animals.integration.test.ts: filtros combinables, reemplazo disponible y cambio de tipo con vigencia sin alterar ID ni cabezas; se rechaza tipo incompatible con sexo |
 | ANI-08 | T09 | Verificado en tests/animals.integration.test.ts: desactivar/reactivar ficha exige motivo y no crea salida ni altera el inventario |

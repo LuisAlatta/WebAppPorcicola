@@ -4,7 +4,7 @@ Actualizado el 9 de noviembre de 2026. Este documento distingue comprobaciones t
 
 ## Verificación posterior del código y staging
 
-Commit verificado: `ba89ceb2c2cfe0b5540db599ceb16490517171fe` (`main`). GitHub Actions, ejecución `42615705450`, terminó correctamente: `npm ci`, typecheck, lint, pruebas unitarias, integración, build y E2E.
+Código verificado: `ba89ceb2c2cfe0b5540db599ceb16490517171fe` (`main`). GitHub Actions, ejecución `42615705450`, terminó correctamente: `npm ci`, typecheck, lint, 145/145 pruebas unitarias en 32 archivos, 118/118 pruebas de integración en 22 archivos, build y 35/35 E2E. El commit documental actual `84a63297ac06bf9aae3ab5c6c2f5672a13d26e5b` también pasó todos los pasos de CI en la ejecución `42618065283`.
 
 El Worker de staging se construyó con `CLOUDFLARE_ENV=staging` y se desplegó en la cuenta confirmada `newluisalattago@gmail.com` / `0acfa25b5f619f94d581b8cf882e2eec`. Versión: `4627e473-2710-4648-879f-b5c2cca6576f`; binding `env.DB` verificado contra `webporcicola-staging`; cron de staging `5 5 * * *`. Wrangler no encuentra migraciones pendientes en staging. Las rutas `/`, `/animales`, `/inventario`, `/alimentacion`, `/sanidad` y `/reportes` responden 200. Las rutas protegidas `/api/animals`, `/api/inventory`, `/api/reports/weights` y `/api/reports/births` devuelven 401 sin sesión, como se espera.
 
@@ -50,23 +50,23 @@ Esta prueba valida una copia lógica pequeña en el runtime local. **No acredita
 
 | Área | Evidencia disponible | Pendiente de cierre |
 |---|---|---|
-| Navegador real | Playwright Chrome móvil emulado 20/20; `tests/routes.smoke.test.ts` conserva solo smoke de rutas. | Falta recorrido completo de formularios y evidencia del Android físico. |
+| Navegador | CI Playwright 35/35 en emulación móvil; el Worker staging actual sirve las pantallas de módulos y exige sesión para las API protegidas. | Falta el recorrido de campo en Android físico; la emulación y los smoke de rutas no sustituyen el piloto ni prueban todos los 32 casos de aceptación como jornada. |
 | Android físico | Dispositivo objetivo confirmado: Samsung Galaxy A54. | Registrar Android y versión de Chrome reales; instalar desde HTTPS, icono, enlace directo, actualización con formulario abierto, teclado decimal, foco, scroll y descargas. |
 | Desconexión física | Prueba automatizada de intento estable y no envío offline. | Modo avión real, pérdida de respuesta, recarga, reinicio y cambio de cuenta; confirmar ausencia de falsas confirmaciones y duplicados. |
 | CA-20 | Implementado en `worker/litters.ts` y cubierto por `tests/litter-date.integration.test.ts`; E2E de formulario y reintento en `e2e/litter-date.browser.ts`. | Caso funcional cubierto automáticamente. Mantenerlo abierto solo si el informe final de T29 detecta una discrepancia; no describir la corrección como pendiente de implementación. |
 | Alertas por cambio de día | Integraciones prueban ayer/hoy/+1/+7/+8 y handler programado local. | Registrar cambio de fecha Lima y ejecución programada real de staging; verificar contadores antes/después y ausencia de repetición. |
 | Recuperación remota | [Ensayo remoto ejecutado](recuperacion-remota.md):52tablas/96filas, FK0, Worker autenticado con copia y Time Travel verificados; destino efímero eliminado después. | Falta volumen real, custodia de copias y RPO/RTO acordados; confirmar plan efectivo (retención Free7días/Paid30). No equivale a recuperar producción bajo carga. |
 | Piloto | Procedimiento y plantillas en [piloto.md](piloto.md). | Carga aprobada, conteo físico, jornada de cuatro perfiles y aceptación del responsable operativo. |
-| Producción | D1 de producción tiene migraciones 0001–0023 aplicadas; Wrangler no reporta pendientes, `PRAGMA foreign_key_check` devuelve cero filas, los conteos core previos se conservaron y las rutas públicas/anónimas responden 200/401/404. Se aplicaron schema/backfills/valores iniciales; no se cargaron datos de piloto ni se desplegó el Worker. | T31 sigue abierto. Después de T30, verificar bindings/secretos/dominio/HTTPS, desplegar Worker compatible, configurar cron y completar pruebas controladas; el cron de staging no acredita el de producción. |
+| Producción | La consulta remota actual de Wrangler encuentra pendientes `0024_litter_discard.sql`, `0025_same_day_locations.sql` y `0026_litter_identified_adoptions.sql`. La revisión previa registró 0001–0023 y `PRAGMA foreign_key_check` sin errores; no se modificó producción durante esta revisión ni se desplegó el Worker compatible. | T31 sigue abierto. Después de T30, verificar bindings/secretos/dominio/HTTPS, aplicar el esquema pendiente, desplegar Worker compatible, configurar cron y completar pruebas controladas; el cron de staging no acredita el de producción. |
 | Entrega | Código y evidencia técnica local. | Primer cierre diario real, ejecución programada real, responsables de incidencias y recuperación y conciliación aceptada. |
 
 ### CA-20 implementado
 
-La corrección de fecha real conserva fecha previa, autor y motivo; valida secuencia e inventario; reprograma solo dosis pendientes del parto y preserva las aplicadas/canceladas. La cobertura automatizada está en `tests/litter-date.integration.test.ts` e incluye concurrencia con generación, permisos, idempotencia, conflicto y rollback. El resultado vigente de la suite completa (112/112) está registrado en la evidencia de esta revisión.
+La corrección de fecha real conserva fecha previa, autor y motivo; valida secuencia e inventario; reprograma solo dosis pendientes del parto y preserva las aplicadas/canceladas. La cobertura automatizada está en `tests/litter-date.integration.test.ts` e incluye concurrencia con generación, permisos, idempotencia, conflicto y rollback. La última CI aprobó 145 pruebas unitarias, 118 de integración y 35 E2E; la evidencia de `todo.md` registra el caso CA-13 con 002, nacimiento 06/06/2026 y vacuna pendiente el 05/08/2026.
 
 ## Matriz para el ensayo de los 32 casos
 
-La columna «Base» señala dónde existe una prueba candidata; no sustituye su resultado en la ejecución final ni una prueba de interfaz. Registrar commit, comando, esperado, observado y artefacto de cada caso en el informe T29.
+Las suites citadas en «Base» pasaron en CI para el commit `84a63297ac06bf9aae3ab5c6c2f5672a13d26e5b` (145 unitarias, 118 de integración y 35 E2E). Esto acredita los asertos automatizados incluidos en cada suite; no equivale a ejecutar los 32 casos como una jornada integral ni completa los chequeos de campo indicados. T29 permanece abierto hasta registrar esperado/observado/artefacto por caso y medir volumen, RPO y RTO acordados.
 
 | CA | Base de prueba | Comprobación adicional del ensayo |
 |---|---|---|
@@ -82,7 +82,7 @@ La columna «Base» señala dónde existe una prueba candidata; no sustituye su 
 | 10 | Animales integración T24 | 7,5 % media frente a 6,666… % global, sin confundir denominadores. |
 | 11 | Inventario/D1 integración, concurrencia | Dos sesiones HTTP sobre saldo único. |
 | 12 | Animales integración, corrección de camada | Rechazo con identificados incompatibles sin alterar libro. |
-| 13 | Animales integración, vacuna por nacimiento | 002, nacimiento 06/06 y +60 =05/08; tabla de cobertura está desactualizada si aún dice pendiente. |
+| 13 | `tests/cierre5.integration.test.ts`, `tests/animals.integration.test.ts` | 002, nacimiento 06/06/2026 y +60 =05/08/2026; generar/guardar de nuevo no duplica y conservar el pendiente tras aplicación. |
 | 14 | Animales integración, plan postdestete | Reabrir la edición y comparar 5/10/20 con tarjeta/agenda. |
 | 15 | Animales integración, regeneración/aplicación | Guardar reproducción dos veces con vacuna ya existente. |
 | 16 | Animales integración, fecha probable manual | Mostrar procedencia y motivo después de reabrir. |
