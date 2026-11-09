@@ -105,7 +105,6 @@ export function BocetoLogin({ onLogin }: LoginProps) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(remembered.hasSaved);
-  const [hasSaved, setHasSaved] = useState(remembered.hasSaved);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedRole, setSelectedRole] = useState<Perfil | null>(() => {
@@ -142,7 +141,6 @@ export function BocetoLogin({ onLogin }: LoginProps) {
         setUsername(saved.id);
         setPassword(saved.password);
         setRemember(true);
-        setHasSaved(true);
       })
       .catch(() => undefined);
 
@@ -157,7 +155,6 @@ export function BocetoLogin({ onLogin }: LoginProps) {
     } catch {
       // Ignorar
     }
-    setHasSaved(false);
     void navigator.credentials?.preventSilentAccess?.().catch(() => undefined);
   };
 
@@ -188,7 +185,6 @@ export function BocetoLogin({ onLogin }: LoginProps) {
             REMEMBERED_USERNAME_KEY,
             JSON.stringify({ username }),
           );
-          setHasSaved(true);
         } catch {
           // Ignorar problemas de cuota
         }
@@ -197,7 +193,6 @@ export function BocetoLogin({ onLogin }: LoginProps) {
         try {
           localStorage.removeItem(REMEMBERED_USERNAME_KEY);
           localStorage.removeItem(LEGACY_REMEMBER_CREDENTIALS_KEY);
-          setHasSaved(false);
         } catch {
           // Ignorar
         }
