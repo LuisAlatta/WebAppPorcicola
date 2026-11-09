@@ -1,8 +1,8 @@
 # Control de ejecución
 
-Actualizado el 8 de noviembre de 2026. La implementación técnica de T01–T26 está cerrada con pruebas automatizadas. T27–T32 y los cierres 9–10 siguen abiertos hasta completar las validaciones físicas y operativas descritas abajo. Las pruebas emuladas y la restauración remota de una copia pequeña son evidencia técnica, no sustituyen esas validaciones.
+Actualizado el 9 de noviembre de 2026. La implementación técnica de T01–T26 está cerrada con pruebas automatizadas. T27–T32 y los cierres 9–10 siguen abiertos hasta completar las validaciones físicas y operativas descritas abajo. Las pruebas emuladas y la restauración remota de una copia pequeña son evidencia técnica, no sustituyen esas validaciones.
 
-Estado actual: T01–T26 completadas técnicamente. CA-20 cuenta con implementación y pruebas automatizadas. El mapeo de CA-01..CA-32 a pruebas no constituye todavía el informe final de T29. Wrangler confirma staging al día y producción en 0001–0023, sin migraciones pendientes desde 2026-11-09 02:36 UTC. La aplicación del esquema no cierra T31: el Worker no se desplegó y faltan los controles de piloto/operación. No se registran un piloto firmado, una prueba en Android físico ni el primer cierre operativo real.
+Estado actual: T01–T26 completadas técnicamente y cubiertas por el CI de `ba89ceb2c2cfe0b5540db599ceb16490517171fe`. CA-20 cuenta con implementación y pruebas automatizadas. El mapeo de CA-01..CA-32 a pruebas no constituye todavía el informe final de T29. El Worker de staging se desplegó desde ese commit como versión `4627e473-2710-4648-879f-b5c2cca6576f`; sus migraciones están al día y sus rutas principales responden. La consulta remota del 9 de noviembre encontró pendientes en producción las migraciones 0024–0026. Producción no se modificó ni se desplegó el Worker. T27–T32 y los cierres 9–10 siguen abiertos: faltan prueba en Android físico, informe integral T29, piloto firmado, despliegue compatible tras el piloto y seguimiento del primer cierre/cron reales.
 
 ## 1. Preparación
 

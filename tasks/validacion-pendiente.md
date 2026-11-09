@@ -1,8 +1,18 @@
 # Validación antes del cierre operativo
 
-Actualizado el 8 de noviembre de 2026. Este documento distingue comprobaciones técnicas de las pruebas físicas y operativas que todavía deben registrarse. El estado formal de cada tarea permanece en [todo.md](todo.md) y [estado.md](estado.md).
+Actualizado el 9 de noviembre de 2026. Este documento distingue comprobaciones técnicas de las pruebas físicas y operativas que todavía deben registrarse. El estado formal de cada tarea permanece en [todo.md](todo.md) y [estado.md](estado.md).
 
-## Evidencia ejecutada en esta revisión
+## Verificación posterior del código y staging
+
+Commit verificado: `ba89ceb2c2cfe0b5540db599ceb16490517171fe` (`main`). GitHub Actions, ejecución `42615705450`, terminó correctamente: `npm ci`, typecheck, lint, pruebas unitarias, integración, build y E2E.
+
+El Worker de staging se construyó con `CLOUDFLARE_ENV=staging` y se desplegó en la cuenta confirmada `newluisalattago@gmail.com` / `0acfa25b5f619f94d581b8cf882e2eec`. Versión: `4627e473-2710-4648-879f-b5c2cca6576f`; binding `env.DB` verificado contra `webporcicola-staging`; cron de staging `5 5 * * *`. Wrangler no encuentra migraciones pendientes en staging. Las rutas `/`, `/animales`, `/inventario`, `/alimentacion`, `/sanidad` y `/reportes` responden 200. Las rutas protegidas `/api/animals`, `/api/inventory`, `/api/reports/weights` y `/api/reports/births` devuelven 401 sin sesión, como se espera.
+
+La consulta remota de producción encuentra pendientes `0024_litter_discard.sql`, `0025_same_day_locations.sql` y `0026_litter_identified_adoptions.sql`. No se modificó D1 ni se desplegó el Worker de producción. Un intento de dry-run sin el build/archivo generado de staging mostró el binding de producción; no se usó para desplegar. El build y dry-run correctos de staging confirmaron su D1 antes de publicar.
+
+No hay `adb` instalado ni un Samsung Galaxy A54 conectado en este equipo. Por eso no se afirma prueba física, aceptación del piloto ni seguimiento de producción.
+
+## Evidencia local registrada el 8 de noviembre
 
 - `npm test -- --maxWorkers=1`: **112/112** en 30 archivos.
 - `npm run test:integration`: **86/86** en 20 archivos.
