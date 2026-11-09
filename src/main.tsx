@@ -4,7 +4,7 @@ import { Perfil, Vista } from './types';
 import { Navbar } from './components/Navbar';
 import { PwaControls } from './components/PwaControls';
 import { clearOperationAttempts } from './utils/operations';
-import { BocetoLogin } from './components/BocetoLogin';
+import { BocetoLogin, migrateRememberedUsername } from './components/BocetoLogin';
 import { MenuPrincipal } from './components/MenuPrincipal';
 import { BottomNav } from './components/BottomNav';
 import { ModuloAdministracion } from './components/ModuloAdministracion';
@@ -60,6 +60,7 @@ function App() {
   const [logoutError,setLogoutError]=useState('');
 
   useEffect(() => {
+    migrateRememberedUsername();
     // Verificar si hay sesión activa en el servidor
     const verificarSesion = async () => {
       try {

@@ -51,7 +51,9 @@ const initialAnimal = () => ({
 const listOptions = {
   barns: [{ id: 1, code: 'A', name: 'Galpón A' }],
   stages: [{ code: 'crecimiento', name: 'Crecimiento' }, {code:'inicio',name:'Inicio'}],
-  locations: [], lots: [], aptitudes: [], types: [], sexes: [], statuses: [], origins: [], deathCauses: [], saleCauses: [{code:'edad',name:'Edad'}],
+  locations: [{code:'galpon_a',name:'Galpón A'},{code:'corral_maternidad',name:'Corral Maternidad'}],
+  lots: [{code:'lote_levante_a',name:'Lote Levante A'},{code:'lote_engorde_a',name:'Lote Engorde A'}],
+  aptitudes: [], types: [], sexes: [], statuses: [], origins: [], deathCauses: [], saleCauses: [{code:'edad',name:'Edad'}],
 };
 
 test('el padrón envía los filtros adicionales combinados', async ({ page }) => {
@@ -93,6 +95,23 @@ test('el pesaje permite elegir la etapa que actualizará la ficha',async({page})
   await page.locator('#ani-weight-kg').fill('18');await page.locator('#ani-weight-stage').selectOption('inicio');
   await expect(page.getByText('Si elige otra etapa, se actualizarán la ficha y el inventario',{exact:false})).toBeVisible();
   const saveWeight=page.getByRole('button',{name:'Pesar animal y registrar en ficha'});await saveWeight.focus();await saveWeight.press('Enter');await expect.poll(()=>sent?.stageCode).toBe('inicio');
+});
+
+test('traslada la ficha a otro corral y lote dentro del mismo galpón',async({page})=>{
+  const animal={...initialAnimal(),locationCode:'galpon_a',locationName:'Galpón A',lotCode:'lote_levante_a',lotName:'Lote Levante A'};
+  let sent:Record<string,unknown>|undefined;
+  await mockAnimalApi(page,animal);
+  await page.route('**/api/animals/RETRY-001/transfer',route=>{sent=route.request().postDataJSON() as Record<string,unknown>;return route.fulfill({status:201,json:{animal:{...animal,locationCode:'corral_maternidad',locationName:'Corral Maternidad',lotCode:'lote_engorde_a',lotName:'Lote Engorde A'}}});});
+  await page.goto('/animales');
+  await page.getByRole('button',{name:'Ver ficha'}).click();
+  await page.getByRole('tab',{name:/Gestión y Traslados/}).click();
+  await page.getByLabel('Galpón destino').selectOption('1');
+  await page.getByLabel('Ubicación').selectOption('corral_maternidad');
+  await page.getByLabel('Lote').selectOption('lote_engorde_a');
+  await page.locator('#ani-transfer-reason').fill('Cambio interno de corral y lote');
+  await page.getByRole('button',{name:'Trasladar animal a galpón'}).click();
+  await expect.poll(()=>sent).toMatchObject({destinationBarnId:1,locationCode:'corral_maternidad',lotCode:'lote_engorde_a',destinationStageCode:'crecimiento',reason:'Cambio interno de corral y lote'});
+  await expect(page.getByText('Animal RETRY-001 trasladado y su historial de galpón actualizado.')).toBeVisible();
 });
 
 async function mockAnimalApi(page: Page, initial: ReturnType<typeof initialAnimal>) {

@@ -646,12 +646,20 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
   });
 
   it('traslada una ficha entre ubicaciones del mismo galpón', async () => {
-    const created = await create({ code: 'MOVE-INTERNO', entryDate: '2026-05-01', entryStageCode: 'preinicio', originType: 'nacimiento' });
+    const created = await create({ code: 'MOVE-INTERNO', entryDate: '2026-05-01', entryStageCode: 'preinicio', locationCode: 'galpon_a', lotCode: 'lote_levante_a', originType: 'nacimiento' });
     expect(created.status).toBe(201);
-    const response = await api('/api/animals/MOVE-INTERNO/transfer', { method: 'POST', body: JSON.stringify({ destinationBarnId: 1, locationCode: null, lotCode: null, effectiveDate: '2026-11-07', reason: 'Cambio interno', operationKey: 'move-interno' }) });
+    const before = await inventoryTotals('2026-11-06');
+    const response = await api('/api/animals/MOVE-INTERNO/transfer', { method: 'POST', body: JSON.stringify({ destinationBarnId: 1, locationCode: 'corral_maternidad', lotCode: 'lote_engorde_a', effectiveDate: '2026-11-07', reason: 'Cambio de corral y lote', operationKey: 'move-interno' }) });
     expect(response.status, await response.clone().text()).toBe(201);
-    const animal = await db.prepare("SELECT location_code FROM animals WHERE code = 'MOVE-INTERNO'").first<{ location_code: string }>();
-    expect(animal?.location_code).toBeNull();
+    const after = await inventoryTotals('2026-11-07');
+    expect(after.summary.total.available).toBe(before.summary.total.available);
+    const animal = await db.prepare("SELECT barn_id, location_code, lot_code FROM animals WHERE code = 'MOVE-INTERNO'").first<{ barn_id: number; location_code: string; lot_code: string }>();
+    expect(animal).toMatchObject({ barn_id: 1, location_code: 'corral_maternidad', lot_code: 'lote_engorde_a' });
+    const history = await db.prepare("SELECT barn_id, location_code, lot_code FROM animal_location_history WHERE animal_id = (SELECT id FROM animals WHERE code = 'MOVE-INTERNO') ORDER BY id").all<{ barn_id: number; location_code: string; lot_code: string }>();
+    expect(history.results).toMatchObject([
+      { barn_id: 1, location_code: 'galpon_a', lot_code: 'lote_levante_a' },
+      { barn_id: 1, location_code: 'corral_maternidad', lot_code: 'lote_engorde_a' },
+    ]);
   });
 
   it('cambia la etapa de un animal conservando el total y el historial', async () => {

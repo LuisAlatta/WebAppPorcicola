@@ -7,7 +7,13 @@ test('credenciales rechazadas o red caída nunca abren sesión',async({page})=>{
  await page.getByLabel('Usuario',{exact:true}).fill('operario@prueba.pe');await page.getByLabel('Contraseña',{exact:true}).fill('incorrecta');await page.getByRole('button',{name:'Entrar',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Credenciales incorrectas');await expect(page.getByRole('navigation')).toHaveCount(0);
  await page.route('**/api/auth/login',route=>route.abort('failed'));await page.getByRole('button',{name:'Entrar',exact:true}).click();await expect(page.getByRole('navigation')).toHaveCount(0);await expect(page.getByRole('button',{name:'Entrar',exact:true})).toBeEnabled();
 });
-test('recordar credenciales precarga el formulario y permite olvidarlas',async({page})=>{
+test('recordar credenciales las guarda en el administrador del navegador y solo conserva el usuario en la app',async({page})=>{
+ await page.addInitScript(()=>{
+  const target=window as typeof window & {PasswordCredential?:new (data:{id:string;password:string})=>Credential;__savedCredential?:{id:string;password:string}};
+  target.PasswordCredential=class {id:string;password:string;type='password';constructor(form:HTMLFormElement){this.id=(form.elements.namedItem('username') as HTMLInputElement).value;this.password=(form.elements.namedItem('password') as HTMLInputElement).value;}} as unknown as typeof target.PasswordCredential;
+  Object.defineProperty(navigator.credentials,'get',{configurable:true,value:async()=>null});
+  Object.defineProperty(navigator.credentials,'store',{configurable:true,value:async(credential:Credential)=>{const saved=credential as Credential & {id:string;password:string};target.__savedCredential={id:saved.id,password:saved.password};return credential;}});
+ });
  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{error:'Sin sesión'}}));
  await page.route('**/api/auth/login',route=>route.fulfill({status:200,json:{ok:true,user:{role:'administrador',username:'admin@prueba.pe'}}}));
  await page.goto('/login');
@@ -16,16 +22,71 @@ test('recordar credenciales precarga el formulario y permite olvidarlas',async({
  await page.getByLabel('Recordar usuario y contraseña').check();
  await page.getByRole('button',{name:'Entrar',exact:true}).click();
  await expect(page.getByRole('button',{name:'Cerrar sesión'})).toBeVisible();
- const key='porcicola_saved_credentials';
- await expect.poll(()=>page.evaluate((storageKey)=>JSON.parse(localStorage.getItem(storageKey)??'null'),key)).toMatchObject({username:'admin@prueba.pe',password:'ClaveSoloPrueba2026!'});
+ const key='porcicola_remembered_username';
+ await expect.poll(()=>page.evaluate((storageKey)=>JSON.parse(localStorage.getItem(storageKey)??'null'),key)).toEqual({username:'admin@prueba.pe'});
+ await expect(page.evaluate(()=>JSON.stringify(localStorage))).resolves.not.toContain('ClaveSoloPrueba2026!');
+ await expect.poll(()=>page.evaluate(()=>((window as typeof window & {__savedCredential?:{id:string;password:string}}).__savedCredential))).toEqual({id:'admin@prueba.pe',password:'ClaveSoloPrueba2026!'});
+});
+test('limpia la contraseña antigua en texto legible y permite borrar el usuario recordado',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('porcicola_saved_credentials',JSON.stringify({username:'admin@prueba.pe',password:'ClaveAntiguaSoloPrueba2026!'})));
+ await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{error:'Sin sesión'}}));
  await page.goto('/login');
  await expect(page.getByLabel('Usuario',{exact:true})).toHaveValue('admin@prueba.pe');
- await expect(page.getByLabel('Contraseña',{exact:true})).toHaveValue('ClaveSoloPrueba2026!');
+ await expect(page.getByLabel('Contraseña',{exact:true})).toHaveValue('');
  await expect(page.getByLabel('Recordar usuario y contraseña')).toBeChecked();
- await page.getByRole('button',{name:'Olvidar'}).click();
+ await expect.poll(()=>page.evaluate(()=>localStorage.getItem('porcicola_saved_credentials'))).toBeNull();
+ expect(await page.evaluate(()=>JSON.stringify(localStorage))).not.toContain('ClaveAntiguaSoloPrueba2026!');
+ await page.getByRole('button',{name:'Borrar usuario recordado'}).click();
  await expect(page.getByLabel('Usuario',{exact:true})).toHaveValue('');
  await expect(page.getByLabel('Contraseña',{exact:true})).toHaveValue('');
- await expect.poll(()=>page.evaluate((storageKey)=>localStorage.getItem(storageKey),key)).toBeNull();
+ await expect.poll(()=>page.evaluate(()=>localStorage.getItem('porcicola_remembered_username'))).toBeNull();
+});
+test('migra la contraseña antigua al abrir una sesión ya activa',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('porcicola_saved_credentials',JSON.stringify({username:'sesion@prueba.pe',password:'ClaveActivaSoloPrueba2026!'})));
+ await page.route('**/api/auth/me',route=>route.fulfill({status:200,json:{ok:true,user:{role:'administrador',username:'sesion@prueba.pe'}}}));
+ await page.goto('/inicio');
+ await expect(page.getByRole('navigation')).toBeVisible();
+ expect(await page.evaluate(()=>localStorage.getItem('porcicola_saved_credentials'))).toBeNull();
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('porcicola_remembered_username')??'null'))).toEqual({username:'sesion@prueba.pe'});
+ expect(await page.evaluate(()=>JSON.stringify(localStorage))).not.toContain('ClaveActivaSoloPrueba2026!');
+});
+test('precarga la contraseña del gestor del navegador sin persistirla en la app',async({page})=>{
+ await page.addInitScript(()=>{localStorage.setItem('porcicola_remembered_username',JSON.stringify({username:'gestor@prueba.pe'}));Object.defineProperty(navigator.credentials,'get',{configurable:true,value:async()=>({id:'gestor@prueba.pe',password:'ClaveDelGestorSoloPrueba2026!',type:'password'})});});
+ await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{error:'Sin sesión'}}));
+ await page.goto('/login');
+ await expect(page.getByLabel('Usuario',{exact:true})).toHaveValue('gestor@prueba.pe');
+ await expect(page.getByLabel('Contraseña',{exact:true})).toHaveValue('ClaveDelGestorSoloPrueba2026!');
+ await expect(page.getByLabel('Recordar usuario y contraseña')).toBeChecked();
+ expect(await page.evaluate(()=>JSON.stringify(localStorage))).not.toContain('ClaveDelGestorSoloPrueba2026!');
+});
+test('desmarcar recordar usuario conserva el borrador del formulario',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('porcicola_remembered_username',JSON.stringify({username:'guardado@prueba.pe'})));
+ await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{error:'Sin sesión'}}));
+ await page.goto('/login');
+ await page.getByLabel('Usuario',{exact:true}).fill('nuevo@prueba.pe');
+ await page.getByLabel('Contraseña',{exact:true}).fill('ClaveTemporalSoloPrueba');
+ await page.getByLabel('Recordar usuario y contraseña').uncheck();
+ await expect(page.getByLabel('Usuario',{exact:true})).toHaveValue('nuevo@prueba.pe');
+ await expect(page.getByLabel('Contraseña',{exact:true})).toHaveValue('ClaveTemporalSoloPrueba');
+ await expect.poll(()=>page.evaluate(()=>localStorage.getItem('porcicola_remembered_username'))).toBeNull();
+});
+test('una respuesta tardía del gestor no revierte la decisión de olvidar',async({page})=>{
+ await page.addInitScript(()=>{
+  localStorage.setItem('porcicola_remembered_username',JSON.stringify({username:'guardado@prueba.pe'}));
+  let resolveCredential:((credential:Credential|null)=>void)|undefined;
+  Object.defineProperty(window,'__releaseCredential',{value:()=>resolveCredential?.({id:'guardado@prueba.pe',password:'ClaveTardiaSoloPrueba',type:'password'} as Credential)});
+  Object.defineProperty(window,'__credentialRequestStarted',{value:false,writable:true});
+  Object.defineProperty(navigator.credentials,'get',{configurable:true,value:()=>{(window as typeof window & {__credentialRequestStarted:boolean}).__credentialRequestStarted=true;return new Promise<Credential|null>(resolve=>{resolveCredential=resolve;});}});
+  Object.defineProperty(navigator.credentials,'preventSilentAccess',{configurable:true,value:async()=>undefined});
+ });
+ await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{error:'Sin sesión'}}));
+ await page.goto('/login');
+ await expect.poll(()=>page.evaluate(()=>((window as typeof window & {__credentialRequestStarted:boolean}).__credentialRequestStarted))).toBe(true);
+ await page.getByLabel('Recordar usuario y contraseña').uncheck();
+ await page.evaluate(()=>((window as typeof window & {__releaseCredential:()=>void}).__releaseCredential()));
+ await expect(page.getByLabel('Usuario',{exact:true})).toHaveValue('guardado@prueba.pe');
+ await expect(page.getByLabel('Contraseña',{exact:true})).toHaveValue('');
+ await expect(page.getByLabel('Recordar usuario y contraseña')).not.toBeChecked();
 });
 test('el rol del servidor limita menú y acceso directo',async({page})=>{
  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{error:'Sin sesión'}}));

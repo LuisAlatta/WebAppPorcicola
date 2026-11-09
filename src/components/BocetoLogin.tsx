@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Perfil } from '../types';
 import {
@@ -14,25 +14,51 @@ import {
   IconX,
 } from './icons';
 
-export const REMEMBER_CREDENTIALS_KEY = 'porcicola_saved_credentials';
+export const REMEMBERED_USERNAME_KEY = 'porcicola_remembered_username';
+const LEGACY_REMEMBER_CREDENTIALS_KEY = 'porcicola_saved_credentials';
 
-function readRememberedCredentials() {
+export function migrateRememberedUsername() {
   try {
-    const stored = localStorage.getItem(REMEMBER_CREDENTIALS_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored) as { username?: string; password?: string };
-      if (parsed && typeof parsed === 'object') {
-        return {
-          username: typeof parsed.username === 'string' ? parsed.username : '',
-          password: typeof parsed.password === 'string' ? parsed.password : '',
-          hasSaved: true,
-        };
-      }
+    const current = localStorage.getItem(REMEMBERED_USERNAME_KEY);
+    const legacy = localStorage.getItem(LEGACY_REMEMBER_CREDENTIALS_KEY);
+    let username = '';
+    if (current) {
+      const parsed = JSON.parse(current) as { username?: unknown };
+      if (typeof parsed?.username === 'string') username = parsed.username;
     }
+    if (legacy) {
+      const parsed = JSON.parse(legacy) as { username?: unknown };
+      if (!username && typeof parsed?.username === 'string') username = parsed.username;
+    }
+    localStorage.removeItem(LEGACY_REMEMBER_CREDENTIALS_KEY);
+    if (username) {
+      localStorage.setItem(REMEMBERED_USERNAME_KEY, JSON.stringify({ username }));
+      return { username, hasSaved: true };
+    }
+    localStorage.removeItem(REMEMBERED_USERNAME_KEY);
   } catch {
     // Entorno restringido o sin acceso a almacenamiento local
   }
-  return { username: '', password: '', hasSaved: false };
+  try {
+    // El formato anterior guardaba la contraseña sin cifrar; nunca se conserva.
+    localStorage.removeItem(LEGACY_REMEMBER_CREDENTIALS_KEY);
+  } catch {
+    // Ignorar
+  }
+  return { username: '', hasSaved: false };
+}
+
+async function storeBrowserCredential(form: HTMLFormElement) {
+  const PasswordCredentialConstructor = (
+    window as Window & { PasswordCredential?: new (form: HTMLFormElement) => Credential }
+  ).PasswordCredential;
+  if (!window.isSecureContext || !PasswordCredentialConstructor || !navigator.credentials?.store) return;
+
+  try {
+    await navigator.credentials.store(new PasswordCredentialConstructor(form));
+  } catch {
+    // El gestor de contraseñas del navegador es opcional; nunca impide iniciar sesión.
+  }
 }
 
 interface LoginProps {
@@ -40,29 +66,63 @@ interface LoginProps {
 }
 
 export function BocetoLogin({ onLogin }: LoginProps) {
-  const [remembered] = useState(readRememberedCredentials);
+  const [remembered] = useState(migrateRememberedUsername);
   const [username, setUsername] = useState(remembered.username);
-  const [password, setPassword] = useState(remembered.password);
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(remembered.hasSaved);
   const [hasSaved, setHasSaved] = useState(remembered.hasSaved);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const userStartedEditing = useRef(false);
 
-  const clearSavedCredentials = () => {
+  useEffect(() => {
+    if (!remembered.hasSaved) return;
+    const getCredential = navigator.credentials?.get as unknown as
+      | ((options: { password: true; mediation: 'optional' }) => Promise<Credential | null>)
+      | undefined;
+    if (!window.isSecureContext || !getCredential) return;
+
+    let cancelled = false;
+    void getCredential({ password: true, mediation: 'optional' })
+      .then((credential) => {
+        const saved = credential as (Credential & { id?: unknown; password?: unknown }) | null;
+        if (
+          cancelled || userStartedEditing.current || saved?.type !== 'password' ||
+          typeof saved.id !== 'string' || typeof saved.password !== 'string'
+        ) return;
+        setUsername(saved.id);
+        setPassword(saved.password);
+        setRemember(true);
+        setHasSaved(true);
+      })
+      .catch(() => undefined);
+
+    return () => { cancelled = true; };
+  }, [remembered.hasSaved]);
+
+  const removeRememberedUsername = () => {
+    userStartedEditing.current = true;
     try {
-      localStorage.removeItem(REMEMBER_CREDENTIALS_KEY);
+      localStorage.removeItem(REMEMBERED_USERNAME_KEY);
+      localStorage.removeItem(LEGACY_REMEMBER_CREDENTIALS_KEY);
     } catch {
       // Ignorar
     }
+    setHasSaved(false);
+    void navigator.credentials?.preventSilentAccess?.().catch(() => undefined);
+  };
+
+  const clearRememberedUsername = () => {
+    removeRememberedUsername();
     setUsername('');
     setPassword('');
     setRemember(false);
-    setHasSaved(false);
   };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
     setLoading(true);
     setError('');
     try {
@@ -84,16 +144,18 @@ export function BocetoLogin({ onLogin }: LoginProps) {
       if (remember) {
         try {
           localStorage.setItem(
-            REMEMBER_CREDENTIALS_KEY,
-            JSON.stringify({ username, password, savedAt: Date.now() }),
+            REMEMBERED_USERNAME_KEY,
+            JSON.stringify({ username }),
           );
           setHasSaved(true);
         } catch {
           // Ignorar problemas de cuota
         }
+        void storeBrowserCredential(form);
       } else {
         try {
-          localStorage.removeItem(REMEMBER_CREDENTIALS_KEY);
+          localStorage.removeItem(REMEMBERED_USERNAME_KEY);
+          localStorage.removeItem(LEGACY_REMEMBER_CREDENTIALS_KEY);
           setHasSaved(false);
         } catch {
           // Ignorar
@@ -125,7 +187,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
           <p className="login-subtitle">Sistema integral de gestión porcícola</p>
         </header>
 
-        <form onSubmit={submit} className="login-form">
+        <form onSubmit={submit} className="login-form" autoComplete="on">
           <div className="form-group">
             <label htmlFor="login-username" className="login-label">
               Usuario
@@ -141,9 +203,10 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 autoComplete="username"
                 autoCapitalize="none"
                 spellCheck={false}
+                name="username"
                 placeholder="ej. admin@granja.pe"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => { userStartedEditing.current = true; setUsername(e.target.value); }}
                 required
                 disabled={loading}
               />
@@ -163,9 +226,10 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 className="form-input login-input input-has-trail"
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
+                name="password"
                 placeholder="••••••••"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { userStartedEditing.current = true; setPassword(e.target.value); }}
                 required
                 disabled={loading}
               />
@@ -192,12 +256,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                   const checked = e.target.checked;
                   setRemember(checked);
                   if (!checked) {
-                    try {
-                      localStorage.removeItem(REMEMBER_CREDENTIALS_KEY);
-                      setHasSaved(false);
-                    } catch {
-                      // Ignorar
-                    }
+                    removeRememberedUsername();
                   }
                 }}
                 disabled={loading}
@@ -210,17 +269,21 @@ export function BocetoLogin({ onLogin }: LoginProps) {
               <button
                 type="button"
                 className="btn-forget-credentials"
-                onClick={clearSavedCredentials}
-                title="Olvidar credenciales guardadas"
+                onClick={clearRememberedUsername}
+                title="Borrar usuario recordado"
                 disabled={loading}
               >
                 <span className="inline-flex items-center justify-center gap-1 leading-none">
                   <IconX size={13} />
-                  <span>Olvidar</span>
+                  <span>Borrar usuario recordado</span>
                 </span>
               </button>
             )}
           </div>
+
+          <p className="login-remember-help">
+            La app guarda solo el usuario. El gestor del navegador puede guardar la contraseña; para quitarla, elimínala allí.
+          </p>
 
           {error && (
             <div className="alert alert-danger login-alert" role="alert">
