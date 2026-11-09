@@ -1,3 +1,4 @@
+import { AnimalPicker } from './AnimalPicker';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { farmToday, newOperationKey, fetchOperation } from '../utils/operations';
 import { ModalDialog } from './ModalDialog';
@@ -67,7 +68,6 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
   const isAdmin = perfil === 'administrador';
   const [rules, setRules] = useState<Rule[]>([]);
   const [rows, setRows] = useState<Schedule[]>([]);
-  const [animals, setAnimals] = useState<{ code: string }[]>([]);
   const [filter, setFilter] = useState({ from: '', to: '', status: 'pending', animalType: '' });
 
   const hasActiveFilters = useMemo(
@@ -131,25 +131,22 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
     if (filter.to) params.set('to', filter.to);
     if (filter.animalType) params.set('animalType', filter.animalType);
 
-    const [rr, sr, ar] = await Promise.all([
+    const [rr, sr] = await Promise.all([
       fetch('/api/vaccines/rules'),
       fetch(`/api/vaccines/schedules?${params}`),
-      fetch('/api/animals?status=activo&limit=500'),
     ]);
 
-    const [r, s, a] = (await Promise.all([rr.json(), sr.json(), ar.json()])) as [
+    const [r, s] = (await Promise.all([rr.json(), sr.json()])) as [
       { rules?: Rule[]; error?: string },
-      { schedules?: Schedule[]; error?: string },
-      { animals?: { code: string }[] }
+      { schedules?: Schedule[]; error?: string }
     ];
 
-    if (!rr.ok || !sr.ok || !ar.ok) {
+    if (!rr.ok || !sr.ok) {
       throw new Error(r.error || s.error || 'No se pudo cargar vacunas');
     }
 
     setRules(r.rules ?? []);
     setRows(s.schedules ?? []);
-    setAnimals(a.animals ?? []);
   }, [filter]);
 
   useEffect(() => {
@@ -621,20 +618,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
 
           <div className="grid-2">
             <div className="form-group">
-              <label className="form-label text-xs">Animal</label>
-              <select
-                required
-                className="form-select"
-                value={manual.animalCode}
-                onChange={(e) => setManual({ ...manual, animalCode: e.target.value })}
-              >
-                <option value="">Seleccionar animal</option>
-                {animals.map((a) => (
-                  <option key={a.code} value={a.code}>
-                    {a.code}
-                  </option>
-                ))}
-              </select>
+              <AnimalPicker label="Animal" searchLabel="Buscar animal para vacuna" activeOnly required value={manual.animalCode ? [manual.animalCode] : []} onChange={values => setManual({ ...manual, animalCode: values[0] ?? '' })} />
             </div>
 
             <div className="form-group">

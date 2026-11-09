@@ -56,6 +56,53 @@ const listOptions = {
   aptitudes: [], types: [], sexes: [], statuses: [], origins: [], deathCauses: [], saleCauses: [{code:'edad',name:'Edad'}],
 };
 
+test('pagina el padrón y vuelve al inicio al cambiar la búsqueda', async ({page}) => {
+  await mockAnimalApi(page, initialAnimal());
+  const queries: string[] = [];
+  await page.route('**/api/animals?**', async route => {
+    const query = new URL(route.request().url()).searchParams;
+    queries.push(query.toString());
+    const offset = Number(query.get('offset') ?? 0);
+    return route.fulfill({status:200,json:{animals:[{...initialAnimal(),code:offset ? 'PAGINA-2' : 'PAGINA-1'}],total:query.get('q') ? 1 : 501,options:listOptions}});
+  });
+  await page.goto('/animales');
+  await page.getByRole('button',{name:'Página siguiente del padrón',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Ver ficha de PAGINA-2',exact:true})).toBeVisible();
+  await page.getByLabel('Buscar',{exact:true}).fill('PAGINA-1');
+  await expect(page.getByRole('button',{name:'Ver ficha de PAGINA-1',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Página anterior del padrón',exact:true})).toBeDisabled();
+  expect(queries.some(value=>new URLSearchParams(value).get('offset')==='50')).toBe(true);
+  await expect.poll(()=>{const query=new URLSearchParams(queries.at(-1));return {q:query.get('q'),offset:query.get('offset')};}).toEqual({q:'PAGINA-1',offset:'0'});
+});
+
+test('busca una madre fuera de las primeras quinientas fichas', async ({page}) => {
+  await mockAnimalApi(page, initialAnimal());
+  await page.route('**/api/animals?**', route => {
+    const q = new URL(route.request().url()).searchParams.get('q');
+    return route.fulfill({status:200,json:{animals:q==='MADRE-999' ? [{...initialAnimal(),id:999,code:'MADRE-999',sex:'hembra'}] : [],total:q ? 1 : 999,options:listOptions}});
+  });
+  await page.goto('/animales');
+  await page.getByRole('tab',{name:'Registrar animal en el padrón',exact:true}).click();
+  await page.getByLabel('Buscar madre interna',{exact:true}).fill('MADRE-999');
+  await page.getByLabel('Madre interna',{exact:true}).selectOption('999');
+  await expect(page.getByLabel('Madre interna',{exact:true})).toHaveValue('999');
+});
+
+test('recupera la página anterior cuando desaparece la última ficha de la página final', async ({page}) => {
+  await mockAnimalApi(page, initialAnimal());
+  let removed = false;
+  await page.route('**/api/animals?**', route => {
+    const offset = Number(new URL(route.request().url()).searchParams.get('offset') ?? 0);
+    return route.fulfill({status:200,json:{animals:removed && offset ? [] : [{...initialAnimal(),code:offset ? 'ULTIMA-051' : 'PRIMERA-001'}],total:removed ? 50 : 51,options:listOptions}});
+  });
+  await page.goto('/animales');
+  await page.getByRole('button',{name:'Página siguiente del padrón',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Ver ficha de ULTIMA-051',exact:true})).toBeVisible();
+  removed = true;
+  await page.getByRole('button',{name:'Recargar padrón de animales',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Ver ficha de PRIMERA-001',exact:true})).toBeVisible();
+});
+
 test('el padrón envía los filtros adicionales combinados', async ({ page }) => {
   await mockAnimalApi(page, initialAnimal());
   const requests: string[] = [];

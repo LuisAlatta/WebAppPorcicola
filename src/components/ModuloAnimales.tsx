@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimalPicker } from './AnimalPicker';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconAlertCircle,
   IconAlertTriangle,
@@ -279,7 +280,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const [section, setSection] = useState<Section>('padron');
   const [fichaTab, setFichaTab] = useState<'resumen' | 'pesajes' | 'trazabilidad' | 'operaciones'>('resumen');
   const [data, setData] = useState<ListPayload | null>(null);
-  const [parentOptions, setParentOptions] = useState<Animal[]>([]);
+  const [page, setPage] = useState(0);
+  const listRequest = useRef(0);
+  const pageSize = 50;
   const [detail, setDetail] = useState<AnimalDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
@@ -323,6 +326,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
+    params.set('limit', String(pageSize));
+    params.set('offset', String(page * pageSize));
     if (filters.q.trim()) params.set('q', filters.q.trim());
     if (filters.type) params.set('type', filters.type);
     if (filters.sex) params.set('sex', filters.sex);
@@ -335,17 +340,23 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     for (const key of ['mother','father','breed','aptitude','originType','entryStage'] as const) if (filters[key].trim()) params.set(key,filters[key].trim());
     const text = params.toString();
     return text ? `?${text}` : '';
-  }, [filters]);
+  }, [filters, page]);
 
   const loadList = useCallback(async () => {
+    const request = ++listRequest.current;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/animals${queryString}`);
       const body = await res.json() as { ok?: boolean; error?: string } & ListPayload;
+      if (request !== listRequest.current) return;
       if (!res.ok) {
         setError(body.error ?? 'No se pudo cargar el padrón de animales');
         setData(null);
+        return;
+      }
+      if (page > 0 && page * pageSize >= body.total) {
+        setPage(Math.max(0, Math.ceil(body.total / pageSize) - 1));
         return;
       }
       setData(body);
@@ -355,12 +366,13 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
         entryStageCode: prev.entryStageCode || (body.options.stages[0] ? body.options.stages[0].code : ''),
       }));
     } catch {
+      if (request !== listRequest.current) return;
       setError('No se pudo conectar con el servidor. Reintente cuando vuelva la conexión.');
       setData(null);
     } finally {
-      setLoading(false);
+      if (request === listRequest.current) setLoading(false);
     }
-  }, [queryString]);
+  }, [queryString, page]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -370,20 +382,6 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   }, [loadList]);
 
   useEffect(() => {
-    const loadParents = async () => {
-      try {
-        const res = await fetch('/api/animals?limit=500');
-        if (!res.ok) return;
-        const body = await res.json() as ListPayload;
-        setParentOptions(body.animals);
-      } catch {
-        // La ficha sigue funcionando sin sugerencias de progenitores.
-      }
-    };
-    void loadParents();
-  }, []);
-
-  useEffect(() => {
     if (!success) return;
     const timer = window.setTimeout(() => setSuccess(null), 6000);
     return () => window.clearTimeout(timer);
@@ -391,16 +389,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
   const options = data?.options;
 
-  const motherCandidates = useMemo(
-    () => parentOptions.filter((animal) => animal.sex === 'hembra'),
-    [parentOptions],
-  );
-  const fatherCandidates = useMemo(
-    () => parentOptions.filter((animal) => animal.sex === 'macho'),
-    [parentOptions],
-  );
-
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
+    listRequest.current++;
+    setPage(0);
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -414,6 +405,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   }, [filters]);
 
   const clearFilters = useCallback(() => {
+    listRequest.current++;
+    setPage(0);
     setFilters({
       q: '',
       type: '',
@@ -1303,6 +1296,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                     ))}
                   </tbody>
                 </table>
+                <nav aria-label="Páginas del padrón" className="inline-flex items-center gap-2 mt-3">
+                  <button type="button" className="btn btn-outline btn-sm" aria-label="Página anterior del padrón" disabled={loading || page === 0} onClick={() => { listRequest.current++; setPage(value => value - 1); }}>Anterior</button>
+                  <span>Página {page + 1} de {Math.max(1, Math.ceil(total / pageSize))} · {total} fichas</span>
+                  <button type="button" className="btn btn-outline btn-sm" aria-label="Página siguiente del padrón" disabled={loading || (page + 1) * pageSize >= total} onClick={() => { listRequest.current++; setPage(value => value + 1); }}>Siguiente</button>
+                </nav>
               </div>
             )}
           </div>
@@ -1687,22 +1685,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
               )}
 
               <div className="form-group">
-                <label className="form-label" htmlFor="ani-mother">Madre interna</label>
-                <select
-                  id="ani-mother"
-                  className={`form-select ${fieldErrors.mother ? 'input-error' : ''}`}
-                  value={form.motherId}
-                  onChange={(event) => setField('motherId', event.target.value)}
-                  aria-invalid={Boolean(fieldErrors.mother)}
-                >
-                  <option value="">Desconocida o externa</option>
-                  {motherCandidates.map((animal) => (
-                    <option key={animal.id} value={animal.id}>{animal.code}</option>
-                  ))}
-                  {form.motherId && !motherCandidates.some((animal) => String(animal.id) === form.motherId) && (
-                    <option value={form.motherId}>Animal #{form.motherId}</option>
-                  )}
-                </select>
+                <AnimalPicker label="Madre interna" searchLabel="Buscar madre interna" sex="hembra" useIdValue value={form.motherId ? [form.motherId] : []} onChange={values => setField('motherId', values[0] ?? '')} emptyLabel="Desconocido o externo" />
                 {fieldErrors.mother && (
                   <p className="field-error-message" role="alert">
                     <IconAlertCircle size={14} />
@@ -1726,22 +1709,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="ani-father">Padre interno</label>
-                <select
-                  id="ani-father"
-                  className={`form-select ${fieldErrors.father ? 'input-error' : ''}`}
-                  value={form.fatherId}
-                  onChange={(event) => setField('fatherId', event.target.value)}
-                  aria-invalid={Boolean(fieldErrors.father)}
-                >
-                  <option value="">Desconocido o externo</option>
-                  {fatherCandidates.map((animal) => (
-                    <option key={animal.id} value={animal.id}>{animal.code}</option>
-                  ))}
-                  {form.fatherId && !fatherCandidates.some((animal) => String(animal.id) === form.fatherId) && (
-                    <option value={form.fatherId}>Animal #{form.fatherId}</option>
-                  )}
-                </select>
+                <AnimalPicker label="Padre interno" searchLabel="Buscar padre interno" sex="macho" useIdValue value={form.fatherId ? [form.fatherId] : []} onChange={values => setField('fatherId', values[0] ?? '')} emptyLabel="Desconocido o externo" />
                 {fieldErrors.father && (
                   <p className="field-error-message" role="alert">
                     <IconAlertCircle size={14} />

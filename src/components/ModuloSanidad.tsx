@@ -1,3 +1,4 @@
+import { AnimalPicker } from './AnimalPicker';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   IconActivity,
@@ -15,14 +16,6 @@ import { farmToday, newOperationKey, fetchOperation } from '../utils/operations'
 import type { Perfil } from '../types';
 import { ModuloVacunas } from './ModuloVacunas';
 import { ModalDialog } from './ModalDialog';
-
-interface Animal {
-  code: string;
-  alias: string | null;
-  barnName: string;
-  lotCode: string | null;
-  stageCode: string;
-}
 
 interface HealthEvent {
   id: number;
@@ -77,7 +70,6 @@ const types: Record<string, string> = {
 
 export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
   const canWrite = perfil === 'administrador' || perfil === 'veterinario';
-  const [animals, setAnimals] = useState<Animal[]>([]);
   const [events, setEvents] = useState<HealthEvent[]>([]);
   const [alerts, setAlerts] = useState<Withdrawal[]>([]);
   const [upcoming, setUpcoming] = useState<Upcoming[]>([]);
@@ -126,25 +118,22 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
     if (filter.from) params.set('from', filter.from);
     if (filter.to) params.set('to', filter.to);
 
-    const [ar, er, wr, ur] = await Promise.all([
-      fetch('/api/animals?status=activo&limit=500'),
+    const [er, wr, ur] = await Promise.all([
       fetch(`/api/health/events?${params}`),
       fetch(`/api/health/withdrawals?asOf=${farmToday()}`),
       fetch(`/api/health/upcoming?asOf=${farmToday()}`),
     ]);
 
-    const [a, e, w, u] = (await Promise.all([ar.json(), er.json(), wr.json(), ur.json()])) as [
-      { animals?: Animal[]; error?: string },
+    const [e, w, u] = (await Promise.all([er.json(), wr.json(), ur.json()])) as [
       { events?: HealthEvent[]; error?: string },
       { alerts?: Withdrawal[]; error?: string },
       { events?: Upcoming[]; error?: string }
     ];
 
-    if (!ar.ok || !er.ok || !wr.ok || !ur.ok) {
-      throw new Error(a.error || e.error || w.error || u.error || 'No se pudo cargar sanidad');
+    if (!er.ok || !wr.ok || !ur.ok) {
+      throw new Error(e.error || w.error || u.error || 'No se pudo cargar sanidad');
     }
 
-    setAnimals(a.animals ?? []);
     setEvents(e.events ?? []);
     setAlerts(w.alerts ?? []);
     setUpcoming(u.events ?? []);
@@ -559,30 +548,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
               </p>
             ) : (
               <div className="form-group">
-                <label className="form-label" htmlFor="health-animals">
-                  Animales aplicables
-                  <span className="text-xs text-muted font-normal ml-2">
-                    (Mantén presionada la tecla Ctrl / Cmd para seleccionar varios)
-                  </span>
-                </label>
-                <select
-                  id="health-animals"
-                  multiple
-                  required
-                  className="form-select min-h-[120px]"
-                  size={Math.min(8, Math.max(3, animals.length))}
-                  value={selected}
-                  onChange={(e) =>
-                    setSelected(Array.from(e.currentTarget.selectedOptions).map((option) => option.value))
-                  }
-                >
-                  {animals.map((animal) => (
-                    <option key={animal.code} value={animal.code}>
-                      {animal.code}
-                      {animal.alias ? ` · ${animal.alias}` : ''} — {animal.barnName} — {animal.lotCode ?? 'Sin lote'}
-                    </option>
-                  ))}
-                </select>
+                <AnimalPicker label="Animales aplicables" searchLabel="Buscar animales para tratamiento" multiple required activeOnly value={selected} onChange={setSelected} />
               </div>
             )}
 
