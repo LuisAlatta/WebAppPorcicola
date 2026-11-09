@@ -9,7 +9,7 @@ async function setup(page:Page,role='veterinario'){
     serviceAnchorDate:'2026-02-26',gestationDays:114,probableFarrowingDate:'2026-06-20',dueDateSource:'calculated',dueDateReason:null,
     daysRemaining:0,dueLabel:'Parto registrado',barnId:1,barnName:'Galpón A',locationCode:'galpon_a',lotCode:null,femaleBreed:null,aptitude:null,
     lastFarrowingDate:currentDate,observations:null,antecedent:false,services:[],events:[],weaningPlan:null,
-    litter:{id:'litter-date-1',farrowingDate:currentDate,liveCount:8,maleAlive:4,femaleAlive:4,unsexedAlive:0,stillbornCount:0,averageWeightKg:1.5,expectedWeaningDate:'2026-07-18',actualWeaningDate:null,identifiedAnimals:[{code:'LECHONA-01',sex:'hembra'}]},
+    litter:{id:'litter-date-1',farrowingDate:currentDate,liveCount:8,maleAlive:4,femaleAlive:4,unsexedAlive:0,stillbornCount:0,averageWeightKg:1.5,expectedWeaningDate:'2026-07-18',actualWeaningDate:null,identifiedAnimals:[{code:'LECHONA-01',sex:'hembra'}],historicalOnly:false,birthCounts:{maleAlive:4,femaleAlive:4,unsexedAlive:0,maleStillborn:0,femaleStillborn:0,unsexedStillborn:0}},
   }]}}));
   return{setDate:(date:string)=>{currentDate=date;}};
 }
@@ -43,6 +43,18 @@ test('destete envía las fichas identificadas seleccionadas',async({page})=>{
   await page.getByRole('button',{name:'Guardar evento de camada'}).click();
   await expect(page.getByRole('status')).toContainText('Destete parcial registrado');
   expect(body).toMatchObject({eventType:'weaning',sex:'hembra',quantity:'2',animalCodes:['LECHONA-01']});
+});
+
+test('corrección de cantidades conserva el formulario ante conflicto y envía valores originales',async({page})=>{
+  await setup(page,'responsable');const requests:Record<string,unknown>[]=[];
+  await page.route('**/api/reproduction/litters/litter-date-1/correction',async route=>{requests.push(route.request().postDataJSON() as Record<string,unknown>);if(requests.length===1)return route.fulfill({status:409,json:{error:'La camada cambió; actualice los datos.'}});return route.fulfill({status:201,json:{ok:true,replayed:false}});});
+  await page.goto('/reproduccion');await page.getByRole('button',{name:'Corregir cantidades de nacimiento'}).click();
+  await page.getByLabel('Machos vivos al nacer').fill('3');await page.getByLabel('Motivo de corrección de cantidades').fill('Conteo verificado');
+  await page.getByRole('button',{name:'Guardar cantidades corregidas'}).click();await expect(page.getByRole('alert')).toContainText('La camada cambió');
+  await expect(page.getByLabel('Machos vivos al nacer')).toHaveValue('3');
+  await page.getByRole('button',{name:'Guardar cantidades corregidas'}).click();
+  await expect(page.getByRole('status')).toContainText('cantidades de nacimiento corregidas');
+  expect(requests[0]).toMatchObject({maleAlive:3,femaleAlive:4,expectedCounts:[4,4,0,0,0,0]});expect(requests[1].operationKey).toBe(requests[0].operationKey);
 });
 
 test('respuesta perdida conserva datos y clave hasta recuperar corrección confirmada',async({page})=>{

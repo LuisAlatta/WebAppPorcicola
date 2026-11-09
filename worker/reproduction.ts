@@ -122,7 +122,8 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
       for (const item of litterEvents.results ?? []) counts[item.sex as keyof typeof counts] += item.event_type === 'adoption_in' ? Number(item.quantity) : -Number(item.quantity);
       litter = { id:String(litterRow.id), farrowingDate:String(litterRow.farrowing_date), liveCount:Number(litterRow.live_count), maleAlive:counts.macho, femaleAlive:counts.hembra, unsexedAlive:counts.pendiente,
         stillbornCount:Number(litterRow.stillborn_count), averageWeightKg:litterRow.average_weight_kg===null?null:Number(litterRow.average_weight_kg), expectedWeaningDate:litterRow.expected_weaning_date===null?null:String(litterRow.expected_weaning_date),
-        actualWeaningDate:litterRow.actual_weaning_date===null?null:String(litterRow.actual_weaning_date), identifiedAnimals:identifiedAnimals.results ?? [] };
+        actualWeaningDate:litterRow.actual_weaning_date===null?null:String(litterRow.actual_weaning_date), identifiedAnimals:identifiedAnimals.results ?? [], historicalOnly:Number(litterRow.historical_only)===1,
+        birthCounts:{maleAlive:Number(litterRow.male_alive),femaleAlive:Number(litterRow.female_alive),unsexedAlive:Number(litterRow.unsexed_alive),maleStillborn:Number(litterRow.male_stillborn),femaleStillborn:Number(litterRow.female_stillborn),unsexedStillborn:Number(litterRow.unsexed_stillborn)} };
     }
     return { id: String(row.id), femaleAnimalId: Number(row.female_animal_id), femaleCode: String(row.female_code), femaleAlias: row.female_alias === null ? null : String(row.female_alias),
       cycleNumber: Number(row.cycle_number), cycleStatus: String(row.cycle_status), reproductiveStatus,

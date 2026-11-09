@@ -177,7 +177,9 @@ export function stockGuardStatement(
       FROM (SELECT effective_date, id,
         COALESCE(reverses_movement_id, id) AS ordering_id,
         CASE WHEN movement_type IN ('sale','death','transfer_out') THEN -quantity ELSE quantity END AS delta
-        FROM inventory_movements WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?)
+        FROM inventory_movements m WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
+          AND NOT (m.movement_type='adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
+          AND NOT EXISTS (SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=m.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%'))
     )), 0) >= 0 THEN 0 ELSE -1 END`)
     .bind(barnId, locationCode, lotCode, stageCode, sex);
 }
@@ -708,9 +710,11 @@ export async function registerMovement(
   // que dejarían un saldo negativo en fechas posteriores.
   const bucketRows = await db.prepare(`
     SELECT id, effective_date, movement_type, quantity
-    FROM inventory_movements
+    FROM inventory_movements m
     WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
-    ORDER BY effective_date ASC, id ASC
+      AND NOT (m.movement_type='adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
+      AND NOT EXISTS (SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=m.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%')
+    ORDER BY effective_date ASC, COALESCE(reverses_movement_id,id), id ASC
   `).bind(barnId, locationCode, lotCode, stageCode, sex).all<Row>();
 
   const timeline = (bucketRows.results ?? []).map((row) => ({
@@ -1031,24 +1035,21 @@ export async function previewMovementCorrection(
   const barn = await db.prepare('SELECT name FROM barns WHERE id = ?').bind(barnId).first<{ name: string }>();
   if (scope.allowedBarnNames && (!barn || !scope.allowedBarnNames.includes(barn.name))) throw new ApiError(403, 'Acceso denegado al galpón del movimiento');
   const type = String(original.movement_type) as MovementType;
-  if (original.transfer_group_id || original.animal_id !== null && original.animal_id !== undefined) throw new ApiError(400, 'Este evento debe corregirse desde su módulo de origen');
+  if (original.transfer_group_id || original.animal_id != null || original.litter_id != null) throw new ApiError(400, 'Este evento debe corregirse desde su módulo de origen');
   const alreadyCorrected = await db.prepare(`SELECT id FROM inventory_movements WHERE reverses_movement_id = ? AND notes LIKE 'Reversión del movimiento #%' LIMIT 1`)
     .bind(movementId).first();
   if (alreadyCorrected) throw new ApiError(409, 'El movimiento ya tiene una corrección registrada');
   if (type !== 'adjustment' && correctedQuantity < 0) throw new ApiError(400, 'La cantidad corregida debe ser positiva');
-  const rows = await db.prepare(`SELECT id, effective_date, movement_type, quantity FROM inventory_movements
+  const rows = await db.prepare(`SELECT id, effective_date, movement_type, quantity FROM inventory_movements m
     WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
-    ORDER BY effective_date, id`).bind(barnId, original.location_code ?? null, original.lot_code ?? null, original.stage_code, original.sex).all<Row>();
-  const inverse = -movementDelta(type, Number(original.quantity));
+    AND NOT (m.movement_type='adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
+    AND NOT EXISTS (SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=m.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%')
+    ORDER BY effective_date, COALESCE(reverses_movement_id,id), id`).bind(barnId, original.location_code ?? null, original.lot_code ?? null, original.stage_code, original.sex).all<Row>();
   const correctedDelta = type === 'adjustment' ? correctedQuantity : movementDelta(type, correctedQuantity);
   const timeline: { id: number; date: string; type: string; quantity: number; delta: number }[] = [];
   for (const row of rows.results ?? []) {
     const id = Number(row.id); const date = String(row.effective_date); const rowType = String(row.movement_type); const quantity = Number(row.quantity);
-    timeline.push({ id, date, type: rowType, quantity, delta: movementDelta(rowType as MovementType, quantity) });
-    if (id === movementId) {
-      timeline.push({ id: movementId, date, type: 'reversión', quantity: inverse, delta: inverse });
-      timeline.push({ id: movementId, date, type: `corrección ${type}`, quantity: correctedQuantity, delta: correctedDelta });
-    }
+    timeline.push({ id, date, type: id === movementId ? `corrección ${type}` : rowType, quantity: id === movementId ? correctedQuantity : quantity, delta: id === movementId ? correctedDelta : movementDelta(rowType as MovementType, quantity) });
   }
   let balance = 0;
   const incompatibleMovements: { id: number; date: string; type: string; quantity: number; balanceAfter: number }[] = [];
@@ -1073,7 +1074,7 @@ export async function correctInventoryMovement(
   if (!Number.isInteger(correctedQuantity) || correctedQuantity === 0) throw new ApiError(400, 'La cantidad corregida debe ser un entero distinto de cero');
   const original = await db.prepare('SELECT * FROM inventory_movements WHERE id = ?').bind(movementId).first<Row>();
   if (!original) throw new ApiError(404, 'Movimiento no encontrado');
-  if (original.transfer_group_id || original.animal_id !== null && original.animal_id !== undefined) {
+  if (original.transfer_group_id || original.animal_id != null || original.litter_id != null) {
     throw new ApiError(400, 'Corrija los traslados conjuntos o las fichas individuales desde su módulo correspondiente');
   }
   const barnId = Number(original.barn_id);
@@ -1098,17 +1099,15 @@ export async function correctInventoryMovement(
   const oldDelta = movementDelta(type, oldQuantity);
   const newDelta = type === 'adjustment' ? correctedQuantity : movementDelta(type, correctedQuantity);
   const inverseDelta = -oldDelta;
-  const rows = await db.prepare(`SELECT id, effective_date, movement_type, quantity FROM inventory_movements
+  const rows = await db.prepare(`SELECT id, effective_date, movement_type, quantity FROM inventory_movements m
     WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
-    ORDER BY effective_date, id`).bind(barnId, locationCode, lotCode, stageCode, sex).all<Row>();
+    AND NOT (m.movement_type='adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
+    AND NOT EXISTS (SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=m.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%')
+    ORDER BY effective_date, COALESCE(reverses_movement_id,id), id`).bind(barnId, locationCode, lotCode, stageCode, sex).all<Row>();
   const timeline: { date: string; id: number; delta: number }[] = [];
   for (const row of rows.results ?? []) {
     const id = Number(row.id);
-    timeline.push({ date: String(row.effective_date), id, delta: movementDelta(String(row.movement_type) as MovementType, Number(row.quantity)) });
-    if (id === movementId) {
-      timeline.push({ date: effectiveDate, id: id + 0.1, delta: inverseDelta },
-        { date: effectiveDate, id: id + 0.2, delta: newDelta });
-    }
+    timeline.push({ date: String(row.effective_date), id, delta: id === movementId ? newDelta : movementDelta(String(row.movement_type) as MovementType, Number(row.quantity)) });
   }
   let running = 0;
   for (const item of timeline) {

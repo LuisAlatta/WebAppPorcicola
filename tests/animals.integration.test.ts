@@ -1009,6 +1009,16 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     }) });
     expect(allowedCorrection.status, await allowedCorrection.clone().text()).toBe(201);
     expect((await inventoryTotals('2026-11-08')).summary.total.available).toBe(correctionBefore - 1);
+    const correctionWithExpected={maleAlive:1,femaleAlive:0,unsexedAlive:0,maleStillborn:1,femaleStillborn:0,unsexedStillborn:0,expectedCounts:[1,0,0,0,0,0],reason:'Conteo de nacidos muertos',operationKey:'rep-t13-corr-expected'};
+    expect((await api(`/api/reproduction/litters/${correctionLitter}/correction`,{method:'POST',body:JSON.stringify(correctionWithExpected)})).status).toBe(201);
+    expect((await api(`/api/reproduction/litters/${correctionLitter}/correction`,{method:'POST',body:JSON.stringify(correctionWithExpected)})).status).toBe(200);
+    expect((await api(`/api/reproduction/litters/${correctionLitter}/correction`,{method:'POST',body:JSON.stringify({...correctionWithExpected,maleStillborn:2,operationKey:'rep-t13-corr-stale'})})).status).toBe(409);
+    await db.prepare(`INSERT INTO operation_log(id,operation_key,operation_type,author_user_id,entity_type,barn_id,content_hash,payload,result_payload,effective_date,recorded_at) SELECT 'rep-t13-legacy','rep-t13-legacy','reproduction.litter.correction',author_user_id,'litter',barn_id,'legacy','{}','{}','2026-11-01',recorded_at FROM operation_log WHERE operation_key='rep-t13-corr-adjust'`).run();
+    await db.prepare(`INSERT INTO inventory_movements(operation_log_id,movement_type,effective_date,barn_id,location_code,lot_code,stage_code,sex,quantity,notes,created_by_user_id,created_at,litter_id) SELECT 'rep-t13-legacy','adjustment','2026-11-01',barn_id,location_code,lot_code,'preinicio','macho',-1,'Corrección anterior',created_by_user_id,created_at,? FROM inventory_movements WHERE litter_id=? AND movement_type='birth' LIMIT 1`).bind(correctionLitter,correctionLitter).run();
+    await db.prepare('UPDATE litters SET male_alive=0,live_count=0,total_born=stillborn_count WHERE id=?').bind(correctionLitter).run();
+    const legacyCorrection=await api(`/api/reproduction/litters/${correctionLitter}/correction`,{method:'POST',body:JSON.stringify({maleAlive:1,reason:'Conciliar corrección anterior',operationKey:'rep-t13-legacy-reconcile'})});
+    expect(legacyCorrection.status,await legacyCorrection.clone().text()).toBe(201);
+    expect(await db.prepare("SELECT SUM(quantity) AS heads FROM inventory_movements WHERE litter_id=? AND sex='macho'").bind(correctionLitter).first()).toMatchObject({heads:1});
     const secondCycle=await api('/api/reproduction/cycles',{method:'POST',body:JSON.stringify({femaleCode:'T13-MADRE',serviceDate:'2026-09-20',serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'Segunda prueba',operationKey:'rep-t13-second-cycle'})});
     expect(secondCycle.status,await secondCycle.clone().text()).toBe(201);
     const secondId=(await secondCycle.json() as {createdCycleId:string}).createdCycleId;
@@ -1016,7 +1026,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(secondFarrow.status,await secondFarrow.clone().text()).toBe(201);
     const summaryResponse=await api('/api/animals/T13-MADRE');
     expect((await summaryResponse.json() as {animal:{reproductiveSummary:unknown}}).animal.reproductiveSummary).toMatchObject({serviceCount:2,farrowingCount:2,totalBorn:19,maleBorn:16,femaleBorn:3,weighedBirths:9,averageBirthWeightKg:1.47,firstFarrowingDate:'2026-09-16',lastFarrowingDate:'2026-10-20'});
-  }, 15000);
+  }, 25000);
 
   it('registra bajas y destete parcial por sexo y conserva los intervalos de celo del ciclo', async () => {
     const sow = await create({ code:'T14-MADRE',animalType:'cerda',sex:'hembra',birthDate:'2024-01-01',entryDate:'2026-01-01',entryStageCode:'gestacion',originType:'compra',operationKey:'ani-t14-sow' });
@@ -1039,17 +1049,18 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const farrow=await api(`/api/reproduction/cycles/${cycleId}/farrowing`,{method:'POST',body:JSON.stringify({farrowingDate:'2026-10-23',maleAlive:5,femaleAlive:3,reason:'Parto T14',operationKey:'rep-t14-farrow'})});
     expect(farrow.status,await farrow.clone().text()).toBe(201);
     const litterId=(await farrow.json() as {litterId:string}).litterId;
-    const death=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'death',effectiveDate:'2026-10-24',sex:'macho',quantity:1,cause:'Debilidad neonatal',reason:'Baja observada en lactancia',operationKey:'rep-t14-death'})});
+    const death=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'death',effectiveDate:'2026-10-23',sex:'macho',quantity:1,cause:'Debilidad neonatal',reason:'Baja observada en lactancia',operationKey:'rep-t14-death'})});
     expect(death.status,await death.clone().text()).toBe(201);
-    const deathReplay=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'death',effectiveDate:'2026-10-24',sex:'macho',quantity:1,cause:'Debilidad neonatal',reason:'Baja observada en lactancia',operationKey:'rep-t14-death'})});
+    const deathReplay=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'death',effectiveDate:'2026-10-23',sex:'macho',quantity:1,cause:'Debilidad neonatal',reason:'Baja observada en lactancia',operationKey:'rep-t14-death'})});
     expect(deathReplay.status).toBe(200);
+    for(const [quantity,key] of [[6,'first'],[5,'second']] as const){const corrected=await api(`/api/reproduction/litters/${litterId}/correction`,{method:'POST',body:JSON.stringify({maleAlive:quantity,reason:'Corrección tras baja del mismo día',operationKey:`rep-t14-same-day-${key}`})});expect(corrected.status,await corrected.clone().text()).toBe(201);}
     const birthsReport=await api('/api/reports/births?motherCode=T14-MADRE');
     expect((await birthsReport.json() as {totals:unknown}).totals).toMatchObject({totalBorn:8,deaths:0,lactationDeaths:1,globalMortalityPct:0});
     const birthsAtFarrowing=await api('/api/reports/births?motherCode=T14-MADRE&to=2026-10-23');
-    expect((await birthsAtFarrowing.json() as {totals:unknown}).totals).toMatchObject({totalBorn:8,deaths:0,lactationDeaths:0,globalMortalityPct:0});
+    expect((await birthsAtFarrowing.json() as {totals:unknown}).totals).toMatchObject({totalBorn:8,deaths:0,lactationDeaths:1,globalMortalityPct:0});
     const savedReport=await api('/api/reports/preview',{method:'POST',body:JSON.stringify({source:'litters',name:'Camadas',purpose:'Consultar muertes al corte',from:'2026-10-23',to:'2026-10-23',columns:['motherCode','deaths','mortalityPct'],filters:{motherCode:'T14-MADRE'}})});
     expect(savedReport.status,await savedReport.clone().text()).toBe(200);
-    expect((await savedReport.json() as {rows:unknown[]}).rows).toContainEqual({motherCode:'T14-MADRE',deaths:0,mortalityPct:0});
+    expect((await savedReport.json() as {rows:unknown[]}).rows).toContainEqual({motherCode:'T14-MADRE',deaths:1,mortalityPct:12.5});
     const identified=await create({code:'T14-LECHONA',animalType:'lechon',sex:'hembra',birthDate:'2026-10-23',entryDate:'2026-10-23',entryStageCode:'preinicio',originType:'interna',litterId,locationCode:'galpon_a',operationKey:'rep-t14-identificada'});
     expect(identified.status,await identified.clone().text()).toBe(201);
     const listed=await api('/api/reproduction/cycles?from=2026-06-01&to=2026-06-01&status=all');
@@ -1082,6 +1093,15 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(finalInventory.summary.total).toMatchObject({entries:beforeWeaning.entries,exits:beforeWeaning.exits,mortalityPct:beforeWeaning.mortalityPct});
     expect(finalInventory.summary.total.available).toBe(before+7);
     expect(finalInventory.balances.filter((row)=>row.stageCode==='inicio').reduce((sum,row)=>sum+row.heads,0)).toBeGreaterThanOrEqual(5);
+    const unrelated=await api('/api/inventory/movements',{method:'POST',body:JSON.stringify({movementType:'initial',effectiveDate:'2026-10-23',barnId:1,locationCode:'galpon_a',lotCode:null,stageCode:'preinicio',sex:'macho',quantity:10,reason:'Otro grupo del galpón',operationKey:'rep-t14-unrelated'})});expect(unrelated.status,await unrelated.clone().text()).toBe(201);
+    const unrelatedId=(await unrelated.json() as {movement:{id:number}}).movement.id;
+    const preview=await api(`/api/inventory/corrections/preview?movementId=${unrelatedId}&correctedQuantity=9`);expect((await preview.json() as {preview:{allowed:boolean}}).preview.allowed).toBe(true);
+    const litterBirth=await db.prepare("SELECT id FROM inventory_movements WHERE litter_id=? AND movement_type='birth' LIMIT 1").bind(litterId).first<{id:number}>();
+    expect((await api(`/api/inventory/corrections/preview?movementId=${litterBirth!.id}&correctedQuantity=4`)).status).toBe(400);
+    expect((await api('/api/inventory/corrections',{method:'POST',body:JSON.stringify({movementId:litterBirth!.id,correctedQuantity:4,reason:'Corregir desde inventario',operationKey:'rep-t14-invalid-inventory-correction'})})).status).toBe(400);
+    const invalidCorrection=await api(`/api/reproduction/litters/${litterId}/correction`,{method:'POST',body:JSON.stringify({maleAlive:0,reason:'Corrección incompatible con destetes',operationKey:'rep-t14-invalid-correction'})});
+    expect(invalidCorrection.status,await invalidCorrection.clone().text()).toBe(409);
+    expect(await db.prepare('SELECT male_alive FROM litters WHERE id=?').bind(litterId).first()).toMatchObject({male_alive:5});
     const adoptSow=await create({code:'T14-ADOPT-MADRE',animalType:'cerda',sex:'hembra',birthDate:'2024-01-01',entryDate:'2026-01-01',entryStageCode:'gestacion',originType:'compra',operationKey:'ani-t14-adopt-sow'});
     expect(adoptSow.status).toBe(201);
     const adoptCycleRes=await api('/api/reproduction/cycles',{method:'POST',body:JSON.stringify({femaleCode:'T14-ADOPT-MADRE',serviceDate:'2026-06-02',serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'Prueba adopción',operationKey:'rep-t14-adopt-cycle'})});
@@ -1099,7 +1119,15 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const destinationCycleList=await api('/api/reproduction/cycles?from=2026-06-02&to=2026-06-02&status=all');
     const destinationCycle=(await destinationCycleList.json() as {cycles:{id:string;litter:{id:string;actualWeaningDate:string|null}|null}[]}).cycles.find((item)=>item.litter?.id===adoptTargetLitter);
     expect(destinationCycle?.litter?.actualWeaningDate).toBe('2026-11-04');
-  },15000);
+    const reopen=await api(`/api/reproduction/litters/${adoptTargetLitter}/correction`,{method:'POST',body:JSON.stringify({femaleAlive:2,reason:'Se verificó un nacimiento adicional',operationKey:'rep-t14-reopen'})});
+    expect(reopen.status,await reopen.clone().text()).toBe(201);
+    expect(await db.prepare('SELECT actual_weaning_date FROM litters WHERE id=?').bind(adoptTargetLitter).first()).toMatchObject({actual_weaning_date:null});
+    const birthLedger=await db.prepare(`SELECT SUM(quantity) AS heads,MIN(effective_date) AS earliest,MAX(effective_date) AS latest FROM inventory_movements WHERE litter_id=? AND sex='hembra' AND operation_log_id=(SELECT id FROM operation_log WHERE operation_key='rep-t14-reopen')`).bind(adoptTargetLitter).first();
+    expect(birthLedger).toMatchObject({heads:1,earliest:'2026-10-24',latest:'2026-10-24'});
+    const rewean=await api(`/api/reproduction/litters/${adoptTargetLitter}/events`,{method:'POST',body:JSON.stringify({eventType:'weaning',effectiveDate:'2026-11-05',sex:'hembra',quantity:1,weightKg:6.3,destinationStageCode:'inicio',destinationBarnId:1,reason:'Destete pendiente',operationKey:'rep-t14-rewean'})});
+    expect(rewean.status,await rewean.clone().text()).toBe(201);
+    expect(await db.prepare('SELECT actual_weaning_date FROM litters WHERE id=?').bind(adoptTargetLitter).first()).toMatchObject({actual_weaning_date:'2026-11-05'});
+  },25000);
 
   it('registra pesajes fuera de orden cronológico, calcula ganancias, conserva ubicación y corrige sin borrar el original', async () => {
     const created = await create({ code: 'T11-PESO', entryDate: '2026-06-01', operationKey: 'ani-t11-alta-peso' });
