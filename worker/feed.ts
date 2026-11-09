@@ -1,8 +1,12 @@
 import { ApiError, commitOperation, createOperationClaim, currentFarmDate, isValidDateString, lookupExistingOperation, normalizeReason } from './events';
-import { getConfigSnapshot } from './config';
+import { getConfigSnapshot, type ConfigSnapshot, type StageItem } from './config';
 import { getInventorySnapshot } from './inventory';
 
 type Row = Record<string, unknown>;
+function configuredFeed(config:ConfigSnapshot,stage:StageItem|undefined){
+  if(!stage?.rationName)return undefined;
+  return config.catalogs.find(item=>item.key==='alimento')?.items.find(item=>item.name.toLocaleLowerCase('es-PE')===stage.rationName?.toLocaleLowerCase('es-PE'));
+}
 export interface FeedScope { allowedBarnNames?: string[] | null }
 export type FeedMovementInput = {
   movementType?: unknown; effectiveDate?: unknown; warehouseId?: unknown; feedCode?: unknown; lotCode?: unknown;
@@ -86,7 +90,7 @@ export async function getFeedInventory(db:D1Database,asOfValue:unknown,scope:Fee
     SUM(CASE WHEN m.movement_type='delivery' THEN m.total_cost_minor ELSE 0 END) AS allocated_cost_minor
     FROM feed_warehouses w LEFT JOIN feed_movements m ON m.warehouse_id=w.id AND m.effective_date<=?
     WHERE w.is_active=1${allowed.sql} GROUP BY w.id,w.code,w.name,w.barn_id,m.feed_code,m.lot_code
-    HAVING m.feed_code IS NOT NULL AND available_kg<>0 ORDER BY w.code,m.feed_code,m.lot_code`).bind(asOf,...allowed.params).all<Row>();
+    HAVING m.feed_code IS NOT NULL ORDER BY w.code,m.feed_code,m.lot_code`).bind(asOf,...allowed.params).all<Row>();
   const inventory=(rows.results??[]).map(row=>({warehouseId:Number(row.warehouse_id),warehouseCode:String(row.warehouse_code),warehouseName:String(row.warehouse_name),barnId:row.barn_id===null?null:Number(row.barn_id),
     feedCode:String(row.feed_code),lotCode:String(row.lot_code),availableKg:Number(row.available_kg),receivedKg:Number(row.received_kg),withdrawnKg:Number(row.withdrawn_kg),allocatedCostMinor:Number(row.allocated_cost_minor)}));
   const totals=inventory.reduce((result,row)=>{result.availableKg+=row.availableKg;result.receivedKg+=row.receivedKg;result.withdrawnKg+=row.withdrawnKg;result.allocatedCostMinor+=row.allocatedCostMinor;return result;},{availableKg:0,receivedKg:0,withdrawnKg:0,allocatedCostMinor:0});
@@ -190,8 +194,9 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
     const stage=await db.prepare('SELECT code FROM stage_versions WHERE code=? AND effective_from<=? AND (effective_to IS NULL OR effective_to>=?) AND status=\'active\'').bind(stageCode,effectiveDate,effectiveDate).first();
     if(!stage)throw new ApiError(400,'Seleccione una etapa vigente');
     const stageConfig=config.stages.find(item=>item.code===stageCode);
-    const expectedFeed=config.catalogs.find(item=>item.key==='alimento')?.items.find(item=>item.code===stageCode||item.name.toLocaleLowerCase('es-PE')===stageConfig?.rationName?.toLocaleLowerCase('es-PE'));
-    if(expectedFeed&&expectedFeed.code!==feedCode)throw new ApiError(400,'El alimento no coincide con la ración configurada para la etapa');
+    const expectedFeed=configuredFeed(config,stageConfig);
+    if(!expectedFeed)throw new ApiError(400,'Vincule la ración de la etapa con un alimento del catálogo');
+    if(expectedFeed.code!==feedCode)throw new ApiError(400,'El alimento no coincide con la ración configurada para la etapa');
     turnStatement=db.prepare(`INSERT INTO feed_turns(operation_log_id,feed_movement_id,effective_date,shift_code,barn_id,stage_code,feed_code,lot_code,planned_kg,served_kg,consumed_kg,created_by_user_id,created_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(claim.id,id,effectiveDate,shiftCode,destinationBarnId,stageCode,feedCode,lotCode,plannedKg,servedKg,consumedKg,actorUserId,claim.recordedAt);
   }
@@ -209,19 +214,19 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
 export async function getFeedProjection(db:D1Database,asOfValue:unknown,scope:FeedScope={}){
   const asOf=asOfValue?validateDate(asOfValue):currentFarmDate();
   const [config,animals,stock]=await Promise.all([getConfigSnapshot(db,asOf),getInventorySnapshot(db,{asOf,from:asOf,movementLimit:0},scope),getFeedInventory(db,asOf,scope)]);
-  const stages=config.stages;const catalog=config.catalogs.find(item=>item.key==='alimento')?.items??[];
+  const stages=config.stages;
   const byStage=new Map(animals.summary.byStage.map(row=>[row.stageCode,row.available]));
   const projection=stages.map(stage=>{
-    const heads=byStage.get(stage.code)??0;const feed=catalog.find(item=>item.code===stage.code||item.name.toLocaleLowerCase('es-PE')===stage.rationName?.toLocaleLowerCase('es-PE'));
-    const requirements:string[]=[];if(heads>0&&(!stage.dailyFeedKg||stage.dailyFeedKg<=0))requirements.push('Configurar consumo diario por cabeza');if(heads>0&&(!stage.durationDays||stage.durationDays<=0))requirements.push('Configurar duración de etapa');if(heads>0&&!feed)requirements.push('Vincular ración con un alimento del catálogo');
+    const heads=byStage.get(stage.code)??0;const feed=configuredFeed(config,stage);
+    const requirements:string[]=[];if(heads>0&&stage.dailyFeedKg===null)requirements.push('Configurar consumo diario por cabeza');if(heads>0&&stage.durationDays===null)requirements.push('Configurar duración de etapa');if(heads>0&&!feed)requirements.push('Vincular ración con un alimento del catálogo');
     const dailyKg=heads===0?0:stage.dailyFeedKg===null?null:Number((heads*stage.dailyFeedKg).toFixed(3));
     const availableKg=feed?stock.inventory.filter(row=>row.feedCode===feed.code).reduce((sum,row)=>sum+row.availableKg,0):0;
     const stageNeedKg=heads===0?0:dailyKg!==null&&stage.durationDays!==null?Number((dailyKg*stage.durationDays).toFixed(3)):null;const monthlyNeedKg=dailyKg===null?null:Number((dailyKg*30).toFixed(3));
-    return {stageCode:stage.code,stageName:stage.name,heads,rationName:stage.rationName,feedCode:feed?.code??null,feedName:feed?.name??null,dailyPerHeadKg:stage.dailyFeedKg,dailyKg,stageDays:stage.durationDays,stageNeedKg,monthlyNeedKg,availableKg,coveredDays:dailyKg&&dailyKg>0?Math.floor(availableKg/dailyKg):null,stageShortageKg:stageNeedKg===null?null:Number(Math.max(0,stageNeedKg-availableKg).toFixed(3)),monthlyShortageKg:monthlyNeedKg===null?null:Number(Math.max(0,monthlyNeedKg-availableKg).toFixed(3)),requirements};
+    return {stageCode:stage.code,stageName:stage.name,heads,rationName:stage.rationName,feedCode:feed?.code??null,feedName:feed?.name??null,dailyPerHeadKg:stage.dailyFeedKg,dailyKg,stageDays:stage.durationDays,stageNeedKg,monthlyNeedKg,availableKg,coveredDays:dailyKg&&dailyKg>0?Math.floor(availableKg/dailyKg):null,dailyShortageKg:dailyKg===null||!feed?null:Number(Math.max(0,dailyKg-availableKg).toFixed(3)),stageShortageKg:stageNeedKg===null||!feed?null:Number(Math.max(0,stageNeedKg-availableKg).toFixed(3)),monthlyShortageKg:monthlyNeedKg===null||!feed?null:Number(Math.max(0,monthlyNeedKg-availableKg).toFixed(3)),requirements};
   });
   const feedSummary=[...new Set(projection.map(row=>row.feedCode).filter((code):code is string=>Boolean(code)))].map(feedCode=>{
-    const rows=projection.filter(row=>row.feedCode===feedCode);const dailyKg=Number(rows.reduce((sum,row)=>sum+(row.dailyKg??0),0).toFixed(3));const availableKg=stock.inventory.filter(row=>row.feedCode===feedCode).reduce((sum,row)=>sum+row.availableKg,0);const monthlyNeedKg=Number((dailyKg*30).toFixed(3));
-    return {feedCode,feedName:rows[0].feedName,heads:rows.reduce((sum,row)=>sum+row.heads,0),dailyKg,monthlyNeedKg,availableKg,coveredDays:dailyKg>0?Math.floor(availableKg/dailyKg):null,monthlyShortageKg:Number(Math.max(0,monthlyNeedKg-availableKg).toFixed(3))};
+    const rows=projection.filter(row=>row.feedCode===feedCode);const dailyKg=rows.some(row=>row.dailyKg===null)?null:Number(rows.reduce((sum,row)=>sum+(row.dailyKg??0),0).toFixed(3));const availableKg=stock.inventory.filter(row=>row.feedCode===feedCode).reduce((sum,row)=>sum+row.availableKg,0);const monthlyNeedKg=dailyKg===null?null:Number((dailyKg*30).toFixed(3));
+    return {feedCode,feedName:rows[0].feedName,heads:rows.reduce((sum,row)=>sum+row.heads,0),dailyKg,monthlyNeedKg,availableKg,coveredDays:dailyKg!==null&&dailyKg>0?Math.floor(availableKg/dailyKg):null,monthlyShortageKg:monthlyNeedKg===null?null:Number(Math.max(0,monthlyNeedKg-availableKg).toFixed(3))};
   });
   const barnIds=await allowedBarnIds(db,scope);const turnScope=barnIds===null?'':barnIds.length?` AND t.barn_id IN (${barnIds.map(()=>'?').join(',')})`:' AND 0=1';
   const turns=await db.prepare(`SELECT t.id,t.effective_date,t.shift_code,t.barn_id,b.name AS barn_name,t.stage_code,t.feed_code,t.lot_code,t.planned_kg,t.served_kg,t.consumed_kg

@@ -73,4 +73,36 @@ describe('Almacenes y suministros · T15',()=>{
   expect(after.stages.find(row=>row.stageCode==='preinicio')?.heads).toBe(before.stages.find(row=>row.stageCode==='preinicio')!.heads-1);
   expect(after.stages.find(row=>row.stageCode==='inicio')?.heads).toBe(before.stages.find(row=>row.stageCode==='inicio')!.heads+1);
  });
+ it('conserva recibos y consumo de lotes agotados en los acumulados',async()=>{
+  const before=await (await api('/api/feed/inventory?asOf=2026-11-08')).json() as {totals:{availableKg:number;receivedKg:number;withdrawnKg:number;allocatedCostMinor:number}};
+  const base={effectiveDate:'2026-11-08',warehouseId:1,feedCode:'preinicio',lotCode:'AGOTADO-PRUEBA',costPerKg:3,reason:'Prueba de lote agotado'};
+  expect((await post({...base,movementType:'purchase',quantityKg:10,supplier:'Proveedor',operationKey:'agotado-compra'})).status).toBe(201);
+  expect((await post({...base,movementType:'delivery',quantityKg:10,destinationBarnId:1,operationKey:'agotado-entrega'})).status).toBe(201);
+  const after=await (await api('/api/feed/inventory?asOf=2026-11-08')).json() as {inventory:{lotCode:string;availableKg:number;receivedKg:number;withdrawnKg:number}[];totals:typeof before.totals};
+  expect(after.inventory.find(row=>row.lotCode==='AGOTADO-PRUEBA')).toMatchObject({availableKg:0,receivedKg:10,withdrawnKg:10});
+  expect(after.totals).toMatchObject({availableKg:before.totals.availableKg,receivedKg:before.totals.receivedKg+10,withdrawnKg:before.totals.withdrawnKg+10,allocatedCostMinor:before.totals.allocatedCostMinor+3000});
+ });
+ it('respeta la ración configurada y no presenta demanda parcial como total',async()=>{
+  const admin=await db.prepare("SELECT id FROM users WHERE username='admin.feed@granja.pe'").first<{id:number}>();
+  await db.prepare("INSERT INTO inventory_movements(movement_type,effective_date,barn_id,stage_code,sex,quantity,created_by_user_id,created_at) VALUES('initial','2026-11-08',1,'vacia','hembra',1,?,'2026-11-08T12:00:00.000Z')").bind(admin!.id).run();
+  try{
+   await db.prepare("UPDATE stage_versions SET ration_name='Alimento gestación' WHERE code='preinicio'").run();
+   await db.prepare("UPDATE stage_versions SET daily_feed_kg=NULL WHERE code='vacia'").run();
+   const result=await getFeedProjection(db,'2026-11-08');
+   expect(result.stages.find(row=>row.stageCode==='preinicio')?.feedCode).toBe('gestacion');
+   expect(result.feeds.find(row=>row.feedCode==='gestacion')).toMatchObject({dailyKg:null,monthlyNeedKg:null,monthlyShortageKg:null});
+   const shared={effectiveDate:'2026-11-08',warehouseId:1,feedCode:'gestacion',lotCode:'RACION-COMPARTIDA',costPerKg:1,reason:'Ración configurada'};
+   expect((await post({...shared,movementType:'purchase',supplier:'Proveedor',quantityKg:2,operationKey:'shared-ration-purchase'})).status).toBe(201);
+   const delivered=await api('/api/feed/turns',{method:'POST',body:JSON.stringify({...shared,movementType:'delivery',quantityKg:1,destinationBarnId:1,operationKey:'shared-ration-turn',turn:{shiftCode:'manana',stageCode:'preinicio',plannedKg:1,servedKg:1}})});
+   expect(delivered.status,await delivered.clone().text()).toBe(201);
+   await db.prepare("UPDATE stage_versions SET ration_name='Ración inexistente' WHERE code='preinicio'").run();
+   const missing=await getFeedProjection(db,'2026-11-08');
+   expect(missing.stages.find(row=>row.stageCode==='preinicio')).toMatchObject({feedCode:null,requirements:expect.arrayContaining(['Vincular ración con un alimento del catálogo'])});
+   const invalidTurn=await api('/api/feed/turns',{method:'POST',body:JSON.stringify({...shared,movementType:'delivery',quantityKg:1,destinationBarnId:1,operationKey:'missing-ration-turn',turn:{shiftCode:'manana',stageCode:'preinicio',plannedKg:1,servedKg:1}})});
+   expect(invalidTurn.status).toBe(400);
+  }finally{
+   await db.prepare("UPDATE stage_versions SET ration_name='Alimento preinicio' WHERE code='preinicio'").run();
+   await db.prepare("UPDATE stage_versions SET daily_feed_kg=2 WHERE code='vacia'").run();
+  }
+ });
 });
