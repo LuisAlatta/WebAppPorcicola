@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Miniflare } from 'miniflare';
 import worker from '../worker/index';
 import { currentFarmDate } from '../worker/events';
+import { applyVaccineOccurrence } from '../worker/vaccines';
 
 const runtime = new Miniflare({
   workers: [{
@@ -1181,6 +1182,73 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const cycleEditAgain=await api(`/api/reproduction/cycles/${cycleId}`,{method:'PUT',body:JSON.stringify({observations:'Observación corregida 2',operationKey:'rep-t18-cycle-edit-2'})});expect(cycleEditAgain.status).toBe(200);
     const sowSchedule=await api('/api/vaccines/schedules?status=pending&from=2026-08-05&to=2026-08-05');const sowRows=(await sowSchedule.json() as {schedules:{animalCode:string}[]}).schedules.filter(row=>row.animalCode==='T18-CERDA');expect(sowRows).toHaveLength(1);
   },15000);
+
+  it('permite retiro futuro y unidad elegida al aplicar una vacuna', async () => {
+    const today=currentFarmDate();const tomorrow=new Date(`${today}T00:00:00.000Z`);tomorrow.setUTCDate(tomorrow.getUTCDate()+7);const future=tomorrow.toISOString().slice(0,10);
+    const yesterday=new Date(`${today}T00:00:00.000Z`);yesterday.setUTCDate(yesterday.getUTCDate()-1);const past=yesterday.toISOString().slice(0,10);
+    const created=await create({code:'VACUNA-RETIRO',animalType:'reemplazo',sex:'hembra',entryDate:past,originType:'nacimiento',operationKey:'vacuna-retiro-alta'});expect(created.status).toBe(201);
+    const manual=await api('/api/vaccines/schedules/manual',{method:'POST',body:JSON.stringify({animalCode:'VACUNA-RETIRO',vaccineName:'Vacuna retiro',scheduledDate:today,reason:'Programación de prueba',operationKey:'vacuna-retiro-manual'})},veterinarioToken);expect(manual.status).toBe(201);
+    const id=(await manual.json() as {schedule:{id:number}}).schedule.id;
+    const payload={appliedDate:today,dosage:1,dosageUnit:'dosis',withdrawalUntil:future,reason:'Aplicación con retiro',operationKey:'vacuna-retiro-aplicar'};
+    const invalid=await api(`/api/vaccines/schedules/${id}/apply`,{method:'POST',body:JSON.stringify({...payload,withdrawalUntil:past,operationKey:'vacuna-retiro-invalido'})},veterinarioToken);expect(invalid.status).toBe(400);
+    const applied=await api(`/api/vaccines/schedules/${id}/apply`,{method:'POST',body:JSON.stringify(payload)},veterinarioToken);expect(applied.status,await applied.clone().text()).toBe(201);
+    expect((await api(`/api/vaccines/schedules/${id}/apply`,{method:'POST',body:JSON.stringify(payload)},veterinarioToken)).status).toBe(200);
+    const history=await api('/api/health/events?animalCode=VACUNA-RETIRO');expect((await history.json() as {events:unknown[]}).events).toContainEqual(expect.objectContaining({dosageUnit:'dosis',withdrawalUntil:future}));
+    const alerts=await api(`/api/health/withdrawals?asOf=${today}`);expect((await alerts.json() as {alerts:unknown[]}).alerts).toContainEqual(expect.objectContaining({animalCode:'VACUNA-RETIRO',withdrawalUntil:future}));
+  });
+
+  it('registra una sola aplicación cuando dos usuarios atienden la misma vacuna', async () => {
+    const today=currentFarmDate();const created=await create({code:'VACUNA-CONCURRENTE',animalType:'reemplazo',sex:'hembra',entryDate:today,originType:'nacimiento',operationKey:'vacuna-concurrente-alta'});expect(created.status).toBe(201);
+    const manual=await api('/api/vaccines/schedules/manual',{method:'POST',body:JSON.stringify({animalCode:'VACUNA-CONCURRENTE',vaccineName:'Vacuna concurrente',scheduledDate:today,reason:'Programación de prueba',operationKey:'vacuna-concurrente-manual'})},veterinarioToken);expect(manual.status).toBe(201);
+    const id=(await manual.json() as {schedule:{id:number}}).schedule.id;
+    const responses=await Promise.all(['a','b'].map(key=>api(`/api/vaccines/schedules/${id}/apply`,{method:'POST',body:JSON.stringify({appliedDate:today,dosage:1,dosageUnit:'ml',reason:'Aplicación concurrente',operationKey:`vacuna-concurrente-${key}`})},veterinarioToken)));
+    expect(responses.map(response=>response.status).sort(),JSON.stringify(await Promise.all(responses.map(response=>response.clone().text())))).toEqual([201,409]);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM health_event_animals WHERE animal_code_snapshot='VACUNA-CONCURRENTE'").first()).toMatchObject({n:1});
+  });
+
+  it('rechaza una aplicación retrasada si otra ya confirmó la misma vacuna', async () => {
+    const today=currentFarmDate();const created=await create({code:'VACUNA-CARRERA',animalType:'reemplazo',sex:'hembra',entryDate:today,originType:'nacimiento',operationKey:'vacuna-carrera-alta'});expect(created.status).toBe(201);
+    const manual=await api('/api/vaccines/schedules/manual',{method:'POST',body:JSON.stringify({animalCode:'VACUNA-CARRERA',vaccineName:'Vacuna carrera',scheduledDate:today,reason:'Programación de prueba',operationKey:'vacuna-carrera-manual'})},veterinarioToken);expect(manual.status).toBe(201);
+    const id=(await manual.json() as {schedule:{id:number}}).schedule.id;
+    const vet=await db.prepare("SELECT id FROM users WHERE username='veterinario.animales@granja.pe'").first<{id:number}>();
+    let release!:()=>void;let observed!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});const waiting=new Promise<void>(resolve=>{observed=resolve;});
+    const delayed=new Proxy(db,{get(target,key){if(key==='batch')return async (...args:Parameters<D1Database['batch']>)=>{observed();await gate;return target.batch(...args);};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}}) as D1Database;
+    const payload={appliedDate:today,dosage:1,dosageUnit:'ml',reason:'Aplicación en carrera'};
+    const first=applyVaccineOccurrence(delayed,vet!.id,id,{...payload,operationKey:'vacuna-carrera-a'});
+    await waiting;
+    const second=await api(`/api/vaccines/schedules/${id}/apply`,{method:'POST',body:JSON.stringify({...payload,operationKey:'vacuna-carrera-b'})},veterinarioToken);
+    expect(second.status,await second.clone().text()).toBe(201);
+    release();await expect(first).rejects.toMatchObject({status:409});
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM health_event_animals WHERE animal_code_snapshot='VACUNA-CARRERA'").first()).toMatchObject({n:1});
+  });
+
+  it('devuelve el mismo evento al confirmar simultáneamente el mismo intento de vacuna', async () => {
+    const today=currentFarmDate();const created=await create({code:'VACUNA-REPLAY-CARRERA',animalType:'reemplazo',sex:'hembra',entryDate:today,originType:'nacimiento',operationKey:'vacuna-replay-alta'});expect(created.status).toBe(201);
+    const manual=await api('/api/vaccines/schedules/manual',{method:'POST',body:JSON.stringify({animalCode:'VACUNA-REPLAY-CARRERA',vaccineName:'Vacuna replay',scheduledDate:today,reason:'Programación de prueba',operationKey:'vacuna-replay-manual'})},veterinarioToken);expect(manual.status).toBe(201);
+    const id=(await manual.json() as {schedule:{id:number}}).schedule.id;const vet=await db.prepare("SELECT id FROM users WHERE username='veterinario.animales@granja.pe'").first<{id:number}>();
+    let release!:()=>void;let observed!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});const waiting=new Promise<void>(resolve=>{observed=resolve;});
+    const delayed=new Proxy(db,{get(target,key){if(key==='batch')return async (...args:Parameters<D1Database['batch']>)=>{observed();await gate;return target.batch(...args);};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}}) as D1Database;
+    const payload={appliedDate:today,dosage:1,dosageUnit:'ml',reason:'Aplicación repetida',operationKey:'vacuna-replay-misma'};
+    const first=applyVaccineOccurrence(delayed,vet!.id,id,payload);await waiting;
+    const second=await api(`/api/vaccines/schedules/${id}/apply`,{method:'POST',body:JSON.stringify(payload)},veterinarioToken);expect(second.status).toBe(201);
+    const saved=await second.json() as {healthEventId:number};release();const replay=await first;
+    expect(replay).toMatchObject({replayed:true,healthEventId:saved.healthEventId});
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM health_event_animals WHERE animal_code_snapshot='VACUNA-REPLAY-CARRERA'").first()).toMatchObject({n:1});
+  });
+
+  it('confirma dos vacunas diferentes aunque sus aplicaciones se crucen', async () => {
+    const today=currentFarmDate();const created=await create({code:'VACUNAS-DISTINTAS',animalType:'reemplazo',sex:'hembra',entryDate:today,originType:'nacimiento',operationKey:'vacunas-distintas-alta'});expect(created.status).toBe(201);
+    const ids:number[]=[];for(const label of ['A','B']){const res=await api('/api/vaccines/schedules/manual',{method:'POST',body:JSON.stringify({animalCode:'VACUNAS-DISTINTAS',vaccineName:`Vacuna ${label}`,scheduledDate:today,reason:'Programación de prueba',operationKey:`vacunas-distintas-manual-${label}`})},veterinarioToken);expect(res.status).toBe(201);ids.push((await res.json() as {schedule:{id:number}}).schedule.id);}
+    const vet=await db.prepare("SELECT id FROM users WHERE username='veterinario.animales@granja.pe'").first<{id:number}>();
+    let release!:()=>void;let observed!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});const waiting=new Promise<void>(resolve=>{observed=resolve;});
+    const delayed=new Proxy(db,{get(target,key){if(key==='batch')return async (...args:Parameters<D1Database['batch']>)=>{observed();await gate;return target.batch(...args);};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}}) as D1Database;
+    const payload={appliedDate:today,dosage:1,dosageUnit:'ml',reason:'Aplicaciones diferentes'};
+    const first=applyVaccineOccurrence(delayed,vet!.id,ids[0],{...payload,operationKey:'vacunas-distintas-aplicar-a'});await waiting;
+    const second=await api(`/api/vaccines/schedules/${ids[1]}/apply`,{method:'POST',body:JSON.stringify({...payload,operationKey:'vacunas-distintas-aplicar-b'})},veterinarioToken);expect(second.status,await second.clone().text()).toBe(201);
+    const saved=await second.json() as {healthEventId:number};release();const other=await first;
+    expect(other).toMatchObject({replayed:false});expect(other.healthEventId).not.toBe(saved.healthEventId);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM health_event_animals WHERE animal_code_snapshot='VACUNAS-DISTINTAS'").first()).toMatchObject({n:2});
+  });
 
   it('registra finanzas con distribución exacta, monedas separadas y alcance por galpón', async () => {
     const payload={direction:'expense',category:'Alimento',concept:'Compra de prueba',operationDate:'2026-11-07',amount:'100.00',currencyCode:'PEN',counterparty:'Proveedor ficticio',reference:'FC-TEST-1',reason:'Prueba de distribución financiera',operationKey:'fin-t19-split',allocations:[{barnId:1,amount:'60.00',supplyCode:'ALIMENTO-1',quantity:20},{barnId:2,amount:'40.00',supplyCode:'ALIMENTO-1',quantity:10}]};
