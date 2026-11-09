@@ -4,11 +4,13 @@ Actualizado el 9 de noviembre de 2026. Este documento distingue comprobaciones t
 
 ## Verificación posterior del código y staging
 
-Commit verificado: `3decfb66f7bbc9cf55dd01f40750689adc4e99f5` (`main`). GitHub Actions, ejecución `42619859281`, terminó correctamente: `npm ci`, typecheck, lint, 145/145 pruebas unitarias en 32 archivos, 118/118 pruebas de integración en 22 archivos, build y 35/35 E2E. El Worker de staging continúa con el mismo código funcional, desplegado desde `ba89ceb2c2cfe0b5540db599ceb16490517171fe`; los commits posteriores solo actualizaron documentación.
+Commit verificado: `64f2f60400e80009c2850655766f2643bc7c33b1` (`main`). GitHub Actions, ejecución `42627286330`, terminó correctamente: `npm ci`, typecheck, lint, 145/145 pruebas unitarias en 32 archivos, 118/118 pruebas de integración en 22 archivos, build y 41/41 E2E. El build incluye cobertura de recuerdo seguro de credenciales y traslado individual de corral/lote dentro del mismo galpón.
 
-El Worker de staging se construyó con `CLOUDFLARE_ENV=staging` y se desplegó en la cuenta confirmada `newluisalattago@gmail.com` / `0acfa25b5f619f94d581b8cf882e2eec`. Versión: `4627e473-2710-4648-879f-b5c2cca6576f`; binding `env.DB` verificado contra `webporcicola-staging`; cron de staging `5 5 * * *`. Wrangler no encuentra migraciones pendientes en staging. Las rutas `/`, `/animales`, `/inventario`, `/alimentacion`, `/sanidad` y `/reportes` responden 200. Las rutas protegidas `/api/animals`, `/api/inventory`, `/api/reports/weights` y `/api/reports/births` devuelven 401 sin sesión, como se espera.
+El Worker de staging se construyó desde el commit `64f2f60400e80009c2850655766f2643bc7c33b1` con `CLOUDFLARE_ENV=staging` y se desplegó en la cuenta confirmada `newluisalattago@gmail.com` / `0acfa25b5f619f94d581b8cf882e2eec`. Versión: `6e7449b2-d5e6-4def-b45d-bf9d30890bf4`; binding `env.DB` verificado contra `webporcicola-staging`; cron de staging `5 5 * * *`. Wrangler no encuentra migraciones pendientes en staging. Las rutas `/`, `/login`, `/animales`, `/inventario`, `/alimentacion`, `/sanidad` y `/reportes` responden 200. Las rutas protegidas `/api/auth/me`, `/api/animals`, `/api/inventory`, `/api/reports/weights` y `/api/reports/births` devuelven 401 sin sesión, como se espera.
 
-La consulta remota de producción encuentra pendientes `0024_litter_discard.sql`, `0025_same_day_locations.sql` y `0026_litter_identified_adoptions.sql`. No se modificó D1 ni se desplegó el Worker de producción. Un intento de dry-run sin el build/archivo generado de staging mostró el binding de producción; no se usó para desplegar. El build y dry-run correctos de staging confirmaron su D1 antes de publicar.
+El formulario conserva solo el usuario en almacenamiento de la app. En navegadores compatibles pide al administrador de contraseñas que guarde la contraseña y usa `autocomplete` como alternativa; la clave antigua en texto legible se elimina al arrancar la app, también si ya existe una sesión activa. Los E2E verifican guardado/recuperación vía gestor, limpieza heredada y decisión de olvidar.
+
+La consulta remota de producción encuentra pendientes `0024_litter_discard.sql`, `0025_same_day_locations.sql` y `0026_litter_identified_adoptions.sql`. El D1 de producción recibió las migraciones `0006`–`0023` el 8 de noviembre, según [piloto.md](piloto.md); en esta revisión no se modificó D1 ni se desplegó el Worker de producción. Un intento de dry-run sin el build/archivo generado de staging mostró el binding de producción; no se usó para desplegar. El build y dry-run correctos de staging confirmaron su D1 antes de publicar.
 
 No hay `adb` instalado ni un Samsung Galaxy A54 conectado en este equipo. Por eso no se afirma prueba física, aceptación del piloto ni seguimiento de producción.
 
@@ -50,7 +52,7 @@ Esta prueba valida una copia lógica pequeña en el runtime local. **No acredita
 
 | Área | Evidencia disponible | Pendiente de cierre |
 |---|---|---|
-| Navegador | CI Playwright 35/35 en emulación móvil; el Worker staging actual sirve las pantallas de módulos y exige sesión para las API protegidas. | Falta el recorrido de campo en Android físico; la emulación y los smoke de rutas no sustituyen el piloto ni prueban todos los 32 casos de aceptación como jornada. |
+| Navegador | CI Playwright 41/41 en emulación móvil; el Worker staging actual sirve las pantallas de módulos y exige sesión para las API protegidas. | Falta el recorrido de campo en Android físico; la emulación y los smoke de rutas no sustituyen el piloto ni prueban todos los 32 casos de aceptación como jornada. |
 | Android físico | Dispositivo objetivo confirmado: Samsung Galaxy A54. | Registrar Android y versión de Chrome reales; instalar desde HTTPS, icono, enlace directo, actualización con formulario abierto, teclado decimal, foco, scroll y descargas. |
 | Desconexión física | Prueba automatizada de intento estable y no envío offline. | Modo avión real, pérdida de respuesta, recarga, reinicio y cambio de cuenta; confirmar ausencia de falsas confirmaciones y duplicados. |
 | CA-20 | Implementado en `worker/litters.ts` y cubierto por `tests/litter-date.integration.test.ts`; E2E de formulario y reintento en `e2e/litter-date.browser.ts`. | Caso funcional cubierto automáticamente. Mantenerlo abierto solo si el informe final de T29 detecta una discrepancia; no describir la corrección como pendiente de implementación. |
@@ -63,11 +65,11 @@ Esta prueba valida una copia lógica pequeña en el runtime local. **No acredita
 
 ### CA-20 implementado
 
-La corrección de fecha real conserva fecha previa, autor y motivo; valida secuencia e inventario; reprograma solo dosis pendientes del parto y preserva las aplicadas/canceladas. La cobertura automatizada está en `tests/litter-date.integration.test.ts` e incluye concurrencia con generación, permisos, idempotencia, conflicto y rollback. La última CI aprobó 145 pruebas unitarias, 118 de integración y 35 E2E; la evidencia de `todo.md` registra el caso CA-13 con 002, nacimiento 06/06/2026 y vacuna pendiente el 05/08/2026.
+La corrección de fecha real conserva fecha previa, autor y motivo; valida secuencia e inventario; reprograma solo dosis pendientes del parto y preserva las aplicadas/canceladas. La cobertura automatizada está en `tests/litter-date.integration.test.ts` e incluye concurrencia con generación, permisos, idempotencia, conflicto y rollback. La última CI aprobó 145 pruebas unitarias, 118 de integración y 41 E2E; la evidencia de `todo.md` registra el caso CA-13 con 002, nacimiento 06/06/2026 y vacuna pendiente el 05/08/2026.
 
 ## Matriz para el ensayo de los 32 casos
 
-Las suites citadas en «Base» pasaron en CI para el commit `3decfb66f7bbc9cf55dd01f40750689adc4e99f5` (145 unitarias, 118 de integración y 35 E2E). Esto acredita los asertos automatizados incluidos en cada suite; no equivale a ejecutar los 32 casos como una jornada integral ni completa los chequeos de campo indicados. T29 permanece abierto hasta registrar esperado/observado/artefacto por caso y medir volumen/concurrencia acordados y RPO/RTO validados.
+Las suites citadas en «Base» pasaron en CI para el commit `64f2f60400e80009c2850655766f2643bc7c33b1` (145 unitarias, 118 de integración y 41 E2E). Esto acredita los asertos automatizados incluidos en cada suite; no equivale a ejecutar los 32 casos como una jornada integral ni completa los chequeos de campo indicados. T29 permanece abierto hasta registrar esperado/observado/artefacto por caso y medir volumen/concurrencia acordados y RPO/RTO validados.
 
 | CA | Base de prueba | Comprobación adicional del ensayo |
 |---|---|---|
