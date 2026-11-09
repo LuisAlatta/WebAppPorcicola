@@ -115,6 +115,10 @@ interface FormState {
   causeCode: string;
   notes: string;
   reason: string;
+  saleAmount: string;
+  currencyCode: string;
+  counterparty: string;
+  documentReference: string;
 }
 
 type Section = 'existencias' | 'registrar' | 'movimientos' | 'traslado';
@@ -132,7 +136,7 @@ const MOVEMENT_HINTS: Record<MovementType, string> = {
   initial: 'Existencias con las que arranca el galpón en la fecha indicada.',
   purchase: 'Animales que ingresan comprados o recibidos de fuera de la granja.',
   birth: 'Lechones nacidos vivos; pueden quedar pendientes de sexado.',
-  sale: 'Animales que salen de la granja por venta o descarte.',
+  sale: 'La salida del grupo y su importe se registran juntos en Finanzas. El cobro se registra por separado.',
   death: 'Bajas por muerte; la causa es obligatoria.',
   adjustment: 'Corrección positiva o negativa por conteo físico o error de carga.',
 };
@@ -167,6 +171,10 @@ function initialForm(perfil: Perfil): FormState {
     causeCode: '',
     notes: '',
     reason: perfil === 'veterinario' ? '' : '',
+    saleAmount: '',
+    currencyCode: 'PEN',
+    counterparty: '',
+    documentReference: '',
   };
 }
 
@@ -394,7 +402,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
         body: JSON.stringify({ movementId: Number(correctionForm.movementId), correctedQuantity: Number(correctionForm.correctedQuantity), reason: correctionForm.reason, operationKey }) });
       const body = await res.json() as { error?: string; replayed?: boolean };
       if (!res.ok) { setFormError(body.error ?? 'No se pudo corregir el movimiento.'); return; }
-      setSuccess(body.replayed ? 'Corrección confirmada sin duplicarla.' : 'Corrección guardada; el original permanece en el historial.');
+      setSuccess(body.replayed ? 'Corrección confirmada sin duplicarla.' : Number(correctionForm.correctedQuantity) === 0 ? 'Venta anulada: stock restituido y asiento financiero revertido. Puede registrar la venta correcta.' : 'Corrección guardada; el original permanece en el historial.');
       setOperationKey(newOperationKey('inv-correction'));
       setCorrectionForm({ movementId: '', correctedQuantity: '', reason: '' }); setCorrectionPreview(null);
       await loadSnapshot(asOf);
@@ -430,6 +438,10 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
       setFormError('La causa de muerte es obligatoria.');
       return;
     }
+    if (form.movementType === 'sale' && (!form.saleAmount.trim() || Number(form.saleAmount) <= 0)) {
+      setFormError('Indique el importe total de la venta.');
+      return;
+    }
     if (!form.reason.trim()) {
       setFormError('Escriba el motivo del movimiento.');
       return;
@@ -451,6 +463,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
           quantity: Number(form.quantity),
           causeCode: form.causeCode || null,
           notes: form.notes.trim() ? form.notes.trim() : null,
+          ...(form.movementType === 'sale' ? {saleAmount: form.saleAmount, currencyCode: form.currencyCode, counterparty: form.counterparty.trim() || null, documentReference: form.documentReference.trim() || null} : {}),
           operationKey,
           reason: form.reason.trim(),
         }),
@@ -474,6 +487,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
         notes: '',
         reason: '',
         causeCode: '',
+        saleAmount: '',
+        counterparty: '',
+        documentReference: '',
       }));
       await loadSnapshot(asOf);
       setSection('movimientos');
@@ -1056,6 +1072,25 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                   </div>
                 )}
 
+                {form.movementType === 'sale' && <>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="inv-sale-amount">Importe total de la venta</label>
+                    <input id="inv-sale-amount" type="number" min="0.01" step="0.01" className="form-input" value={form.saleAmount} onChange={(event) => setField('saleAmount', event.target.value)} required />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="inv-sale-currency">Moneda</label>
+                    <select id="inv-sale-currency" className="form-select" value={form.currencyCode} onChange={(event) => setField('currencyCode', event.target.value)} required><option value="PEN">PEN · Soles</option><option value="USD">USD · Dólares</option></select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="inv-sale-buyer">Comprador</label>
+                    <input id="inv-sale-buyer" className="form-input" maxLength={160} value={form.counterparty} onChange={(event) => setField('counterparty', event.target.value)} placeholder="Opcional" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="inv-sale-reference">Referencia o comprobante</label>
+                    <input id="inv-sale-reference" className="form-input" maxLength={100} value={form.documentReference} onChange={(event) => setField('documentReference', event.target.value)} placeholder="Opcional" />
+                  </div>
+                </>}
+
                 <div className="form-group form-col-span-full">
                   <label className="form-label" htmlFor="inv-notes">Notas</label>
                   <textarea
@@ -1388,6 +1423,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
           )}
           {!soloLectura && <div className="card mt-4">
             <div className="card-header-clean mb-2"><span className="section-title">Corregir un movimiento</span><span className="text-xs text-muted">El original se conserva; revise los movimientos posteriores antes de confirmar.</span></div>
+            <p className="note-box text-sm">Para anular una venta grupal sin cobros, indique su ID y cantidad correcta 0. Se restituye el stock y se revierte el importe; después registre la venta con los datos correctos. Las ventas con cobros requieren conciliación.</p>
             <form className="form-stack" onSubmit={(event) => void submitCorrection(event)}>
               {formError && (
                 <div className="alert alert-error" role="alert" aria-live="assertive">
@@ -1459,7 +1495,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                   <p className="inline-flex items-center gap-1.5 flex-wrap">
                     {correctionPreview.allowed ? (
                       <>
-                        <span>Compatible: {correctionPreview.originalQuantity}</span>
+                        <span>{correctionPreview.correctedQuantity === 0 ? 'Anular venta sin cobros: ' : 'Compatible: '}{correctionPreview.originalQuantity}</span>
                         <IconArrowRight size={14} className="inline text-muted" />
                         <span>{correctionPreview.correctedQuantity}.</span>
                       </>

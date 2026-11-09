@@ -63,7 +63,7 @@ describe('Cierre 3 · conciliación histórica de identificados y grupos', () =>
       return { a: totals(1), b: totals(2), total: snapshot.summary.total.available };
     };
     expect(await readCut('2026-01-15')).toEqual({ a: { heads: 10, identified: 2, unidentified: 8 }, b: { heads: 4, identified: 1, unidentified: 3 }, total: 14 });
-    const exits = await Promise.all([admin, operatorToken].map((token, index) => request('/api/inventory/movements', { ...groupA, movementType: 'sale', effectiveDate: '2026-01-20', quantity: 7, reason: 'Venta concurrente de prueba', operationKey: `c3-sale-${index}` }, token)));
+    const exits = await Promise.all([admin, operatorToken].map((token, index) => request('/api/inventory/movements', { ...groupA, movementType: 'sale', saleAmount: '180.00', currencyCode: 'PEN', effectiveDate: '2026-01-20', quantity: 7, reason: 'Venta concurrente de prueba', operationKey: `c3-sale-${index}` }, token)));
     expect(exits.map(response => response.status).sort()).toEqual([201, 409]);
     const purchase = await request('/api/inventory/movements', { ...group(2, 'galpon_b', 2, 'c3-purchase-b'), movementType: 'purchase', effectiveDate: '2026-01-20' }, admin);
     expect(purchase.status, await purchase.clone().text()).toBe(201);

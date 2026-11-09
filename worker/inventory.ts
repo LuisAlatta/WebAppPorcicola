@@ -613,6 +613,10 @@ export interface RegisterMovementInput {
   notes?: string | null;
   operationKey?: string;
   reason?: string;
+  saleAmount?: unknown;
+  currencyCode?: unknown;
+  counterparty?: unknown;
+  documentReference?: unknown;
 }
 
 function requireText(value: unknown, field: string, maxLength = 120): string {
@@ -704,7 +708,7 @@ export async function registerMovement(
 
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Movimiento de inventario' });
 
-  const payload = {
+  const legacyPayload = {
     movementType: type,
     effectiveDate,
     barnId,
@@ -717,6 +721,25 @@ export async function registerMovement(
     notes,
   };
 
+  let sale: {amountMinor:number;currencyCode:string;counterparty:string|null;documentReference:string|null} | null = null;
+  if(type==='sale'){
+    if(input.saleAmount===undefined||input.saleAmount===null||input.saleAmount===''){
+      const legacyReplay=await lookupExistingOperation(db,actorUserId,input.operationKey,legacyPayload);
+      if(legacyReplay)return{movement:legacyReplay.result as InventoryMovement,replayed:true};
+      throw new ApiError(400,'Toda venta grupal requiere importe para enlazarla con Finanzas');
+    }
+    const raw=String(input.saleAmount).trim();
+    if(!/^\d{1,12}(?:\.\d{1,2})?$/.test(raw))throw new ApiError(400,'El importe de venta debe tener hasta dos decimales');
+    const [whole,decimal='']=raw.split('.');const amountMinor=Number(whole)*100+Number(decimal.padEnd(2,'0'));
+    if(!Number.isSafeInteger(amountMinor)||amountMinor<=0)throw new ApiError(400,'El importe de venta debe ser mayor que cero');
+    const currencyCode=String(input.currencyCode??'PEN').trim().toUpperCase();
+    if(!/^[A-Z]{3}$/.test(currencyCode))throw new ApiError(400,'Código de moneda inválido');
+    const counterparty=optionalCode(input.counterparty);const documentReference=optionalCode(input.documentReference);
+    if(counterparty&&counterparty.length>160)throw new ApiError(400,'El comprador no puede superar 160 caracteres');
+    if(documentReference&&documentReference.length>100)throw new ApiError(400,'La referencia no puede superar 100 caracteres');
+    sale={amountMinor,currencyCode,counterparty,documentReference};
+  }
+  const payload=sale?{...legacyPayload,sale}:legacyPayload;
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) return { movement: replay.result as InventoryMovement, replayed: true };
 
@@ -743,6 +766,8 @@ export async function registerMovement(
   for (const entry of timeline) {
     running += entry.delta;
     if (running < 0) {
+      const concurrentReplay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);
+      if(concurrentReplay)return{movement:concurrentReplay.result as InventoryMovement,replayed:true};
       throw new ApiError(
         409,
         `Corrección incompatible con ${entry.detail} el ${entry.date}: el saldo quedaría en ${running} cabezas (${stageCode}/${sex})`,
@@ -800,6 +825,10 @@ export async function registerMovement(
       stageCode, sex, quantity, causeCode, notes, actorUserId, createdAt,
     ),
     stockGuardStatement(db, barnId, locationCode, lotCode, stageCode, sex),
+    ...(sale?[
+      db.prepare(`INSERT INTO financial_entries(id,operation_log_id,direction,category,concept,operation_date,amount_minor,currency_code,counterparty,reference,notes,created_by_user_id,created_at,source_type,source_id) VALUES(?,?,'income','Venta grupal',?,?,?,?,?,?,?,?,?,'inventory_sale',?)`).bind(id,claim.id,`Venta grupal de ${quantity} cabezas · ${movement.stageName}`,effectiveDate,sale.amountMinor,sale.currencyCode,sale.counterparty,sale.documentReference,reason,actorUserId,createdAt,String(id)),
+      db.prepare(`INSERT INTO financial_allocations(entry_id,barn_id,barn_name_snapshot,amount_minor,lot_code,quantity,created_at) VALUES(?,?,?,?,?,?,?)`).bind(id,barnId,barn.name,sale.amountMinor,lotCode,quantity,createdAt),
+    ]:[]),
     db.prepare('DELETE FROM inventory_write_guard'),
   ], [{
     entityType: 'inventory_movement',
@@ -812,7 +841,7 @@ export async function registerMovement(
     newData: movement,
     effectiveDate,
     recordedAt: claim.recordedAt,
-  }]);
+  },...(sale?[{entityType:'financial_entry',entityId:id,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{direction:'income',category:'Venta grupal',inventoryMovementId:id,amountMinor:sale.amountMinor,currencyCode:sale.currencyCode,counterparty:sale.counterparty,reference:sale.documentReference,quantity},effectiveDate,recordedAt:claim.recordedAt}]:[])]);
 
   return {
     movement: result.replayed ? (result.result as InventoryMovement) : movement,
@@ -1034,13 +1063,55 @@ export interface CorrectMovementInput {
   operationKey?: string;
 }
 
+async function cancellableGroupSale(db:D1Database,original:Row){
+  if(original.movement_type!=='sale'||original.transfer_group_id||original.animal_id!=null||original.litter_id!=null)throw new ApiError(400,'La cantidad cero solo anula una venta grupal registrada desde Inventario');
+  const entry=await db.prepare("SELECT * FROM financial_entries WHERE operation_log_id=? AND source_type='inventory_sale' AND source_id=? AND direction='income'").bind(original.operation_log_id,String(original.id)).first<Row>();
+  if(!entry)throw new ApiError(409,'La venta no tiene un ingreso financiero enlazado válido para anular');
+  if(entry.reversed_at!==null||await db.prepare('SELECT id FROM financial_entries WHERE reversal_of_id=? LIMIT 1').bind(entry.id).first()||await db.prepare('SELECT id FROM inventory_movements WHERE reverses_movement_id=? LIMIT 1').bind(original.id).first())throw new ApiError(409,'La venta ya tiene una anulación o corrección registrada');
+  if(await db.prepare('SELECT id FROM financial_settlements WHERE financial_entry_id=? LIMIT 1').bind(entry.id).first())throw new ApiError(409,'La venta tiene cobros; concilie los cobros antes de anularla');
+  const allocations=(await db.prepare('SELECT * FROM financial_allocations WHERE entry_id=? ORDER BY id').bind(entry.id).all<Row>()).results??[];
+  if(!allocations.length||allocations.some(line=>Number(line.barn_id)!==Number(original.barn_id))||allocations.reduce((sum,line)=>sum+Number(line.amount_minor),0)!==Number(entry.amount_minor))throw new ApiError(409,'La distribución financiera de la venta requiere conciliación');
+  return{entry,allocations};
+}
+
+async function cancelGroupSale(db:D1Database,actorUserId:number,original:Row,input:CorrectMovementInput,reason:string){
+  const movementId=Number(original.id);const barnId=Number(original.barn_id);const payload={movementId,correctedQuantity:0};
+  try{
+    const{entry,allocations}=await cancellableGroupSale(db,original);
+    const effectiveDate=String(original.effective_date);const reversalId=Date.now()*1000+Math.floor(Math.random()*1000);
+    const result={originalMovementId:movementId,correctedQuantity:0};
+    const claim=await createOperationClaim({operationKey:input.operationKey,operationType:'inventory.sale.cancel',authorUserId:actorUserId,entityType:'inventory_movement',entityId:movementId,barnId,effectiveDate,payload,result});
+    const now=claim.recordedAt;
+    const commit=await commitOperation(db,claim,[
+      db.prepare('INSERT INTO inventory_write_guard(guard_id) VALUES(1)'),
+      db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM financial_entries WHERE id=? AND reversed_at IS NULL AND source_type='inventory_sale' AND source_id=? AND operation_log_id=?) AND NOT EXISTS(SELECT 1 FROM financial_settlements WHERE financial_entry_id=?) AND NOT EXISTS(SELECT 1 FROM financial_entries WHERE reversal_of_id=?) AND NOT EXISTS(SELECT 1 FROM inventory_movements WHERE reverses_movement_id=?) THEN 0 ELSE -1 END`).bind(entry.id,String(movementId),original.operation_log_id,entry.id,entry.id,movementId),
+      db.prepare(`INSERT INTO inventory_movements(operation_log_id,movement_type,effective_date,barn_id,location_code,lot_code,stage_code,sex,quantity,reverses_movement_id,notes,created_by_user_id,created_at) VALUES(?,'adjustment',?,?,?,?,?,?,?,?,?,?,?)`).bind(claim.id,effectiveDate,barnId,original.location_code??null,original.lot_code??null,original.stage_code,original.sex,original.quantity,movementId,`Reversión del movimiento #${movementId}`,actorUserId,now),
+      db.prepare('UPDATE financial_entries SET reversed_at=? WHERE id=? AND reversed_at IS NULL').bind(now,entry.id),
+      db.prepare(`INSERT INTO financial_entries(id,operation_log_id,direction,category,concept,operation_date,amount_minor,currency_code,counterparty,reference,notes,created_by_user_id,created_at,source_type,source_id,reversal_of_id) VALUES(?,?,'expense','Anulación de venta grupal',?,?,?,?,?,?,?,?,?,'inventory_sale_cancellation',?,?)`).bind(reversalId,claim.id,`Anulación de venta grupal #${movementId}`,effectiveDate,entry.amount_minor,entry.currency_code,entry.counterparty,entry.reference,reason,actorUserId,now,String(entry.id),entry.id),
+      ...allocations.map(line=>db.prepare(`INSERT INTO financial_allocations(entry_id,barn_id,barn_name_snapshot,amount_minor,animal_id,animal_code_snapshot,lot_code,supply_code,quantity,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`).bind(reversalId,line.barn_id,line.barn_name_snapshot,line.amount_minor,line.animal_id,line.animal_code_snapshot,line.lot_code,line.supply_code,line.quantity,now)),
+      stockGuardStatement(db,barnId,original.location_code==null?null:String(original.location_code),original.lot_code==null?null:String(original.lot_code),String(original.stage_code),String(original.sex) as Sex),
+      db.prepare('DELETE FROM inventory_write_guard'),
+    ],[
+      {entityType:'inventory_movement',entityId:movementId,action:'annul',actorUserId,barnId,reason,previousData:{quantity:Number(original.quantity),financialEntryId:Number(entry.id)},newData:{quantity:0,reversalEntryId:reversalId},effectiveDate,recordedAt:now},
+      {entityType:'financial_entry',entityId:Number(entry.id),action:'annul',actorUserId,barnId,reason,previousData:{reversedAt:null},newData:{reversedAt:now,reversalEntryId:reversalId,inventoryMovementId:movementId},effectiveDate,recordedAt:now},
+      {entityType:'financial_entry',entityId:reversalId,action:'create',actorUserId,barnId,reason,previousData:null,newData:{direction:'expense',reversalOfId:Number(entry.id),amountMinor:Number(entry.amount_minor),currencyCode:String(entry.currency_code),settlementRequired:false},effectiveDate,recordedAt:now},
+    ]);
+    return{...(commit.result as typeof result),replayed:commit.replayed};
+  }catch(error){
+    const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);
+    if(replay)return{...(replay.result as {originalMovementId:number;correctedQuantity:number}),replayed:true};
+    if(/guard_id/.test(String(error)))throw new ApiError(409,'La venta cambió o recibió un cobro; actualice antes de anular');
+    throw error;
+  }
+}
+
 export async function previewMovementCorrection(
   db: D1Database,
   movementId: number,
   correctedQuantity: number,
   scope: ScopeOptions = {},
 ): Promise<{ allowed: boolean; originalMovementId: number; originalQuantity: number; correctedQuantity: number; incompatibleMovements: { id: number; date: string; type: string; quantity: number; balanceAfter: number }[] }> {
-  if (!Number.isInteger(movementId) || movementId <= 0 || !Number.isInteger(correctedQuantity) || correctedQuantity === 0) {
+  if (!Number.isInteger(movementId) || movementId <= 0 || !Number.isInteger(correctedQuantity)) {
     throw new ApiError(400, 'Movimiento o cantidad corregida inválidos');
   }
   const original = await db.prepare('SELECT * FROM inventory_movements WHERE id = ?').bind(movementId).first<Row>();
@@ -1050,6 +1121,8 @@ export async function previewMovementCorrection(
   if (scope.allowedBarnNames && (!barn || !scope.allowedBarnNames.includes(barn.name))) throw new ApiError(403, 'Acceso denegado al galpón del movimiento');
   const type = String(original.movement_type) as MovementType;
   if (original.transfer_group_id || original.animal_id != null || original.litter_id != null) throw new ApiError(400, 'Este evento debe corregirse desde su módulo de origen');
+  if(correctedQuantity===0){await cancellableGroupSale(db,original);return{allowed:true,originalMovementId:movementId,originalQuantity:Number(original.quantity),correctedQuantity:0,incompatibleMovements:[]};}
+  if(original.operation_log_id&&await db.prepare('SELECT id FROM financial_entries WHERE operation_log_id=? LIMIT 1').bind(original.operation_log_id).first())throw new ApiError(409,'La venta tiene un ingreso financiero enlazado; no se puede corregir solo su cantidad');
   const alreadyCorrected = await db.prepare(`SELECT id FROM inventory_movements WHERE reverses_movement_id = ? AND notes LIKE 'Reversión del movimiento #%' LIMIT 1`)
     .bind(movementId).first();
   if (alreadyCorrected) throw new ApiError(409, 'El movimiento ya tiene una corrección registrada');
@@ -1085,7 +1158,7 @@ export async function correctInventoryMovement(
   const movementId = Number(input.movementId);
   if (!Number.isInteger(movementId) || movementId <= 0) throw new ApiError(400, 'Movimiento inválido');
   const correctedQuantity = Number(input.correctedQuantity);
-  if (!Number.isInteger(correctedQuantity) || correctedQuantity === 0) throw new ApiError(400, 'La cantidad corregida debe ser un entero distinto de cero');
+  if (!Number.isInteger(correctedQuantity)) throw new ApiError(400, 'La cantidad corregida debe ser un entero');
   const original = await db.prepare('SELECT * FROM inventory_movements WHERE id = ?').bind(movementId).first<Row>();
   if (!original) throw new ApiError(404, 'Movimiento no encontrado');
   if (original.transfer_group_id || original.animal_id != null || original.litter_id != null) {
@@ -1103,8 +1176,10 @@ export async function correctInventoryMovement(
   const payload = { movementId, correctedQuantity };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) return { ...(replay.result as Omit<Awaited<ReturnType<typeof correctInventoryMovement>>, 'replayed'>), replayed: true };
-  if (existingCorrection) throw new ApiError(409, 'El movimiento ya tiene una corrección registrada');
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Corrección de inventario' });
+  if(correctedQuantity===0)return cancelGroupSale(db,actorUserId,original,input,reason);
+  if(original.operation_log_id&&await db.prepare('SELECT id FROM financial_entries WHERE operation_log_id=? LIMIT 1').bind(original.operation_log_id).first())throw new ApiError(409,'La venta tiene un ingreso financiero enlazado; no se puede corregir solo su cantidad');
+  if (existingCorrection) throw new ApiError(409, 'El movimiento ya tiene una corrección registrada');
   const locationCode = original.location_code === null ? null : String(original.location_code);
   const lotCode = original.lot_code === null ? null : String(original.lot_code);
   const stageCode = String(original.stage_code);

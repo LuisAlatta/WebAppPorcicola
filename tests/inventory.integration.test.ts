@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Miniflare } from 'miniflare';
 import worker from '../worker/index';
@@ -86,6 +86,7 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
     quantity: 7,
     reason: 'Carga inicial del inventario',
     operationKey: `inv-${Math.random().toString(36).slice(2, 12)}`,
+    ...(overrides.movementType === 'sale' ? { saleAmount: '100.00', currencyCode: 'PEN' } : {}),
     ...overrides,
   });
 
@@ -99,31 +100,17 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
     db = await runtime.getD1Database('DB');
     await db.exec('PRAGMA foreign_keys = ON;');
 
-    const migrationFiles = [
-      '0001_initial_schema.sql',
-      '0002_administration_schema.sql',
-      '0003_events_audit_schema.sql',
-      '0004_farm_config_schema.sql',
-      '0005_inventory_schema.sql',
-      '0006_animals_schema.sql',
-      '0007_transfer_and_stock_guard.sql',
-      '0008_animal_location_history.sql',
-    ];
-
+    const migrationFiles = (await readdir(new URL('../migrations/', import.meta.url))).filter(name => /^\d+.*\.sql$/.test(name)).sort();
     for (const file of migrationFiles) {
-      const schemaSql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
-      const statements = schemaSql
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => !line.startsWith('--'))
-        .join(' ')
-        .split(';')
-        .map((statement) => statement.trim())
-        .filter((statement) => statement.length > 0);
-
-      for (const statement of statements) {
-        await db.exec(statement + ';');
+      const sql = (await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8')).replace(/^\s*--.*$/gm, '').replace(/\s+/g, ' ');
+      let trigger = '';
+      for (const part of sql.split(';').map(part => part.trim()).filter(Boolean)) {
+        if (trigger || /^CREATE TRIGGER/i.test(part)) {
+          trigger += `${part}; `;
+          if (/\bEND$/i.test(part)) { await db.prepare(trigger.trim()).run(); trigger = ''; }
+        } else await db.prepare(part).run();
       }
+      if (trigger) throw new Error(`Trigger incompleto en ${file}`);
     }
 
     const initRes = await worker.fetch(
