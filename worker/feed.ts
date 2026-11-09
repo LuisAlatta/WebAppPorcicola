@@ -270,23 +270,43 @@ export async function getFeedProjection(db:D1Database,asOfValue:unknown,scope:Fe
   const turns=await db.prepare(`SELECT t.id,t.effective_date,t.shift_code,t.barn_id,b.name AS barn_name,t.stage_code,t.feed_code,t.lot_code,t.planned_kg,t.served_kg,t.consumed_kg
     FROM feed_turns t JOIN barns b ON b.id=t.barn_id WHERE t.effective_date<=?${turnScope} ORDER BY t.effective_date DESC,t.id DESC LIMIT 100`).bind(asOf,...(barnIds??[])).all<Row>();
   const periodStart=new Date(`${asOf}T00:00:00Z`);periodStart.setUTCDate(periodStart.getUTCDate()-29);const from=periodStart.toISOString().slice(0,10);
-  const weightScope=barnIds===null?'':barnIds.length?` AND barn_id IN (${barnIds.map(()=>'?').join(',')})`:' AND 0=1';
-  const weights=await db.prepare(`WITH measured AS (
-      SELECT animal_id,barn_id,stage_code,weight_kg,
-        FIRST_VALUE(barn_id) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id) AS first_barn,
-        FIRST_VALUE(stage_code) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id) AS first_stage,
-        FIRST_VALUE(weight_kg) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id) AS first_weight,
-        LAST_VALUE(barn_id) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_barn,
-        LAST_VALUE(stage_code) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_stage,
-        LAST_VALUE(weight_kg) OVER (PARTITION BY animal_id ORDER BY weighed_on,weighed_time,id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_weight,
-        ROW_NUMBER() OVER (PARTITION BY animal_id ORDER BY weighed_on DESC,weighed_time DESC,id DESC) AS last_row,
-        COUNT(*) OVER (PARTITION BY animal_id) AS measurement_count
-      FROM animal_weights WHERE weighed_on BETWEEN ? AND ?${weightScope} AND barn_id IS NOT NULL AND stage_code IS NOT NULL
-    ) SELECT first_barn,first_stage,first_weight,last_weight FROM measured
-      WHERE last_row=1 AND measurement_count>=2 AND first_barn=last_barn AND first_stage=last_stage`).bind(from,asOf,...(barnIds??[])).all<Row>();
-  const gains=new Map<string,{gain:number;animals:number}>();for(const row of weights.results??[]){const key=`${row.first_barn}:${row.first_stage}`;const value=gains.get(key)??{gain:0,animals:0};value.gain+=Number(row.last_weight)-Number(row.first_weight);value.animals+=1;gains.set(key,value);}
-  const consumedRows=await db.prepare(`SELECT t.barn_id,t.stage_code,SUM(t.consumed_kg) AS consumed_kg FROM feed_turns t WHERE t.effective_date BETWEEN ? AND ? AND t.consumed_kg IS NOT NULL${turnScope} GROUP BY t.barn_id,t.stage_code`).bind(from,asOf,...(barnIds??[])).all<Row>();
-  const consumed=new Map((consumedRows.results??[]).map(row=>[`${row.barn_id}:${row.stage_code}`,Number(row.consumed_kg)]));
-  const comparisonKeys=new Set([...gains.keys(),...consumed.keys()]);const conversion=[...comparisonKeys].map(key=>{const [barnId,stageCode]=key.split(':');const gain=gains.get(key)??{gain:0,animals:0};const consumedKg=consumed.get(key)??0;const barnName=animals.options.barns.find(item=>item.id===Number(barnId))?.name??`Galpón ${barnId}`;return {barnId:Number(barnId),barnName,stageCode,periodFrom:from,periodTo:asOf,measuredAnimals:gain.animals,weightGainKg:Number(gain.gain.toFixed(3)),consumedKg:Number(consumedKg.toFixed(3)),feedConversionRatio:gain.gain>0&&consumedKg>0?Number((consumedKg/gain.gain).toFixed(3)):null,unavailableReason:gain.animals===0?'Faltan dos pesajes del mismo animal, galpón y etapa dentro del periodo':gain.gain<=0?'La ganancia comparable debe ser positiva':consumedKg<=0?'Falta registrar consumo real medido en los turnos':null};});
+  const weightScope=barnIds===null?'':barnIds.length?` AND w.barn_id IN (${barnIds.map(()=>'?').join(',')})`:' AND 0=1';
+  const weights=await db.prepare(`SELECT w.animal_id,w.barn_id,w.stage_code,w.weight_kg,w.weighed_on,
+    CASE WHEN EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=w.animal_id AND h.barn_id=w.barn_id AND h.stage_code=w.stage_code AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?))
+      AND NOT EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=w.animal_id AND h.valid_from>? AND h.valid_from<=?)
+      AND EXISTS(SELECT 1 FROM animals a WHERE a.id=w.animal_id AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>?)) THEN 1 ELSE 0 END AS stable_context
+    FROM animal_weights w WHERE w.weighed_on BETWEEN ? AND ?${weightScope} AND w.barn_id IS NOT NULL AND w.stage_code IS NOT NULL
+      AND NOT EXISTS(SELECT 1 FROM animal_weights replacement WHERE replacement.corrects_weight_id=w.id)
+    ORDER BY w.animal_id,w.weighed_on,w.weighed_time,w.id`).bind(from,asOf,from,asOf,from,asOf,from,asOf,...(barnIds??[])).all<Row>();
+  const byAnimal=new Map<number,Row[]>();for(const row of weights.results??[]){const id=Number(row.animal_id);const entries=byAnimal.get(id)??[];entries.push(row);byAnimal.set(id,entries);}
+  const gains=new Map<string,{gain:number;animals:number;comparableAnimals:number}>();
+  for(const measurements of byAnimal.values()){
+    if(measurements.length<2)continue;
+    const first=measurements[0];const last=measurements[measurements.length-1];
+    if(measurements.some(row=>row.barn_id!==first.barn_id||row.stage_code!==first.stage_code))continue;
+    const key=`${first.barn_id}:${first.stage_code}`;const value=gains.get(key)??{gain:0,animals:0,comparableAnimals:0};
+    value.gain+=Number(last.weight_kg)-Number(first.weight_kg);value.animals+=1;
+    if(first.weighed_on===from&&last.weighed_on===asOf&&measurements.every(row=>Number(row.stable_context)===1))value.comparableAnimals+=1;
+    gains.set(key,value);
+  }
+  const movementScope=barnIds===null?'':barnIds.length?` AND m.barn_id IN (${barnIds.map(()=>'?').join(',')})`:' AND 0=1';
+  const headDelta="CASE WHEN m.movement_type IN ('sale','death','transfer_out') THEN -m.quantity ELSE m.quantity END";
+  const populationRows=await db.prepare(`SELECT m.barn_id,m.stage_code,SUM(${headDelta}) AS heads,SUM(CASE WHEN m.effective_date<=? THEN ${headDelta} ELSE 0 END) AS start_heads,
+    SUM(CASE WHEN m.effective_date>? THEN 1 ELSE 0 END) AS changes FROM inventory_movements m WHERE m.effective_date<=?${movementScope} GROUP BY m.barn_id,m.stage_code`).bind(from,from,asOf,...(barnIds??[])).all<Row>();
+  const populations=new Map((populationRows.results??[]).map(row=>[`${row.barn_id}:${row.stage_code}`,row]));
+  const consumedRows=await db.prepare(`SELECT t.barn_id,t.stage_code,SUM(t.consumed_kg) AS consumed_kg,COUNT(DISTINCT CASE WHEN t.consumed_kg IS NOT NULL THEN t.effective_date END) AS measured_days,
+    SUM(CASE WHEN t.consumed_kg IS NULL THEN 1 ELSE 0 END) AS unmeasured_turns FROM feed_turns t WHERE t.effective_date BETWEEN ? AND ?${turnScope} GROUP BY t.barn_id,t.stage_code`).bind(from,asOf,...(barnIds??[])).all<Row>();
+  const consumed=new Map((consumedRows.results??[]).map(row=>[`${row.barn_id}:${row.stage_code}`,row]));
+  const unmeasured=await db.prepare(`SELECT m.destination_barn_id FROM feed_movements m WHERE m.movement_type='delivery' AND m.effective_date BETWEEN ? AND ? AND NOT EXISTS(SELECT 1 FROM feed_turns t WHERE t.feed_movement_id=m.id) GROUP BY m.destination_barn_id`).bind(from,asOf).all<Row>();
+  const incompleteBarns=new Set((unmeasured.results??[]).map(row=>Number(row.destination_barn_id)));
+  const comparisonKeys=new Set([...gains.keys(),...consumed.keys(),...[...populations].filter(([,row])=>Number(row.heads)>0).map(([key])=>key)]);
+  const conversion=[...comparisonKeys].map(key=>{
+    const [barnId,stageCode]=key.split(':');const gain=gains.get(key)??{gain:0,animals:0,comparableAnimals:0};const population=populations.get(key);const consumption=consumed.get(key);
+    const populationHeads=Number(population?.heads??0);const consumedKg=Number(consumption?.consumed_kg??0);const consumptionDays=Number(consumption?.measured_days??0);const requiredConsumptionDays=30;
+    const coveragePercent=populationHeads>0?Number((Math.min(1,gain.comparableAnimals/populationHeads)*100).toFixed(1)):0;
+    const unavailableReason=populationHeads<=0?'Falta una población registrada para comparar':Number(population?.start_heads)!==populationHeads||Number(population?.changes)>0?'La población cambió durante el periodo; requiere un grupo estable sin traslados':gain.comparableAnimals!==populationHeads||gain.animals!==populationHeads?`Cobertura incompleta: ${gain.comparableAnimals} de ${populationHeads} cabezas con pesajes en ambos extremos e historial continuo sin traslados`:consumptionDays!==requiredConsumptionDays||Number(consumption?.unmeasured_turns??0)>0||incompleteBarns.has(Number(barnId))?`Consumo incompleto: ${consumptionDays} de ${requiredConsumptionDays} días medidos; todas las entregas deben tener consumo registrado`:gain.gain<=0?'La ganancia comparable debe ser positiva':consumedKg<=0?'Falta registrar consumo real medido en los turnos':null;
+    const barnName=animals.options.barns.find(item=>item.id===Number(barnId))?.name??`Galpón ${barnId}`;
+    return {barnId:Number(barnId),barnName,stageCode,periodFrom:from,periodTo:asOf,populationHeads,measuredAnimals:gain.animals,comparableAnimals:gain.comparableAnimals,coveragePercent,consumptionDays,requiredConsumptionDays,weightGainKg:Number(gain.gain.toFixed(3)),consumedKg:Number(consumedKg.toFixed(3)),feedConversionRatio:unavailableReason===null?Number((consumedKg/gain.gain).toFixed(3)):null,unavailableReason};
+  });
   return {asOf,stages:projection,feeds:feedSummary,conversion,turns:(turns.results??[]).map(row=>({id:Number(row.id),effectiveDate:String(row.effective_date),shiftCode:String(row.shift_code),barnName:String(row.barn_name),stageCode:String(row.stage_code),feedCode:String(row.feed_code),lotCode:String(row.lot_code),plannedKg:Number(row.planned_kg),servedKg:Number(row.served_kg),consumedKg:row.consumed_kg===null?null:Number(row.consumed_kg)}))};
 }

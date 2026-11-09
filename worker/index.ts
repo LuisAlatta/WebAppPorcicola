@@ -1,3 +1,4 @@
+import { listFeedPlans, registerFeedPlan } from './feed-plans';
 import {
   hashPassword,
   verifyPassword,
@@ -634,7 +635,7 @@ const worker = {
     }
 
     // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
-    if (path === '/api/feed/warehouses' || path === '/api/feed/inventory' || path === '/api/feed/movements' || path === '/api/feed/projection' || path === '/api/feed/turns') {
+    if (path === '/api/feed/plans' || path === '/api/feed/warehouses' || path === '/api/feed/inventory' || path === '/api/feed/movements' || path === '/api/feed/projection' || path === '/api/feed/turns') {
       const token=getSessionToken(request);
       if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});
       const session=await validateSession(env.DB,token);
@@ -643,6 +644,11 @@ const worker = {
       if(isWrite&&!['administrador','responsable','operario'].includes(session.user.role))return Response.json({error:'El perfil veterinario solo puede consultar almacenes y movimientos de alimento'},{status:403});
       const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
       try{
+        if(path==='/api/feed/plans'&&request.method==='GET')return Response.json({ok:true,plans:await listFeedPlans(env.DB,{from:url.searchParams.get('from')??undefined,to:url.searchParams.get('to')??undefined},scope)});
+        if(path==='/api/feed/plans'&&request.method==='POST'){
+          const body=await request.json() as Parameters<typeof registerFeedPlan>[2];const result=await registerFeedPlan(env.DB,session.user.id,body,scope);
+          await reconcileAlerts(env.DB);return Response.json({ok:true,...result},{status:result.replayed?200:201});
+        }
         if(path==='/api/feed/warehouses'&&request.method==='GET')return Response.json({ok:true,warehouses:await listFeedWarehouses(env.DB,scope)});
         if(path==='/api/feed/warehouses'&&request.method==='POST'){
           if(session.user.role!=='administrador')return Response.json({error:'Solo el administrador puede crear almacenes'},{status:403});

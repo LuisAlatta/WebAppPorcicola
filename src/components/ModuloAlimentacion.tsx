@@ -129,10 +129,29 @@ type ConversionRow = {
   periodFrom: string;
   periodTo: string;
   measuredAnimals: number;
+  populationHeads: number;
+  comparableAnimals: number;
+  coveragePercent: number;
+  consumptionDays: number;
+  requiredConsumptionDays: number;
   weightGainKg: number;
   consumedKg: number;
   feedConversionRatio: number | null;
   unavailableReason: string | null;
+};
+
+type FeedPlan = {
+  id: number;
+  groupKey: string;
+  effectiveDate: string;
+  shiftCode: string;
+  barnId: number;
+  barnName: string;
+  stageCode: string;
+  feedCode: string;
+  plannedKg: number;
+  servedKg: number;
+  pendingKg: number;
 };
 
 type Section = 'raciones' | 'stock' | 'turnos' | 'registrar';
@@ -178,6 +197,8 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
   const [feeds, setFeeds] = useState<FeedSummary[]>([]);
   const [turns, setTurns] = useState<TurnRow[]>([]);
   const [conversion, setConversion] = useState<ConversionRow[]>([]);
+  const [plans, setPlans] = useState<FeedPlan[]>([]);
+  const [plan, setPlan] = useState({ effectiveDate: farmToday(), shiftCode: 'manana', barnId: '', stageCode: 'preinicio', feedCode: '', plannedKg: '', reason: '' });
   const [turnMode, setTurnMode] = useState<boolean>(false);
   const [turn, setTurn] = useState({
     shiftCode: 'manana',
@@ -189,6 +210,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
   const [feedOptions, setFeedOptions] = useState<FeedOption[]>([]);
   const [barns, setBarns] = useState<{ id: number; name: string }[]>([]);
   const [date, setDate] = useState<string>(farmToday());
+  const [planDate, setPlanDate] = useState<string>(farmToday());
   const [warehouseId, setWarehouseId] = useState<string>('');
   const [kind, setKind] = useState<string>('purchase');
   const [form, setForm] = useState({
@@ -219,21 +241,23 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
     setLoading(true);
     setError('');
     try {
-      const [wr, ir, mr, cr, br, pr] = await Promise.all([
+      const [wr, ir, mr, cr, br, pr, plr] = await Promise.all([
         fetch('/api/feed/warehouses'),
         fetch(`/api/feed/inventory?asOf=${encodeURIComponent(date)}`),
         fetch('/api/feed/movements?limit=100'),
         fetch('/api/config'),
         fetch('/api/finance/barns'),
         fetch(`/api/feed/projection?asOf=${encodeURIComponent(date)}`),
+        fetch(`/api/feed/plans?from=${encodeURIComponent(planDate)}&to=${encodeURIComponent(planDate)}`),
       ]);
-      const [w, i, m, c, b, p] = await Promise.all([
+      const [w, i, m, c, b, p, pl] = await Promise.all([
         wr.json(),
         ir.json(),
         mr.json(),
         cr.json(),
         br.json(),
         pr.json(),
+        plr.json(),
       ]) as [
         { warehouses?: Warehouse[]; error?: string },
         { inventory?: Stock[]; totals?: ViewData['totals']; asOf: string; error?: string },
@@ -241,9 +265,10 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
         { catalogs?: { key: string; items: { code: string; name: string }[] }[]; error?: string },
         { barns?: { id: number; name: string }[]; error?: string },
         { stages?: ProjectionRow[]; feeds?: FeedSummary[]; turns?: TurnRow[]; conversion?: ConversionRow[]; error?: string },
+        { plans?: FeedPlan[]; error?: string },
       ];
-      if (!wr.ok || !ir.ok || !mr.ok || !cr.ok || !br.ok || !pr.ok) {
-        throw new Error(w.error || i.error || m.error || c.error || b.error || p.error || 'No se pudieron cargar los datos de alimentación');
+      if (!wr.ok || !ir.ok || !mr.ok || !cr.ok || !br.ok || !pr.ok || !plr.ok) {
+        throw new Error(w.error || i.error || m.error || c.error || b.error || p.error || pl.error || 'No se pudieron cargar los datos de alimentación');
       }
       setWarehouses(w.warehouses ?? []);
       setInventory({
@@ -256,6 +281,8 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
       setFeeds(p.feeds ?? []);
       setTurns(p.turns ?? []);
       setConversion(p.conversion ?? []);
+      setPlans(pl.plans ?? []);
+      setPlan(old => ({ ...old, barnId: old.barnId || String(b.barns?.[0]?.id ?? ''), stageCode: old.feedCode ? old.stageCode : p.stages?.some(stage => stage.stageCode === old.stageCode) ? old.stageCode : p.stages?.[0]?.stageCode ?? '' }));
       const options = c.catalogs?.find((x) => x.key === 'alimento')?.items ?? [];
       setFeedOptions(options);
       setBarns(b.barns ?? []);
@@ -270,7 +297,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
     } finally {
       setLoading(false);
     }
-  }, [date]);
+  }, [date, planDate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -286,6 +313,22 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
   }, [notice]);
 
   const setField = (key: string, value: string) => setForm((old) => ({ ...old, [key]: value }));
+
+  const savePlan = async (event: React.FormEvent) => {
+    event.preventDefault(); setBusy(true); setError(''); setNotice('');
+    try {
+      const stage = projection.find(item => item.stageCode === plan.stageCode);
+      const feedCode = plan.feedCode || stage?.feedCode;
+      if (!feedCode) throw new Error('Configure el alimento de la etapa antes de programar el turno');
+      const response = await fetchOperation('/api/feed/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...plan, barnId: Number(plan.barnId), feedCode, plannedKg: Number(plan.plannedKg), operationKey: newOperationKey('plan-alimento') }) });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || 'No se pudo guardar la programación');
+      setNotice(Number(plan.plannedKg) === 0 ? 'Programación cancelada con su motivo.' : 'Turno programado. El pendiente se completará con entregas reales.');
+      setPlan(old => ({ ...old, feedCode: '', plannedKg: '', reason: '' }));
+      if (plan.effectiveDate !== planDate) setPlanDate(plan.effectiveDate); else await load();
+    } catch (error) { setError(error instanceof Error ? error.message : 'No se pudo guardar la programación'); }
+    finally { setBusy(false); }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1049,6 +1092,63 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
       {inventory && section === 'turnos' && (
         <div className="section-block">
           <section className="card">
+            <h2 className="section-title">Programar alimentación</h2>
+            <p className="text-sm text-muted">Programar no retira alimento del almacén. Las entregas reales completan el pendiente, aunque procedan de distintos lotes.</p>
+            {!readonly && <form className="form-stack" onSubmit={savePlan}>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="plan-date">Fecha del turno programado</label>
+                  <input id="plan-date" disabled={Boolean(plan.feedCode)} type="date" className="form-input" required value={plan.effectiveDate} onChange={event => setPlan({ ...plan, effectiveDate: event.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="plan-shift">Turno programado</label>
+                  <select id="plan-shift" disabled={Boolean(plan.feedCode)} className="form-select" value={plan.shiftCode} onChange={event => setPlan({ ...plan, shiftCode: event.target.value })}>
+                    {Object.entries(SHIFT_LABELS).map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="plan-barn">Galpón del turno programado</label>
+                  <select id="plan-barn" disabled={Boolean(plan.feedCode)} className="form-select" required value={plan.barnId} onChange={event => setPlan({ ...plan, barnId: event.target.value })}>
+                    {barns.map(barn => <option key={barn.id} value={barn.id}>{barn.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="plan-stage">Etapa del turno programado</label>
+                  <select id="plan-stage" disabled={Boolean(plan.feedCode)} className="form-select" required value={plan.stageCode} onChange={event => setPlan({ ...plan, stageCode: event.target.value })}>
+                    {plan.feedCode && !projection.some(stage => stage.stageCode === plan.stageCode) && <option value={plan.stageCode}>{plan.stageCode} · etapa original</option>}
+                    {projection.map(stage => <option key={stage.stageCode} value={stage.stageCode}>{stage.stageName}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="plan-feed">Alimento previsto</label>
+                  <input id="plan-feed" className="form-input" readOnly value={plan.feedCode ? feedOptions.find(feed => feed.code === plan.feedCode)?.name ?? plan.feedCode : projection.find(stage => stage.stageCode === plan.stageCode)?.feedName ?? 'Configure el alimento de la etapa'} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="plan-kg">Cantidad prevista del turno (kg)</label>
+                  <input id="plan-kg" className="form-input" type="number" min="0" step="0.001" required value={plan.plannedKg} onChange={event => setPlan({ ...plan, plannedKg: event.target.value })} />
+                  <span className="text-xs text-muted">Para cancelar una programación, indique 0 y explique el motivo.</span>
+                </div>
+                <div className="form-group form-col-span-full">
+                  <label className="form-label" htmlFor="plan-reason">Motivo de la programación</label>
+                  <textarea id="plan-reason" className="form-textarea" required minLength={5} maxLength={500} rows={2} value={plan.reason} onChange={event => setPlan({ ...plan, reason: event.target.value })} />
+                </div>
+              </div>
+              <div className="form-actions"><button type="submit" className="btn btn-primary" disabled={busy || !plan.barnId}>{busy ? 'Guardando…' : 'Guardar programación'}</button>{plan.feedCode && <button type="button" className="btn btn-outline" onClick={() => setPlan(old => ({ ...old, feedCode: '', plannedKg: '', reason: '' }))}>Nueva programación</button>}</div>
+            </form>}
+            <h3 className="section-title mt-4">Programación del {planDate}</h3>
+            <div className="form-group"><label className="form-label" htmlFor="plan-filter-date">Consultar programación por fecha</label><input id="plan-filter-date" type="date" className="form-input" value={planDate} onChange={event => { if (event.target.value) setPlanDate(event.target.value); }} /></div>
+            {plans.length === 0 ? <p className="text-sm text-muted">No hay turnos programados para esta fecha.</p> : <div className="table-responsive"><table className="data-table">
+              <thead><tr><th>Fecha / turno</th><th>Galpón / etapa</th><th>Alimento</th><th>Seguimiento</th>{!readonly && <th>Acción</th>}</tr></thead>
+              <tbody>{plans.map(item => <tr key={item.groupKey}>
+                <td>{item.effectiveDate} · {SHIFT_LABELS[item.shiftCode] ?? item.shiftCode}</td>
+                <td>{item.barnName} · {projection.find(stage => stage.stageCode === item.stageCode)?.stageName ?? item.stageCode}</td>
+                <td>{feedOptions.find(feed => feed.code === item.feedCode)?.name ?? item.feedCode}</td>
+                <td><span className="block">Previsto: {item.plannedKg} kg</span><span className="block">Servido: {item.servedKg} kg</span><span className={item.pendingKg > 0 ? 'badge-status badge-warning' : 'badge-status badge-success'}>{item.plannedKg === 0 ? 'Cancelado' : `Pendiente: ${item.pendingKg} kg`}</span></td>
+                {!readonly && <td><button className="btn btn-outline btn-sm" type="button" aria-label={`Editar programación de ${item.barnName}, ${SHIFT_LABELS[item.shiftCode] ?? item.shiftCode}`} onClick={() => setPlan({ effectiveDate: item.effectiveDate, shiftCode: item.shiftCode, barnId: String(item.barnId), stageCode: item.stageCode, feedCode: item.feedCode, plannedKg: String(item.plannedKg), reason: '' })}>Editar</button></td>}
+              </tr>)}</tbody>
+            </table></div>}
+          </section>
+          <section className="card">
             <div className="card-header-clean mb-2">
               <div>
                 <h2 className="section-title">Turnos de comederos servidos</h2>
@@ -1151,7 +1251,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
               <div>
                 <h2 className="section-title">Conversión alimenticia (FCR) · Últimos 30 días</h2>
                 <span className="text-xs text-muted block mt-0.5">
-                  Índice kg alimento / kg peso ganado. Requiere consumo medido y dos pesajes del mismo grupo.
+                  Índice kg alimento / kg peso ganado. Requiere cubrir toda la población estable, pesajes en ambos extremos del periodo y consumo medido cada día.
                 </span>
               </div>
             </div>
@@ -1163,7 +1263,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                 </div>
                 <p className="font-semibold text-base">Sin cálculos de conversión en los últimos 30 días</p>
                 <p className="text-sm text-muted">
-                  Se necesitan turnos con consumo real medido y al menos dos pesajes comparables en el mismo galpón y etapa.
+                  Registre consumo real cada día y pesajes de todas las cabezas en ambos extremos del periodo, con historial continuo en el mismo galpón y etapa.
                 </p>
               </div>
             ) : (
@@ -1184,8 +1284,8 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                       <tr key={`${row.barnId}-${row.stageCode}`}>
                         <td className="text-left font-semibold">{row.barnName} · {row.stageCode}</td>
                         <td className="text-left font-numeric tabular-nums font-mono">{row.periodFrom} – {row.periodTo}</td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{row.measuredAnimals}</td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{row.consumedKg} kg</td>
+                        <td className="text-right font-numeric tabular-nums font-mono">{row.comparableAnimals} / {row.populationHeads}<span className="text-xs text-muted block">{row.coveragePercent}% de cobertura</span></td>
+                        <td className="text-right font-numeric tabular-nums font-mono">{row.consumedKg} kg<span className="text-xs text-muted block">{row.consumptionDays} / {row.requiredConsumptionDays} días</span></td>
                         <td className="text-right font-numeric tabular-nums font-mono">{row.weightGainKg} kg</td>
                         <td className="text-right">
                           {row.feedConversionRatio === null ? (
