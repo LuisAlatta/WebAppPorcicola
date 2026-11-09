@@ -82,7 +82,10 @@ export async function listHealthEvents(db:D1Database,filters:{animalCode?:unknow
 }
 
 export async function listWithdrawalAlerts(db:D1Database,asOfValue:unknown,scope:HealthScope={}){
-  const asOf=date(asOfValue,'Fecha de consulta')!;const rows=await listHealthEvents(db,{from:'0001-01-01',to:asOf,limit:500},scope);return rows.filter(row=>row.withdrawalUntil!==null&&row.withdrawalUntil>=asOf).map(row=>({animalCode:row.animalCode,product:row.product,withdrawalUntil:row.withdrawalUntil,eventDate:row.effectiveDate,barnName:row.barnName}));
+  const asOf=date(asOfValue,'Fecha de consulta')!;const where=['h.effective_date<=?','ha.withdrawal_until>=?',"o.status='committed'"];const params:unknown[]=[asOf,asOf];
+  if(scope.allowedBarnNames!==undefined&&scope.allowedBarnNames!==null){where.push(`b.name IN (${scope.allowedBarnNames.map(()=>'?').join(',')||'NULL'})`);params.push(...scope.allowedBarnNames);}
+  const rows=await db.prepare(`SELECT ha.animal_code_snapshot,h.product,ha.withdrawal_until,h.effective_date,ha.barn_name_snapshot FROM health_events h JOIN operation_log o ON o.id=h.operation_log_id JOIN health_event_animals ha ON ha.health_event_id=h.id JOIN barns b ON b.id=ha.barn_id WHERE ${where.join(' AND ')} ORDER BY h.effective_date DESC,h.id DESC,ha.id`).bind(...params).all<Row>();
+  return(rows.results??[]).map(row=>({animalCode:String(row.animal_code_snapshot),product:row.product===null?null:String(row.product),withdrawalUntil:String(row.withdrawal_until),eventDate:String(row.effective_date),barnName:String(row.barn_name_snapshot)}));
 }
 
 export async function listUpcomingHealthEvents(db:D1Database,asOfValue:unknown,scope:HealthScope={}){
