@@ -13,6 +13,7 @@ import {
   IconRefreshCw,
   IconStethoscope,
 } from './icons';
+import { PwaInstallButton } from './PwaInstallButton';
 
 export interface DemoAccount {
   role: Perfil;
@@ -364,6 +365,8 @@ export function BocetoLogin({ onLogin }: LoginProps) {
             })}
           </div>
         </form>
+
+        <PwaInstallButton />
 
         <footer className="login-card-footer">
           <div className="login-security-badge">
