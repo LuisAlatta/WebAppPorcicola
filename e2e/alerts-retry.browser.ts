@@ -14,15 +14,17 @@ test('crear aviso conserva la clave cuando el servidor guardó y se perdió la r
  });
 
  await page.goto('/alertas');
- await expect(page.getByRole('heading',{name:'Alertas y pendientes'})).toBeVisible();
- await page.getByLabel('Título').fill('Revisar bebedero');
- await page.getByLabel('Fecha',{exact:true}).fill('2026-11-08');
- await page.getByLabel('Motivo').fill('Inspección pendiente en galpón');
- await page.getByRole('button',{name:'Crear aviso'}).click();
+ await expect(page.getByRole('heading',{name:'Alertas y Pendientes'})).toBeVisible();
+ await page.getByRole('button',{name:'Crear aviso manual'}).click();
+ await expect(page.getByRole('heading',{name:'Crear aviso manual de granja'})).toBeVisible();
+ await page.getByLabel('Título o tarea').fill('Revisar bebedero');
+ await page.getByLabel('Fecha prevista',{exact:true}).fill('2026-11-09');
+ await page.getByLabel('Motivo de atención').fill('Inspección pendiente en galpón');
+ await page.getByRole('button',{name:'Crear aviso de granja'}).click();
  await expect(page.getByRole('alert')).toContainText('No se pudo confirmar el resultado');
- await expect(page.getByLabel('Título')).toHaveValue('Revisar bebedero');
- await page.getByRole('button',{name:'Crear aviso'}).click();
- await expect(page.getByRole('status')).toContainText('Aviso guardado');
+ await expect(page.getByLabel('Título o tarea')).toHaveValue('Revisar bebedero');
+ await page.getByRole('button',{name:'Crear aviso de granja'}).click();
+ await expect(page.getByRole('status')).toContainText('Aviso operativo guardado');
 
  expect(bodies).toHaveLength(2);
  expect(bodies[0]?.operationKey).toBeTruthy();
@@ -50,14 +52,14 @@ test('atender aviso separa claves por motivo y conserva la clave del motivo inci
 
  await page.goto('/alertas');
  await page.getByRole('button',{name:'Atender'}).click();
- await page.getByLabel('Motivo o detalle de atención:').fill('Tarea verificada');
- await page.getByRole('button',{name:'Marcar como Atendido'}).click();
+ await page.getByLabel('Motivo o detalle de atención en galpón:').fill('Tarea verificada');
+ await page.getByRole('button',{name:'Marcar como atendido'}).click();
  await expect(page.getByRole('alert')).toContainText('No se pudo confirmar el resultado');
- await page.getByLabel('Motivo o detalle de atención:').fill('Revisión adicional');
- await page.getByRole('button',{name:'Marcar como Atendido'}).click();
+ await page.getByLabel('Motivo o detalle de atención en galpón:').fill('Revisión adicional');
+ await page.getByRole('button',{name:'Marcar como atendido'}).click();
  await expect(page.getByRole('alert')).toContainText('La alerta ya fue atendida');
- await page.getByLabel('Motivo o detalle de atención:').fill('Tarea verificada');
- await page.getByRole('button',{name:'Marcar como Atendido'}).click();
+ await page.getByLabel('Motivo o detalle de atención en galpón:').fill('Tarea verificada');
+ await page.getByRole('button',{name:'Marcar como atendido'}).click();
  await expect(page.getByRole('status')).toContainText('Aviso marcado como atendido');
 
  expect(requests).toHaveLength(3);

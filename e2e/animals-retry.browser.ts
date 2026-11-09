@@ -77,8 +77,10 @@ test('descarte desde la ficha no solicita importe y envía su causa',async({page
   await page.route('**/api/animals?**',route=>route.fulfill({status:200,json:{animals:[animal],total:1,options:{...listOptions,saleCauses:[{code:'edad',name:'Edad'}]}}}));
   await page.route('**/api/animals/RETRY-001/exit',route=>{sent=route.request().postDataJSON() as Record<string,unknown>;return route.fulfill({status:201,json:{animal:{...animal,status:'descartado',statusLabel:'Descartado',exitType:'discard',exitDate:'2026-11-07',exitCauseLabel:'Edad',isActive:false}}});});
   await page.goto('/animales');await page.getByRole('button',{name:'Ver ficha'}).click();
+  await page.getByRole('tab', { name: /Gestión y Traslados/ }).click();
   await page.getByLabel('Tipo de salida').selectOption('discard');await expect(page.getByLabel('Importe de venta')).toHaveCount(0);
-  await page.getByLabel('Causa',{exact:true}).selectOption('edad');await page.locator('#ani-exit-date').fill('2026-11-07');await page.locator('#ani-exit-reason').fill('Retiro por edad');await page.getByRole('button',{name:'Registrar salida'}).click();
+  await page.getByLabel('Causa',{exact:true}).selectOption('edad');await page.locator('#ani-exit-date').fill('2026-11-07');await page.locator('#ani-exit-reason').fill('Retiro por edad');const submitExit=page.getByRole('button',{name:'Registrar baja de animal'});await submitExit.focus();await submitExit.press('Enter');
+  await page.getByRole('tab', { name: /Datos técnicos/ }).click();
   await expect(page.getByRole('cell',{name:'Descarte · Edad'})).toBeVisible();expect(sent).toMatchObject({exitType:'discard',causeCode:'edad',effectiveDate:'2026-11-07'});
 });
 
@@ -87,9 +89,10 @@ test('el pesaje permite elegir la etapa que actualizará la ficha',async({page})
   await mockAnimalApi(page,animal);
   await page.route('**/api/animals/RETRY-001/weights',route=>{sent=route.request().postDataJSON() as Record<string,unknown>;return route.fulfill({status:201,json:{animal:{...animal,stageCode:'inicio',stageName:'Inicio'}}});});
   await page.goto('/animales');await page.getByRole('button',{name:'Ver ficha'}).click();
+  await page.getByRole('tab', { name: /Pesajes y GMD/ }).click();
   await page.locator('#ani-weight-kg').fill('18');await page.locator('#ani-weight-stage').selectOption('inicio');
   await expect(page.getByText('Si elige otra etapa, se actualizarán la ficha y el inventario',{exact:false})).toBeVisible();
-  await page.getByRole('button',{name:'Registrar pesaje'}).click();await expect.poll(()=>sent?.stageCode).toBe('inicio');
+  const saveWeight=page.getByRole('button',{name:'Pesar animal y registrar en ficha'});await saveWeight.focus();await saveWeight.press('Enter');await expect.poll(()=>sent?.stageCode).toBe('inicio');
 });
 
 async function mockAnimalApi(page: Page, initial: ReturnType<typeof initialAnimal>) {
@@ -117,7 +120,7 @@ test('ficha muestra el resumen reproductivo y la causa de salida', async ({ page
   await expect(page.getByRole('cell', {name:'Muerte · Enfermedad'})).toBeVisible();
   await expect(page.getByRole('row').filter({hasText:'Servicios'})).toContainText('3');
   await expect(page.getByRole('row').filter({hasText:'Primer parto'})).toContainText('2026-01-10');
-  await expect(page.getByRole('row').filter({hasText:'Peso promedio de crías vivas'})).toContainText('17 crías vivas');
+  await expect(page.getByRole('row').filter({hasText:'Peso promedio crías vivas'})).toContainText('17 crías vivas');
 });
 
 test('cambiar arete reintenta la misma operación después de perderse la respuesta', async ({ page }) => {
@@ -139,11 +142,15 @@ test('cambiar arete reintenta la misma operación después de perderse la respue
 
   await page.goto('/animales');
   await page.getByRole('button', { name: 'Ver ficha' }).click();
-  await page.getByLabel('Nuevo arete').fill('ARETE-002');
+  await page.getByRole('tab', { name: /Gestión y Traslados/ }).click();
+  await page.getByLabel('Nuevo arete oficial').fill('ARETE-002');
   await page.locator('#ani-tag-reason').fill('Reposición del arete dañado');
-  await page.getByRole('button', { name: 'Cambiar arete' }).click();
+  const changeTag = page.getByRole('button', { name: 'Confirmar cambio de arete oficial' });
+  await changeTag.focus();
+  await changeTag.press('Enter');
   await expect(page.getByRole('alert')).toContainText('No se pudo confirmar el resultado');
-  await page.getByRole('button', { name: 'Cambiar arete' }).click();
+  await changeTag.focus();
+  await changeTag.press('Enter');
   await expect(page.getByText('Arete actualizado a ARETE-002. El anterior se conserva con su fecha.')).toBeVisible();
 
   expect(operationKeys).toHaveLength(2);
@@ -171,6 +178,7 @@ test('desactivar una ficha reintenta con la clave del primer envío incierto', a
 
   await page.goto('/animales');
   await page.getByRole('button', { name: 'Ver ficha' }).click();
+  await page.getByRole('tab', { name: /Gestión y Traslados/ }).click();
   await page.locator('#ani-toggle-reason').fill('Ficha reservada para evaluación');
   await page.getByRole('button', { name: 'Desactivar ficha' }).click();
   await expect(page.getByRole('alert')).toContainText('No se pudo confirmar el resultado');

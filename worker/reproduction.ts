@@ -6,6 +6,7 @@ import { getConfigSnapshot } from './config';
 
 type Row = Record<string, unknown>;
 export interface ReproductionScope { allowedBarnNames?: string[] | null }
+export type LitterTarget = { litterId: string; motherCode: string; barnName: string; historicalOnly: boolean };
 type ServiceInput = {
   femaleCode?: unknown; serviceDate?: unknown; serviceType?: unknown; sireCode?: unknown;
   sireBreed?: unknown; materialSource?: unknown; externalSource?: unknown; aptitude?: unknown;
@@ -125,8 +126,8 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
       const [litterEvents, identifiedAnimals] = await Promise.all([
         db.prepare('SELECT event_type,sex,quantity FROM litter_events WHERE litter_id=?').bind(litterRow.id).all<{event_type:string;sex:string;quantity:number}>(),
         db.prepare(`SELECT a.code,a.sex FROM animals a WHERE a.litter_id=? AND a.status='activo' AND a.current_stage_code='preinicio'
-          AND a.barn_id=? AND a.location_code IS ? AND a.lot_code IS ? AND NOT EXISTS (SELECT 1 FROM inventory_movements m
-            JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=a.id AND m.litter_id=a.litter_id AND m.quantity<0 AND o.operation_type='litter.weaning') ORDER BY a.code`).bind(litterRow.id,litterRow.barn_id,litterRow.location_code,litterRow.lot_code).all<{code:string;sex:string}>(),
+          ${ids===null?'':`AND a.barn_id IN (${ids.map(()=>'?').join(',')})`} AND NOT EXISTS (SELECT 1 FROM inventory_movements m
+            JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=a.id AND m.litter_id=a.litter_id AND m.quantity<0 AND o.operation_type='litter.weaning') ORDER BY a.code`).bind(litterRow.id,...(ids??[])).all<{code:string;sex:string}>(),
       ]);
       const counts = { macho:Number(litterRow.male_alive), hembra:Number(litterRow.female_alive), pendiente:Number(litterRow.unsexed_alive) };
       for (const item of litterEvents.results ?? []) counts[item.sex as keyof typeof counts] += ['adoption_in','sale_return'].includes(item.event_type) ? Number(item.quantity) : -Number(item.quantity);
@@ -154,6 +155,28 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
       services: (serviceRows.results ?? []).map(mapService), events: (eventRows.results ?? []).map(mapEvent) };
   }));
   return { cycles, dateCriterion: 'Fecha del último servicio; antecedente usa fecha probable', asOf: today };
+}
+
+export async function listLitterTargets(db: D1Database, scope: ReproductionScope = {}): Promise<{ targets: LitterTarget[] }> {
+  const ids = await barnIds(db, scope);
+  if (ids && !ids.length) return { targets: [] };
+  const barnClause = ids ? `AND l.barn_id IN (${ids.map(() => '?').join(',')})` : '';
+  const rows = await db.prepare(`SELECT l.id AS litter_id, a.code AS mother_code, b.name AS barn_name, l.farrowing_date, l.historical_only
+    FROM litters l
+    JOIN reproduction_cycles c ON c.id = l.cycle_id
+    JOIN animals a ON a.id = c.female_animal_id
+    JOIN barns b ON b.id = l.barn_id
+    WHERE l.historical_only = 0 ${barnClause}
+    ORDER BY l.farrowing_date DESC, l.id DESC`)
+    .bind(...(ids ?? []))
+    .all<{ litter_id: string; mother_code: string; barn_name: string; farrowing_date: string; historical_only: number }>();
+  return { targets: (rows.results ?? []).map((row) => ({
+    litterId: String(row.litter_id),
+    motherCode: String(row.mother_code),
+    barnName: String(row.barn_name),
+    farrowingDate: String(row.farrowing_date),
+    historicalOnly: Number(row.historical_only) === 1,
+  })) };
 }
 
 async function getGestationDays(db: D1Database, effectiveDate: string): Promise<number> {

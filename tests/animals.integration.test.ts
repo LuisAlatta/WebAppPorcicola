@@ -153,6 +153,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0023_report_definitions.sql',
       '0024_litter_discard.sql',
       '0025_same_day_locations.sql',
+      '0026_litter_identified_adoptions.sql',
     ];
 
     for (const file of migrationFiles) {

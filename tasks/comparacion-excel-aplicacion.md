@@ -10,10 +10,10 @@
 | Informes de pesos y nacimientos | Conectados a sus consultas, filtros, gráficos y exportaciones. |
 | Alimentación | Cuenta acumulados de lotes agotados y distingue cobertura diaria, por etapa, mensual y por alimento compartido. |
 | Sanidad | Dosis con unidad y retiro futuro; los flujos de vacuna y muerte se presentan por separado. Los tratamientos generales admiten corrección o anulación auditada y recalculan sus efectos. Las reglas de parto con ajuste negativo programan las dosis desde el parto probable y recalculan las pendientes al cambiar la fecha o registrar el parto. |
-| Camadas | La corrección de cantidades está disponible en pantalla y conserva la coherencia histórica del inventario. El plan postdestete usa la fecha real de la camada anterior cuando está registrada. |
+| Camadas | La corrección de cantidades está disponible en pantalla y conserva la coherencia histórica del inventario. Las adopciones mueven las cabezas entre ubicaciones y actualizan las fichas seleccionadas; las bajas por muerte actualizan estado, salida física, causa e historial sanitario en la misma operación. La identificación posterior conserva la madre biológica como desconocida cuando no puede determinarse. El plan postdestete usa la fecha real de la camada anterior cuando está registrada. |
 | Descarte y filtros | Hay salida por descarte sin venta ni muerte, vinculada a la camada cuando corresponde. El padrón filtra también por progenitores, raza, aptitud, procedencia y etapa de ingreso. |
 
-Estas mejoras están en el repositorio. Las migraciones `0024_litter_discard.sql` y `0025_same_day_locations.sql` son necesarias para las salidas individuales conectadas a camadas y los cambios de ubicación del mismo día. Para preservar la ubicación histórica, el sistema rechaza un traslado o destete individual si ya existe un pesaje, servicio o actuación sanitaria en esa fecha o una posterior. Un `push` no demuestra que la base ni la aplicación publicada estén actualizadas. La validación en dispositivos y el despliegue compatible siguen requiriendo una comprobación independiente.
+Estas mejoras están en el repositorio. Las migraciones `0024_litter_discard.sql`, `0025_same_day_locations.sql` y `0026_litter_identified_adoptions.sql` son necesarias para las salidas conectadas a camadas, los cambios de ubicación del mismo día y el historial de adopciones. Para preservar la ubicación histórica, el sistema rechaza un traslado o destete individual si ya existe un pesaje, servicio o actuación sanitaria en esa fecha o una posterior. Un `push` no demuestra que la base ni la aplicación publicada estén actualizadas. La validación en dispositivos y el despliegue compatible siguen requiriendo una comprobación independiente.
 
 Fecha de revisión: 8 de noviembre de 2026. Código examinado: `ab49568` en `main`, antes de añadir este informe.
 
@@ -32,7 +32,7 @@ La revisión corresponde al código local. La documentación de entrega indica q
 - Se siguieron los flujos reales de `src/main.tsx`, componentes montados, rutas del Worker, consultas, migraciones y pruebas. Los bocetos sin rutas activas no se contaron como funciones operativas.
 - `requisitos.md` sirvió de índice, pero sus requisitos y etiquetas de cierre no se tomaron como prueba de implementación.
 - No está disponible el libro `.xlsx/.xlsm` original. Por tanto, no se pueden certificar macros, fórmulas ocultas, conexiones externas ni comportamientos que la grabación no muestra. Las relaciones descritas son las observadas y las verificables en el código.
-- Se realizó una auditoría; no se implementaron los cambios identificados ni se modificaron datos operativos.
+- En el corte inicial se realizó una auditoría; entonces no se implementaron los cambios identificados ni se modificaron datos operativos. La tabla de actualización al inicio documenta el estado posterior de esas correcciones.
 
 ## 1. Acceso, navegación y parámetros
 

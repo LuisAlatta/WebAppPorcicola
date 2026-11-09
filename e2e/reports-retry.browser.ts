@@ -37,13 +37,13 @@ test('guardar informe conserva la clave si se pierde la respuesta tras guardar',
   await page.route('**/api/finance/barns', route => route.fulfill({ status: 200, json: { ok: true, barns: [] } }));
 
   await page.goto('/reportes');
-  await page.getByRole('button', { name: 'Crear informe' }).click();
-  await page.getByLabel('Nombre').fill('Animales para seguimiento');
-  await page.getByLabel('Finalidad').fill('Revisar los animales activos cada semana');
-  await page.getByRole('button', { name: 'Guardar informe' }).click();
+  await page.getByRole('tab', { name: /Pestaña Diseñar Reporte/ }).click();
+  await page.getByLabel('Nombre del reporte').fill('Animales para seguimiento');
+  await page.getByLabel('Finalidad u objetivo').fill('Revisar los animales activos cada semana');
+  await page.getByRole('button', { name: 'Guardar reporte' }).click();
   await expect(page.getByRole('alert')).toContainText('No se pudo confirmar el resultado');
-  await expect(page.getByLabel('Nombre')).toHaveValue('Animales para seguimiento');
-  await page.getByRole('button', { name: 'Guardar informe' }).click();
+  await expect(page.getByLabel('Nombre del reporte')).toHaveValue('Animales para seguimiento');
+  await page.getByRole('button', { name: 'Guardar reporte' }).click();
   await expect(page.getByRole('status')).toContainText('Informe guardado para tu usuario.');
 
   expect(requests).toHaveLength(2);

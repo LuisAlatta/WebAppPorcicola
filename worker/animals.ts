@@ -984,12 +984,51 @@ async function unidentifiedHeads(
   `).bind(barnId, locationCode, lotCode, stageCode, sex, date).first<{ heads: number }>();
 
   const identifiedRow = await db.prepare(`
-    SELECT COUNT(*) AS total FROM animals
-    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND current_stage_code = ? AND sex = ?
-      AND entry_date <= ? AND (exit_date IS NULL OR exit_date > ?)
-  `).bind(barnId, locationCode, lotCode, stageCode, sex, date, date).first<{ total: number }>();
+    SELECT COUNT(*) AS total FROM animals a
+    WHERE a.sex=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>? OR EXISTS(SELECT 1 FROM inventory_movements ex JOIN operation_log eo ON eo.id=ex.operation_log_id WHERE ex.animal_id=a.id AND ex.effective_date=a.exit_date AND eo.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death'))) AND NOT EXISTS(SELECT 1 FROM inventory_movements ex JOIN operation_log eo ON eo.id=ex.operation_log_id WHERE ex.animal_id=a.id AND ex.effective_date<=? AND eo.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death') AND NOT EXISTS(SELECT 1 FROM inventory_movements ret JOIN operation_log ro ON ro.id=ret.operation_log_id WHERE ret.animal_id=a.id AND ret.reverses_movement_id=ex.id AND ret.effective_date<=? AND ro.operation_type='animal.sale.return')) AND (
+      EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ? AND h.stage_code=? AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?))
+      OR (NOT EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id) AND a.barn_id=? AND a.location_code IS ? AND a.lot_code IS ? AND a.current_stage_code=?)
+    )
+  `).bind(sex,date,date,date,date,barnId,locationCode,lotCode,stageCode,date,date,barnId,locationCode,lotCode,stageCode).first<{ total: number }>();
 
   return Number(headsRow?.heads ?? 0) - Number(identifiedRow?.total ?? 0);
+}
+
+function unidentifiedHeadGuard(db:D1Database,barnId:number,locationCode:string|null,lotCode:string|null,stageCode:string,sex:Sex,date:string){
+  return db.prepare(`INSERT INTO litter_identification_guard(guard_id)
+    WITH points(day,movement_id) AS (
+      SELECT ?6,9223372036854775807
+      UNION ALL SELECT m.effective_date,m.id FROM inventory_movements m WHERE m.barn_id=?1 AND m.location_code IS ?2 AND m.lot_code IS ?3 AND m.stage_code=?4 AND m.sex=?5 AND m.effective_date>?6
+      UNION ALL SELECT a.entry_date,9223372036854775807 FROM animals a WHERE a.sex=?5 AND a.entry_date>?6 AND (EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.barn_id=?1 AND h.location_code IS ?2 AND h.lot_code IS ?3 AND h.stage_code=?4) OR (a.barn_id=?1 AND a.location_code IS ?2 AND a.lot_code IS ?3 AND a.current_stage_code=?4))
+    )
+    SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM points p WHERE
+      (SELECT COALESCE(SUM(CASE WHEN m.movement_type IN ('sale','death','transfer_out') THEN -m.quantity ELSE m.quantity END),0) FROM inventory_movements m WHERE m.barn_id=?1 AND m.location_code IS ?2 AND m.lot_code IS ?3 AND m.stage_code=?4 AND m.sex=?5 AND (m.effective_date<p.day OR (m.effective_date=p.day AND m.id<=p.movement_id)))
+      - (SELECT COUNT(*) FROM animals a WHERE a.sex=?5 AND a.entry_date<=p.day AND (a.exit_date IS NULL OR a.exit_date>=p.day OR EXISTS(SELECT 1 FROM inventory_movements ex JOIN operation_log eo ON eo.id=ex.operation_log_id WHERE ex.animal_id=a.id AND ex.effective_date=a.exit_date AND eo.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death')))
+        AND NOT EXISTS(SELECT 1 FROM inventory_movements ex JOIN operation_log eo ON eo.id=ex.operation_log_id WHERE ex.animal_id=a.id AND eo.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death') AND (ex.effective_date<p.day OR (ex.effective_date=p.day AND ex.id<=p.movement_id)) AND NOT EXISTS(SELECT 1 FROM inventory_movements ret JOIN operation_log ro ON ro.id=ret.operation_log_id WHERE ret.animal_id=a.id AND ret.reverses_movement_id=ex.id AND ro.operation_type='animal.sale.return' AND (ret.effective_date<p.day OR (ret.effective_date=p.day AND ret.id<=p.movement_id))))
+        AND (EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.barn_id=?1 AND h.location_code IS ?2 AND h.lot_code IS ?3 AND h.stage_code=?4
+          AND (h.valid_from<p.day OR (h.valid_from=p.day AND COALESCE((SELECT MIN(im.id) FROM inventory_movements im WHERE im.operation_log_id=h.operation_log_id AND im.animal_id=a.id),0)<=p.movement_id))
+          AND (h.valid_until IS NULL OR h.valid_until>p.day OR (h.valid_until=p.day AND COALESCE((SELECT COALESCE((SELECT MIN(im.id) FROM inventory_movements im WHERE im.operation_log_id=next_h.operation_log_id AND im.animal_id=a.id),0) FROM animal_location_history next_h WHERE next_h.animal_id=a.id AND next_h.valid_from=p.day AND next_h.id>h.id ORDER BY next_h.id LIMIT 1),0)>p.movement_id)))
+          OR (NOT EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id) AND a.barn_id=?1 AND a.location_code IS ?2 AND a.lot_code IS ?3 AND a.current_stage_code=?4))) < 1
+    ) THEN 0 ELSE -1 END`).bind(barnId,locationCode,lotCode,stageCode,sex,date);
+}
+
+/** Verifica que una ficha retroactiva quepa en la camada durante toda su historia. */
+function litterIdentificationTimelineGuard(db:D1Database,litterId:string,sex:string,entryDate:string,countColumn:string){
+  return db.prepare(`INSERT INTO litter_identification_guard(guard_id)
+    WITH points(day,event_id) AS (
+      SELECT ?,9223372036854775807
+      UNION ALL SELECT effective_date,id FROM litter_events WHERE litter_id=? AND effective_date>?
+      UNION ALL SELECT a.entry_date,9223372036854775807 FROM animals a WHERE a.sex=? AND a.entry_date>?
+        AND (a.litter_id=? OR EXISTS(SELECT 1 FROM litter_identified_adoptions la WHERE la.animal_id=a.id AND (la.source_litter_id=? OR la.target_litter_id=?)))
+    )
+    SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM points p WHERE
+      (SELECT ${countColumn} FROM litters WHERE id=?) + COALESCE((SELECT SUM(CASE WHEN e.event_type IN ('adoption_in','sale_return') THEN e.quantity ELSE -e.quantity END) FROM litter_events e WHERE e.litter_id=? AND e.sex=? AND (e.effective_date<p.day OR (e.effective_date=p.day AND e.id<=p.event_id))),0)
+      - (SELECT COUNT(*) FROM animals a WHERE a.sex=? AND a.entry_date<=p.day AND (a.exit_date IS NULL OR a.exit_date>=p.day OR EXISTS(SELECT 1 FROM inventory_movements old_exit JOIN operation_log old_o ON old_o.id=old_exit.operation_log_id WHERE old_exit.animal_id=a.id AND old_exit.effective_date=a.exit_date AND old_o.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death')))
+        AND NOT EXISTS(SELECT 1 FROM inventory_movements exit_m JOIN operation_log exit_o ON exit_o.id=exit_m.operation_log_id WHERE exit_m.animal_id=a.id AND exit_o.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death') AND (exit_m.effective_date<p.day OR (exit_m.effective_date=p.day AND COALESCE((SELECT e.id FROM litter_events e WHERE e.operation_log_id=exit_m.operation_log_id AND e.litter_id=? LIMIT 1),9223372036854775807)<=p.event_id)) AND NOT EXISTS(SELECT 1 FROM inventory_movements returned JOIN operation_log return_o ON return_o.id=returned.operation_log_id WHERE returned.animal_id=a.id AND returned.reverses_movement_id=exit_m.id AND return_o.operation_type='animal.sale.return' AND (returned.effective_date<p.day OR (returned.effective_date=p.day AND COALESCE((SELECT e.id FROM litter_events e WHERE e.operation_log_id=returned.operation_log_id AND e.litter_id=? LIMIT 1),9223372036854775807)<=p.event_id))))
+        AND COALESCE((SELECT la.target_litter_id FROM litter_identified_adoptions la WHERE la.animal_id=a.id AND (la.effective_date<p.day OR (la.effective_date=p.day AND COALESCE((SELECT e.id FROM litter_events e WHERE e.operation_log_id=la.operation_log_id AND e.litter_id=? LIMIT 1),9223372036854775807)<=p.event_id)) ORDER BY la.effective_date DESC,la.id DESC LIMIT 1),
+          (SELECT la.source_litter_id FROM litter_identified_adoptions la WHERE la.animal_id=a.id ORDER BY la.effective_date,la.id LIMIT 1),a.litter_id)=?
+        AND NOT EXISTS(SELECT 1 FROM inventory_movements m JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=a.id AND m.litter_id=? AND m.quantity<0 AND o.operation_type='litter.weaning' AND (m.effective_date<p.day OR (m.effective_date=p.day AND COALESCE((SELECT e.id FROM litter_events e WHERE e.operation_log_id=m.operation_log_id AND e.litter_id=? LIMIT 1),9223372036854775807)<=p.event_id)))) < 1
+    ) THEN 0 ELSE -1 END`).bind(entryDate,litterId,entryDate,sex,entryDate,litterId,litterId,litterId,litterId,litterId,sex,sex,litterId,litterId,litterId,litterId,litterId,litterId);
 }
 
 /** Alta de ficha individual con una sola entrada al inventario. */
@@ -1141,6 +1180,7 @@ export async function createAnimal(
   }
 
   let litterMotherId: number | null = null;
+  let litterLastEventId=0;
   if (litterId) {
     if (originType !== 'interna') throw new ApiError(400, 'Vincular una camada consume una cabeza existente; la procedencia debe ser interna');
     const litter = await db.prepare('SELECT * FROM litters WHERE id=?').bind(litterId).first<Row>();
@@ -1149,13 +1189,17 @@ export async function createAnimal(
       throw new ApiError(400, 'La ficha debe conservar el galpón, ubicación, lote y fecha de la camada');
     }
     if (!['macho','hembra','pendiente'].includes(sex)) throw new ApiError(400, 'Sexo de ficha no coincide con una categoría de la camada');
+    if(stageCode!=='preinicio')throw new ApiError(400,'La identificación de la camada requiere la etapa preinicio');
     const countColumn = sex === 'macho' ? 'male_alive' : sex === 'hembra' ? 'female_alive' : 'unsexed_alive';
-    const availableInLitter = Number(litter[countColumn]);
-    const identified = await db.prepare('SELECT COUNT(*) AS n FROM animals WHERE litter_id=? AND sex=? AND status="activo"').bind(litterId, sex).first<{n:number}>();
+    const events=await db.prepare(`SELECT COALESCE(MAX(id),0) AS last_id,COALESCE(SUM(CASE WHEN sex=? THEN CASE WHEN event_type IN ('adoption_in','sale_return') THEN quantity ELSE -quantity END ELSE 0 END),0) AS delta,COALESCE(SUM(CASE WHEN sex=? AND effective_date<=? THEN CASE WHEN event_type IN ('adoption_in','sale_return') THEN quantity ELSE -quantity END ELSE 0 END),0) AS entry_delta,COALESCE(SUM(CASE WHEN event_type='adoption_in' THEN quantity ELSE 0 END),0) AS adopted FROM litter_events WHERE litter_id=?`).bind(sex,sex,entryDate,litterId).first<{last_id:number;delta:number;entry_delta:number;adopted:number}>();
+    litterLastEventId=Number(events?.last_id??0);
+    if(Number(litter[countColumn])+Number(events?.entry_delta??0)<1)throw new ApiError(409,'No había crías de ese sexo en la camada en la fecha indicada');
+    const availableInLitter = Number(litter[countColumn])+Number(events?.delta??0);
+    const identified = await db.prepare(`SELECT COUNT(*) AS n FROM animals a WHERE a.litter_id=? AND a.sex=? AND a.status='activo' AND a.current_stage_code='preinicio' AND NOT EXISTS(SELECT 1 FROM inventory_movements m JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=a.id AND m.litter_id=a.litter_id AND m.quantity<0 AND o.operation_type='litter.weaning')`).bind(litterId, sex).first<{n:number}>();
     if (Number(identified?.n ?? 0) >= availableInLitter) throw new ApiError(409, 'No quedan cabezas de ese sexo sin identificar en la camada');
-    litterMotherId = Number(litter.female_animal_id);
-    if (mother.id !== null && mother.id !== litterMotherId) throw new ApiError(400, 'La madre no coincide con la camada de origen');
-    if (mother.id === null && mother.external !== null) throw new ApiError(400, 'La camada de origen requiere la madre registrada');
+    if(Number(events?.adopted??0)===0){litterMotherId = Number(litter.female_animal_id);
+      if (mother.id !== null && mother.id !== litterMotherId) throw new ApiError(400, 'La madre no coincide con la camada de origen');
+      if (mother.id === null && mother.external !== null) throw new ApiError(400, 'La camada de origen requiere la madre registrada');}
   }
 
   const idRow = await db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM animals')
@@ -1284,13 +1328,17 @@ export async function createAnimal(
 
   if (litterId) {
     const litterCountColumn = sex === 'macho' ? 'male_alive' : sex === 'hembra' ? 'female_alive' : 'unsexed_alive';
+    statements.unshift(litterIdentificationTimelineGuard(db,litterId,sex,entryDate,litterCountColumn));
     statements.unshift(db.prepare(`INSERT INTO litter_identification_guard (guard_id)
-      SELECT CASE WHEN COUNT(*) < (SELECT ${litterCountColumn} FROM litters WHERE id=?) THEN 0 ELSE -1 END
-      FROM animals WHERE litter_id=? AND sex=? AND status='activo'`).bind(litterId, litterId, sex));
+      SELECT CASE WHEN (SELECT COALESCE(MAX(id),0) FROM litter_events WHERE litter_id=?)=? AND
+      (SELECT COUNT(*) FROM animals a WHERE a.litter_id=? AND a.sex=? AND a.status='activo' AND a.current_stage_code='preinicio' AND NOT EXISTS(SELECT 1 FROM inventory_movements m JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=a.id AND m.litter_id=a.litter_id AND m.quantity<0 AND o.operation_type='litter.weaning')) <
+      (SELECT ${litterCountColumn} FROM litters WHERE id=?) + COALESCE((SELECT SUM(CASE WHEN event_type IN ('adoption_in','sale_return') THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=? AND sex=?),0) AND
+      (SELECT ${litterCountColumn} FROM litters WHERE id=?) + COALESCE((SELECT SUM(CASE WHEN event_type IN ('adoption_in','sale_return') THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=? AND sex=? AND effective_date<=?),0)>0 THEN 0 ELSE -1 END`).bind(litterId,litterLastEventId,litterId,sex,litterId,litterId,sex,litterId,litterId,sex,entryDate));
     statements.push(db.prepare('DELETE FROM litter_identification_guard'));
   }
+  if(originType==='interna'){statements.unshift(unidentifiedHeadGuard(db,barnId,locationCode,lotCode,stageCode,sex,entryDate));statements.push(db.prepare('DELETE FROM litter_identification_guard'));}
 
-  await commitOperation(db, claim, statements, audits);
+  await commitOperation(db, claim, statements, audits).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La camada o su historial cambió; revise la fecha y las crías pendientes');throw error;});
 
   const animal = await getAnimal(db, code, scope);
   return { animal, replayed: false };

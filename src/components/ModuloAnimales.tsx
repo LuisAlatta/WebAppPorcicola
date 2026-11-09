@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   IconAlertCircle,
+  IconAlertTriangle,
   IconArrowLeft,
+  IconArrowRight,
   IconCalendar,
   IconCheck,
   IconClipboard,
@@ -15,7 +17,7 @@ import {
   IconRefreshCw,
   IconScale,
   IconSearch,
-  IconTrash,
+  IconX,
 } from './icons';
 import { ModalDialog } from './ModalDialog';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
@@ -246,7 +248,7 @@ function emptyForm(): AnimalForm {
 
 function formatWeight(value: number | null): string {
   if (value === null || value === undefined) return 'Sin dato';
-  return `${value} kg`;
+  return `${Number(value).toFixed(2)} kg`;
 }
 
 function Metric({
@@ -262,11 +264,11 @@ function Metric({
 }) {
   return (
     <div className="kpi-card">
-      <span className="kpi-label inline-flex items-center justify-center gap-2 leading-none">
+      <span className="kpi-label inline-flex items-center gap-1.5 leading-none">
         {icon}
         <span>{label}</span>
       </span>
-      <span className="kpi-value">{value}</span>
+      <span className="kpi-value font-numeric tabular-nums font-bold">{value}</span>
       <span className="kpi-detail">{detail}</span>
     </div>
   );
@@ -275,6 +277,7 @@ function Metric({
 export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; initialAnimalKey?: string }) {
   const soloLectura = perfil === 'veterinario';
   const [section, setSection] = useState<Section>('padron');
+  const [fichaTab, setFichaTab] = useState<'resumen' | 'pesajes' | 'trazabilidad' | 'operaciones'>('resumen');
   const [data, setData] = useState<ListPayload | null>(null);
   const [parentOptions, setParentOptions] = useState<Animal[]>([]);
   const [detail, setDetail] = useState<AnimalDetail | null>(null);
@@ -299,6 +302,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const [operationKey, setOperationKey] = useState<string>(() => newOperationKey('ani'));
   const [saving, setSaving] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [tagForm, setTagForm] = useState({ tag: '', effectiveDate: farmToday(), reason: '' });
   const [tagError, setTagError] = useState<string | null>(null);
   const [toggleReason, setToggleReason] = useState<string>('');
@@ -400,8 +404,47 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
+  const hasActiveFilters = useMemo(() => {
+    return Boolean(
+      filters.q || filters.type || filters.sex || filters.status || filters.stage ||
+      filters.barnId || filters.location || filters.lot || filters.active ||
+      filters.mother || filters.father || filters.breed || filters.aptitude ||
+      filters.originType || filters.entryStage
+    );
+  }, [filters]);
+
+  const clearFilters = useCallback(() => {
+    setFilters({
+      q: '',
+      type: '',
+      sex: '',
+      status: '',
+      stage: '',
+      barnId: '',
+      location: '',
+      lot: '',
+      active: '',
+      mother: '',
+      father: '',
+      breed: '',
+      aptitude: '',
+      originType: '',
+      entryStage: '',
+    });
+  }, []);
+
   const setField = <K extends keyof AnimalForm>(key: K, value: AnimalForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    if (fieldErrors[key] || fieldErrors.mother || fieldErrors.father || fieldErrors.weaningDate) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        if (key === 'motherId' || key === 'motherExternal') delete next.mother;
+        if (key === 'fatherId' || key === 'fatherExternal') delete next.father;
+        if (key === 'weaningDate' || key === 'weaningWeightKg') delete next.weaningDate;
+        return next;
+      });
+    }
   };
 
   const openDetail = useCallback(async (key: string) => {
@@ -415,6 +458,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
         return;
       }
       setDetail(body.animal);
+      setFichaTab('resumen');
       setTagForm({ tag: '', effectiveDate: farmToday(), reason: '' });
       setTagError(null);
       setToggleReason('');
@@ -440,6 +484,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
           return;
         }
         setDetail(body.animal);
+        setFichaTab('resumen');
         setSection('ficha');
       } catch {
         if (!cancelled) setError('No se pudo conectar con el servidor.');
@@ -460,6 +505,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     }));
     setOperationKey(newOperationKey('ani'));
     setFormError(null);
+    setFieldErrors({});
     setSection('alta');
   };
 
@@ -497,6 +543,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     });
     setOperationKey(newOperationKey('ani'));
     setFormError(null);
+    setFieldErrors({});
     setSection('alta');
   };
 
@@ -504,32 +551,40 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     event.preventDefault();
     if (soloLectura) return;
     setFormError(null);
+    setFieldErrors({});
     setSuccess(null);
 
+    const errors: Record<string, string> = {};
     if (!editingCode) {
       if (!form.code.trim()) {
-        setFormError('Indique el código o arete del animal.');
-        return;
+        errors.code = 'Indique el código o arete permanente.';
       }
       if (!form.barnId) {
-        setFormError('Seleccione un galpón.');
-        return;
+        errors.barnId = 'Seleccione el galpón de ingreso.';
       }
       if (!form.entryStageCode) {
-        setFormError('Seleccione la etapa de ingreso.');
-        return;
+        errors.entryStageCode = 'Seleccione la etapa de ingreso.';
+      }
+      if (form.originType === 'compra' && (!form.purchaseAmount || Number(form.purchaseAmount) <= 0)) {
+        errors.purchaseAmount = 'Indique el importe de compra.';
       }
     }
     if (!form.reason.trim()) {
-      setFormError('Escriba el motivo del alta o de la corrección.');
-      return;
+      errors.reason = 'Escriba el motivo del alta o de la corrección.';
     }
     if (form.motherId && form.motherExternal.trim()) {
-      setFormError('Indique la madre interna o externa, no ambas.');
-      return;
+      errors.mother = 'Indique la madre interna o externa, no ambas.';
     }
     if (form.fatherId && form.fatherExternal.trim()) {
-      setFormError('Indique el padre interno o externo, no ambos.');
+      errors.father = 'Indique el padre interno o externo, no ambos.';
+    }
+    if (form.weaningWeightKg.trim() && !form.weaningDate) {
+      errors.weaningDate = 'El peso al destete requiere la fecha de destete.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setFormError('Por favor complete o corrija los campos señalados.');
       return;
     }
 
@@ -792,13 +847,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     <div>
       <div className="module-heading mb-4">
         <div>
-          <div className="eyebrow">Padrón individual</div>
           <h1 className="title-module">
             <IconPig size={22} className="text-primary" />
-            <span>Animales</span>
+            <span>Padrón de Animales</span>
           </h1>
           <p className="text-xs text-muted mt-1">
-            Identificación permanente, genealogía, pesos y cronología de cada animal.
+            Identificación oficial permanente, genealogía, pesajes periódicos y trazabilidad de cada animal.
           </p>
         </div>
         <div className="inline-flex items-center gap-2 flex-wrap">
@@ -807,18 +861,24 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
             className="btn btn-outline btn-sm"
             onClick={() => void loadList()}
             disabled={loading}
-            title="Recargar padrón"
+            title="Recargar padrón de animales"
+            aria-label="Recargar padrón de animales"
           >
             <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconRefreshCw size={14} />
-              <span>Actualizar</span>
+              <IconRefreshCw size={14} className={loading ? 'spinner-icon' : ''} />
+              <span>Actualizar padrón</span>
             </span>
           </button>
           {!soloLectura && (
-            <button type="button" className="btn btn-primary btn-sm" onClick={startCreate}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={startCreate}
+              aria-label="Registrar nuevo animal en el padrón"
+            >
               <span className="inline-flex items-center justify-center gap-2 leading-none">
                 <IconPlus size={14} />
-                <span>Nuevo animal</span>
+                <span>Registrar animal</span>
               </span>
             </button>
           )}
@@ -826,7 +886,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
       </div>
 
       {error && (
-        <div className="alert alert-error mb-4" role="alert">
+        <div className="alert alert-error mb-4" role="alert" aria-live="assertive">
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconAlertCircle size={16} />
             <span>{error}</span>
@@ -835,7 +895,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
       )}
 
       {success && (
-        <div className="alert alert-success mb-4" role="status">
+        <div className="alert alert-success mb-4" role="status" aria-live="polite">
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconCheck size={16} />
             <span>{success}</span>
@@ -844,7 +904,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
       )}
 
       {soloLectura && (
-        <div className="alert alert-warning mb-4" role="status">
+        <div className="alert alert-warning mb-4" role="status" aria-live="polite">
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconEye size={16} />
             <span>El perfil Veterinario puede consultar fichas y cronología, pero no modificarlas.</span>
@@ -852,45 +912,57 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
         </div>
       )}
 
-      <div className="admin-tabs mb-4">
+      <div className="admin-tabs mb-4" role="tablist" aria-label="Secciones del módulo de animales">
         <button
           type="button"
+          role="tab"
+          aria-selected={section === 'padron'}
           className={`btn btn-sm ${section === 'padron' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setSection('padron')}
+          aria-label="Ir a sección padrón de animales"
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconList size={14} />
-            <span>Padrón</span>
+            <span>Padrón general</span>
           </span>
         </button>
         {!soloLectura && (
           <button
             type="button"
+            role="tab"
+            aria-selected={section === 'alta'}
             className={`btn btn-sm ${section === 'alta' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => (editingCode ? setSection('alta') : startCreate())}
+            aria-label={editingCode ? `Editar ficha ${editingCode}` : 'Registrar animal en el padrón'}
           >
             <span className="inline-flex items-center justify-center gap-2 leading-none">
               {editingCode ? <IconEdit size={14} /> : <IconPlus size={14} />}
-              <span>{editingCode ? 'Editar ficha' : 'Alta de animal'}</span>
+              <span>{editingCode ? 'Editar ficha' : 'Registrar animal'}</span>
             </span>
           </button>
         )}
         {detail && (
           <button
             type="button"
+            role="tab"
+            aria-selected={section === 'ficha'}
             className={`btn btn-sm ${section === 'ficha' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setSection('ficha')}
+            aria-label={`Ver ficha técnica ${detail.code}`}
           >
             <span className="inline-flex items-center justify-center gap-2 leading-none">
               <IconClipboard size={14} />
-              <span>Ficha {detail.code}</span>
+              <span>Ficha técnica {detail.code}</span>
             </span>
           </button>
         )}
       </div>
 
       {loading && !data && (
-        <div className="card text-sm text-muted">Cargando padrón…</div>
+        <div className="card text-sm text-muted inline-flex items-center justify-center gap-2 leading-none p-4" role="status" aria-live="polite">
+          <IconRefreshCw size={16} className="spinner-icon text-primary" />
+          <span>Cargando padrón de animales…</span>
+        </div>
       )}
 
       {data && section === 'padron' && (
@@ -917,11 +989,24 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
           </div>
 
           <div className="card">
-            <div className="card-header-clean mb-2 flex-wrap gap-2">
-              <span className="section-title">Buscar y filtrar</span>
-              <span className="text-xs text-muted">
-                Búsqueda por código, alias o arete
-              </span>
+            <div className="card-header-clean mb-2 flex-wrap gap-2 justify-between">
+              <div className="inline-flex items-center gap-2">
+                <IconFilter size={16} className="text-primary" />
+                <span className="section-title">Buscar y filtrar</span>
+              </div>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={clearFilters}
+                  aria-label="Limpiar todos los filtros"
+                >
+                  <span className="inline-flex items-center justify-center gap-2 leading-none">
+                    <IconX size={14} />
+                    <span>Limpiar filtros</span>
+                  </span>
+                </button>
+              )}
             </div>
 
             <div className="form-grid">
@@ -1055,12 +1140,79 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                   <option value="0">Solo inactivas</option>
                 </select>
               </div>
-              <div className="form-group"><label className="form-label" htmlFor="filter-mother">Madre</label><input id="filter-mother" className="form-input" value={filters.mother} onChange={event=>setFilter('mother',event.target.value)} placeholder="Código, alias o referencia" /></div>
-              <div className="form-group"><label className="form-label" htmlFor="filter-father">Padre</label><input id="filter-father" className="form-input" value={filters.father} onChange={event=>setFilter('father',event.target.value)} placeholder="Código, alias o referencia" /></div>
-              <div className="form-group"><label className="form-label" htmlFor="filter-breed">Raza</label><input id="filter-breed" className="form-input" value={filters.breed} onChange={event=>setFilter('breed',event.target.value)} /></div>
-              <div className="form-group"><label className="form-label" htmlFor="filter-aptitude">Aptitud</label><select id="filter-aptitude" className="form-select" value={filters.aptitude} onChange={event=>setFilter('aptitude',event.target.value)}><option value="">Todas</option>{(options?.aptitudes??[]).map(item=><option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
-              <div className="form-group"><label className="form-label" htmlFor="filter-origin">Procedencia</label><select id="filter-origin" className="form-select" value={filters.originType} onChange={event=>setFilter('originType',event.target.value)}><option value="">Todas</option><option value="nacimiento">Nacimiento</option><option value="compra">Compra</option><option value="interna">Interna</option><option value="inicial">Inventario inicial</option></select></div>
-              <div className="form-group"><label className="form-label" htmlFor="filter-entry-stage">Etapa de ingreso</label><select id="filter-entry-stage" className="form-select" value={filters.entryStage} onChange={event=>setFilter('entryStage',event.target.value)}><option value="">Todas</option>{(options?.stages??[]).map(item=><option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="filter-mother">Madre</label>
+                <input
+                  id="filter-mother"
+                  className="form-input"
+                  value={filters.mother}
+                  onChange={(event) => setFilter('mother', event.target.value)}
+                  placeholder="Código, alias o referencia"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="filter-father">Padre</label>
+                <input
+                  id="filter-father"
+                  className="form-input"
+                  value={filters.father}
+                  onChange={(event) => setFilter('father', event.target.value)}
+                  placeholder="Código, alias o referencia"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="filter-breed">Raza</label>
+                <input
+                  id="filter-breed"
+                  className="form-input"
+                  value={filters.breed}
+                  onChange={(event) => setFilter('breed', event.target.value)}
+                  placeholder="Ej. Landrace"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="filter-aptitude">Aptitud</label>
+                <select
+                  id="filter-aptitude"
+                  className="form-select"
+                  value={filters.aptitude}
+                  onChange={(event) => setFilter('aptitude', event.target.value)}
+                >
+                  <option value="">Todas</option>
+                  {(options?.aptitudes ?? []).map((item) => (
+                    <option key={item.code} value={item.code}>{item.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="filter-origin">Procedencia</label>
+                <select
+                  id="filter-origin"
+                  className="form-select"
+                  value={filters.originType}
+                  onChange={(event) => setFilter('originType', event.target.value)}
+                >
+                  <option value="">Todas</option>
+                  <option value="nacimiento">Nacimiento</option>
+                  <option value="compra">Compra</option>
+                  <option value="interna">Interna</option>
+                  <option value="inicial">Inventario inicial</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="filter-entry-stage">Etapa de ingreso</label>
+                <select
+                  id="filter-entry-stage"
+                  className="form-select"
+                  value={filters.entryStage}
+                  onChange={(event) => setFilter('entryStage', event.target.value)}
+                >
+                  <option value="">Todas</option>
+                  {(options?.stages ?? []).map((item) => (
+                    <option key={item.code} value={item.code}>{item.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -1071,11 +1223,19 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <span>Padrón de animales</span>
               </span>
               <span className="text-xs text-muted">{total} ficha{total === 1 ? '' : 's'}</span>
+              {hasActiveFilters && (
+                <button type="button" className="btn btn-outline btn-sm" onClick={clearFilters}>
+                  <span className="inline-flex items-center justify-center gap-2 leading-none">
+                    <IconX size={14} />
+                    <span>Limpiar filtros</span>
+                  </span>
+                </button>
+              )}
             </div>
 
             {animals.length === 0 ? (
-              <div className="empty-state-card">
-                <div className="empty-icon-wrap">
+              <div className="empty-state-card" role="status" aria-live="polite">
+                <div className="empty-icon-wrap" aria-hidden="true">
                   <IconSearch size={26} className="text-primary" />
                 </div>
                 <p className="font-semibold">Sin animales para los filtros seleccionados</p>
@@ -1083,7 +1243,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                   Ajuste la búsqueda o registre el primer animal con su código permanente.
                 </p>
                 {!soloLectura && (
-                  <button type="button" className="btn btn-primary btn-sm" onClick={startCreate}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={startCreate}
+                    aria-label="Registrar animal en el padrón"
+                  >
                     <span className="inline-flex items-center justify-center gap-2 leading-none">
                       <IconPlus size={14} />
                       <span>Registrar animal</span>
@@ -1093,53 +1258,58 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
               </div>
             ) : (
               <div className="table-responsive">
-                <table className="data-table">
+                <table className="data-table" aria-label="Padrón de animales">
                   <thead>
                     <tr>
-                      <th>Código</th>
-                      <th>Arete vigente</th>
-                      <th>Tipo</th>
-                      <th>Sexo</th>
-                      <th>Edad</th>
-                      <th>Peso actual</th>
-                      <th>Galpón</th>
-                      <th>Etapa</th>
-                      <th>Ubicación / lote</th>
-                      <th>Estado</th>
-                      <th>Acciones</th>
+                      <th className="text-left">Código</th>
+                      <th className="text-left">Arete oficial</th>
+                      <th className="text-left">Tipo</th>
+                      <th className="text-left">Sexo</th>
+                      <th className="text-right">Edad</th>
+                      <th className="text-right">Peso vivo</th>
+                      <th className="text-left">Galpón</th>
+                      <th className="text-left">Etapa productiva</th>
+                      <th className="text-left">Ubicación / Lote</th>
+                      <th className="text-center">Estado</th>
+                      <th className="text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {animals.map((animal) => (
                       <tr key={animal.id}>
-                        <td className="font-semibold">
+                        <td className="text-left font-mono font-bold">
                           {animal.code}
                           {animal.alias ? <span className="text-xs text-muted"> · {animal.alias}</span> : null}
                         </td>
-                        <td>{animal.currentTag}</td>
-                        <td>{animal.animalTypeLabel}</td>
-                        <td>{animal.sexLabel}</td>
-                        <td>{animal.ageLabel ?? <span className="text-muted">Sin dato</span>}</td>
-                        <td>{formatWeight(animal.currentWeightKg)}</td>
-                        <td>{animal.barnName}</td>
-                        <td>{animal.stageName}</td>
-                        <td>
-                          {animal.locationName ?? 'Sin ubicación'}
-                          {animal.lotName ? ` · ${animal.lotName}` : ''}
+                        <td className="text-left font-mono">{animal.currentTag}</td>
+                        <td className="text-left">{animal.animalTypeLabel}</td>
+                        <td className="text-left">{animal.sexLabel}</td>
+                        <td className="text-right tabular-nums font-mono">
+                          {animal.ageDays !== null ? `${animal.ageDays} d` : animal.ageLabel ?? <span className="text-muted">Sin dato</span>}
                         </td>
-                        <td>
-                          <span className={STATUS_BADGE[animal.status] ?? 'badge-tag'}>
+                        <td className="text-right tabular-nums font-mono font-bold">
+                          {formatWeight(animal.currentWeightKg)}
+                        </td>
+                        <td className="text-left">{animal.barnName}</td>
+                        <td className="text-left">{animal.stageName}</td>
+                        <td className="text-left text-xs">
+                          {animal.locationName ?? 'Sin ubicación'}
+                          {animal.lotName ? ` · Lote ${animal.lotName}` : ''}
+                        </td>
+                        <td className="text-center">
+                          <span className={animal.isActive ? (STATUS_BADGE[animal.status] ?? 'badge-status') : 'badge-status badge-outline'}>
                             {animal.isActive ? animal.statusLabel : 'Inactiva'}
                           </span>
                         </td>
-                        <td>
+                        <td className="text-center">
                           <button
                             type="button"
                             className="btn btn-outline btn-sm"
                             onClick={() => void openDetail(animal.code)}
                             disabled={loadingDetail}
+                            aria-label={`Ver ficha de ${animal.code}`}
                           >
-                            <span className="inline-flex items-center justify-center gap-2 leading-none">
+                            <span className="inline-flex items-center justify-center gap-1 leading-none text-xs">
                               <IconEye size={14} />
                               <span>Ver ficha</span>
                             </span>
@@ -1171,7 +1341,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
           <form onSubmit={handleSubmit} className="form-stack">
             {formError && (
-              <div className="alert alert-error" role="alert">
+              <div className="alert alert-error" role="alert" aria-live="assertive">
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconAlertCircle size={16} />
                   <span>{formError}</span>
@@ -1185,14 +1355,22 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <input
                   id="ani-code"
                   type="text"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.code ? 'input-error' : ''}`}
                   value={form.code}
                   onChange={(event) => setField('code', event.target.value)}
                   placeholder="Ej. 002"
                   disabled={editingCode !== null}
+                  aria-invalid={Boolean(fieldErrors.code)}
+                  aria-describedby={fieldErrors.code ? 'ani-code-error ani-code-helper' : 'ani-code-helper'}
                   required
                 />
-                <p className="form-helper">Se conserva tal cual, incluidos los ceros a la izquierda.</p>
+                {fieldErrors.code && (
+                  <p id="ani-code-error" className="field-error-message" role="alert">
+                    <IconAlertCircle size={14} />
+                    <span>{fieldErrors.code}</span>
+                  </p>
+                )}
+                <p id="ani-code-helper" className="form-helper">Se conserva tal cual, incluidos los ceros a la izquierda.</p>
               </div>
 
               <div className="form-group">
@@ -1294,11 +1472,19 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <input
                   id="ani-weaning"
                   type="date"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.weaningDate ? 'input-error' : ''}`}
                   value={form.weaningDate}
                   max={farmToday()}
                   onChange={(event) => setField('weaningDate', event.target.value)}
+                  aria-invalid={Boolean(fieldErrors.weaningDate)}
+                  aria-describedby={fieldErrors.weaningDate ? 'ani-weaning-error' : undefined}
                 />
+                {fieldErrors.weaningDate && (
+                  <p id="ani-weaning-error" className="field-error-message" role="alert">
+                    <IconAlertCircle size={14} />
+                    <span>{fieldErrors.weaningDate}</span>
+                  </p>
+                )}
               </div>
 
               <div className="form-group">
@@ -1332,7 +1518,65 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                     <p className="form-helper">{ORIGIN_HINTS[form.originType]}</p>
                   </div>
 
-                  {form.originType==='compra'&&<><div className="form-group"><label className="form-label" htmlFor="ani-purchase-amount">Importe pagado / de compra</label><input id="ani-purchase-amount" type="number" min="0.01" step="0.01" className="form-input" value={form.purchaseAmount} onChange={(event)=>setField('purchaseAmount',event.target.value)} required/></div><div className="form-group"><label className="form-label" htmlFor="ani-purchase-currency">Moneda</label><select id="ani-purchase-currency" className="form-select" value={form.purchaseCurrencyCode} onChange={(event)=>setField('purchaseCurrencyCode',event.target.value)}><option value="PEN">PEN · Sol</option><option value="USD">USD · Dólar</option><option value="EUR">EUR · Euro</option></select></div><div className="form-group"><label className="form-label" htmlFor="ani-purchase-seller">Proveedor</label><input id="ani-purchase-seller" className="form-input" value={form.purchaseCounterparty} onChange={(event)=>setField('purchaseCounterparty',event.target.value)}/></div><div className="form-group"><label className="form-label" htmlFor="ani-purchase-reference">Documento de compra</label><input id="ani-purchase-reference" className="form-input" value={form.purchaseDocumentReference} onChange={(event)=>setField('purchaseDocumentReference',event.target.value)}/></div></>}
+                  {form.originType === 'compra' && (
+                    <>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="ani-purchase-amount">Importe pagado / de compra</label>
+                        <input
+                          id="ani-purchase-amount"
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          placeholder="0.00"
+                          className={`form-input ${fieldErrors.purchaseAmount ? 'input-error' : ''}`}
+                          value={form.purchaseAmount}
+                          onChange={(event) => setField('purchaseAmount', event.target.value)}
+                          aria-invalid={Boolean(fieldErrors.purchaseAmount)}
+                          aria-describedby={fieldErrors.purchaseAmount ? 'ani-purchase-amount-error' : undefined}
+                          required
+                        />
+                        {fieldErrors.purchaseAmount && (
+                          <p id="ani-purchase-amount-error" className="field-error-message" role="alert">
+                            <IconAlertCircle size={14} />
+                            <span>{fieldErrors.purchaseAmount}</span>
+                          </p>
+                        )}
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="ani-purchase-currency">Moneda</label>
+                        <select
+                          id="ani-purchase-currency"
+                          className="form-select"
+                          value={form.purchaseCurrencyCode}
+                          onChange={(event) => setField('purchaseCurrencyCode', event.target.value)}
+                        >
+                          <option value="PEN">PEN · Sol</option>
+                          <option value="USD">USD · Dólar</option>
+                          <option value="EUR">EUR · Euro</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="ani-purchase-seller">Proveedor</label>
+                        <input
+                          id="ani-purchase-seller"
+                          className="form-input"
+                          value={form.purchaseCounterparty}
+                          placeholder="Nombre del proveedor o granja"
+                          onChange={(event) => setField('purchaseCounterparty', event.target.value)}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="ani-purchase-reference">Documento de compra</label>
+                        <input
+                          id="ani-purchase-reference"
+                          className="form-input"
+                          value={form.purchaseDocumentReference}
+                          placeholder="Ej. Factura F001-4567"
+                          onChange={(event) => setField('purchaseDocumentReference', event.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
 
                   <div className="form-group">
                     <label className="form-label" htmlFor="ani-origin-detail">Detalle de procedencia</label>
@@ -1363,9 +1607,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                     <label className="form-label" htmlFor="ani-barn">Galpón</label>
                     <select
                       id="ani-barn"
-                      className="form-select"
+                      className={`form-select ${fieldErrors.barnId ? 'input-error' : ''}`}
                       value={form.barnId}
                       onChange={(event) => setField('barnId', event.target.value)}
+                      aria-invalid={Boolean(fieldErrors.barnId)}
+                      aria-describedby={fieldErrors.barnId ? 'ani-barn-error' : undefined}
                       required
                     >
                       <option value="">Seleccione un galpón</option>
@@ -1373,15 +1619,23 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                         <option key={barn.id} value={barn.id}>{barn.name}</option>
                       ))}
                     </select>
+                    {fieldErrors.barnId && (
+                      <p id="ani-barn-error" className="field-error-message" role="alert">
+                        <IconAlertCircle size={14} />
+                        <span>{fieldErrors.barnId}</span>
+                      </p>
+                    )}
                   </div>
 
                   <div className="form-group">
                     <label className="form-label" htmlFor="ani-entry-stage">Etapa de ingreso</label>
                     <select
                       id="ani-entry-stage"
-                      className="form-select"
+                      className={`form-select ${fieldErrors.entryStageCode ? 'input-error' : ''}`}
                       value={form.entryStageCode}
                       onChange={(event) => setField('entryStageCode', event.target.value)}
+                      aria-invalid={Boolean(fieldErrors.entryStageCode)}
+                      aria-describedby={fieldErrors.entryStageCode ? 'ani-entry-stage-error' : undefined}
                       required
                     >
                       <option value="">Seleccione una etapa</option>
@@ -1389,6 +1643,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                         <option key={stage.code} value={stage.code}>{stage.name}</option>
                       ))}
                     </select>
+                    {fieldErrors.entryStageCode && (
+                      <p id="ani-entry-stage-error" className="field-error-message" role="alert">
+                        <IconAlertCircle size={14} />
+                        <span>{fieldErrors.entryStageCode}</span>
+                      </p>
+                    )}
                   </div>
 
                   <div className="form-group">
@@ -1427,9 +1687,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <label className="form-label" htmlFor="ani-mother">Madre interna</label>
                 <select
                   id="ani-mother"
-                  className="form-select"
+                  className={`form-select ${fieldErrors.mother ? 'input-error' : ''}`}
                   value={form.motherId}
                   onChange={(event) => setField('motherId', event.target.value)}
+                  aria-invalid={Boolean(fieldErrors.mother)}
                 >
                   <option value="">Desconocida o externa</option>
                   {motherCandidates.map((animal) => (
@@ -1439,6 +1700,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                     <option value={form.motherId}>Animal #{form.motherId}</option>
                   )}
                 </select>
+                {fieldErrors.mother && (
+                  <p className="field-error-message" role="alert">
+                    <IconAlertCircle size={14} />
+                    <span>{fieldErrors.mother}</span>
+                  </p>
+                )}
               </div>
 
               <div className="form-group">
@@ -1446,11 +1713,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <input
                   id="ani-mother-external"
                   type="text"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.mother ? 'input-error' : ''}`}
                   value={form.motherExternal}
                   onChange={(event) => setField('motherExternal', event.target.value)}
                   placeholder="Identificación fuera de la granja"
                   disabled={form.motherId !== ''}
+                  aria-invalid={Boolean(fieldErrors.mother)}
                 />
               </div>
 
@@ -1458,9 +1726,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <label className="form-label" htmlFor="ani-father">Padre interno</label>
                 <select
                   id="ani-father"
-                  className="form-select"
+                  className={`form-select ${fieldErrors.father ? 'input-error' : ''}`}
                   value={form.fatherId}
                   onChange={(event) => setField('fatherId', event.target.value)}
+                  aria-invalid={Boolean(fieldErrors.father)}
                 >
                   <option value="">Desconocido o externo</option>
                   {fatherCandidates.map((animal) => (
@@ -1470,6 +1739,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                     <option value={form.fatherId}>Animal #{form.fatherId}</option>
                   )}
                 </select>
+                {fieldErrors.father && (
+                  <p className="field-error-message" role="alert">
+                    <IconAlertCircle size={14} />
+                    <span>{fieldErrors.father}</span>
+                  </p>
+                )}
               </div>
 
               <div className="form-group">
@@ -1477,11 +1752,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <input
                   id="ani-father-external"
                   type="text"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.father ? 'input-error' : ''}`}
                   value={form.fatherExternal}
                   onChange={(event) => setField('fatherExternal', event.target.value)}
                   placeholder="Identificación fuera de la granja"
                   disabled={form.fatherId !== ''}
+                  aria-invalid={Boolean(fieldErrors.father)}
                 />
               </div>
 
@@ -1502,18 +1778,31 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <input
                   id="ani-reason"
                   type="text"
-                  className="form-input"
+                  className={`form-input ${fieldErrors.reason ? 'input-error' : ''}`}
                   value={form.reason}
                   onChange={(event) => setField('reason', event.target.value)}
                   placeholder={editingCode ? 'Ej. Corrección del peso al nacer' : 'Ej. Alta de lechón nacido el 5 de enero'}
+                  aria-invalid={Boolean(fieldErrors.reason)}
+                  aria-describedby={fieldErrors.reason ? 'ani-reason-error ani-reason-helper' : 'ani-reason-helper'}
                   required
                 />
-                <p className="form-helper">Queda en la auditoría con su usuario y la fecha efectiva.</p>
+                {fieldErrors.reason && (
+                  <p id="ani-reason-error" className="field-error-message" role="alert">
+                    <IconAlertCircle size={14} />
+                    <span>{fieldErrors.reason}</span>
+                  </p>
+                )}
+                <p id="ani-reason-helper" className="form-helper">Queda en la auditoría con su usuario y la fecha efectiva.</p>
               </div>
             </div>
 
             <div className="form-actions">
-              <button type="submit" className="btn btn-primary" disabled={saving}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={saving}
+                aria-label={saving ? 'Guardando ficha…' : editingCode ? 'Guardar cambios de la ficha' : 'Registrar animal en el padrón'}
+              >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconCheck size={16} />
                   <span>{saving ? 'Guardando…' : editingCode ? 'Guardar cambios' : 'Registrar animal'}</span>
@@ -1530,8 +1819,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                   setForm(emptyForm());
                   setOperationKey(newOperationKey('ani'));
                   setFormError(null);
+                  setFieldErrors({});
                 }}
                 disabled={saving}
+                aria-label={editingCode ? 'Volver a la ficha del animal' : 'Limpiar formulario'}
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconArrowLeft size={14} />
@@ -1545,6 +1836,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
       {section === 'ficha' && detail && (
         <div className="section-block">
+          {/* Tarjeta héroe focal dominante */}
           <div className="card">
             <div className="card-header-clean mb-2 flex-wrap gap-2">
               <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
@@ -1552,7 +1844,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <span>Ficha {detail.code}</span>
                 {detail.alias ? <span className="text-sm text-muted">({detail.alias})</span> : null}
               </span>
-              <span className={detail.isActive ? 'badge-status badge-success' : 'badge-status badge-warning'}>
+              <span className={detail.isActive ? 'badge-status badge-success' : 'badge-status badge-outline'}>
                 {detail.isActive ? 'Disponible' : 'Inactiva'}
               </span>
             </div>
@@ -1577,412 +1869,1032 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 icon={<IconClipboard size={14} />}
               />
             </div>
+          </div>
 
-            <div className="table-responsive">
-              <table className="data-table">
-                <tbody>
-                  <tr>
-                    <th>Arete vigente</th>
-                    <td>{detail.currentTag}</td>
-                    <th>Tipo</th>
-                    <td>{detail.animalTypeLabel}</td>
-                  </tr>
-                  <tr>
-                    <th>Sexo</th>
-                    <td>{detail.sexLabel}</td>
-                    <th>Raza</th>
-                    <td>{detail.breed ?? 'Sin dato'}</td>
-                  </tr>
-                  <tr>
-                    <th>Aptitud</th>
-                    <td>{detail.aptitude ?? 'Sin definir'}</td>
-                    <th>Procedencia</th>
-                    <td>
-                      {detail.originLabel}
-                      {detail.originDetail ? ` · ${detail.originDetail}` : ''}
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Ingreso</th>
-                    <td>{detail.entryDate}</td>
-                    <th>Etapa de ingreso</th>
-                    <td>{detail.entryStageCode}</td>
-                  </tr>
-                  <tr>
-                    <th>Ubicación</th>
-                    <td>{detail.locationName ?? 'Sin asignar'}</td>
-                    <th>Lote</th>
-                    <td>{detail.lotName ?? 'Sin lote'}</td>
-                  </tr>
-                  <tr>
-                    <th>Madre</th>
-                    <td>{detail.mother ? (detail.mother.code ?? detail.mother.external ?? 'Sin dato') : 'Desconocida'}</td>
-                    <th>Padre</th>
-                    <td>{detail.father ? (detail.father.code ?? detail.father.external ?? 'Sin dato') : 'Desconocido'}</td>
-                  </tr>
-                  <tr>
-                    <th>Peso al nacer</th>
-                    <td>{formatWeight(detail.birthWeightKg)}</td>
-                    <th>Peso al destete</th>
-                    <td>{formatWeight(detail.weaningWeightKg)}</td>
-                  </tr>
-                  {detail.exitDate && (
-                    <tr>
-                      <th>Salida</th>
-                      <td>{detail.exitDate}</td>
-                      <th>Tipo de salida</th>
-                      <td>{detail.exitType === 'sale' ? 'Venta' : detail.exitType === 'death' ? 'Muerte' : detail.exitType === 'discard' ? 'Descarte' : '—'}{detail.exitCauseLabel ? ` · ${detail.exitCauseLabel}` : ''}</td>
-                    </tr>
-                  )}
-                  <tr>
-                    <th>Observaciones</th>
-                    <td colSpan={3}>{detail.observations ?? 'Sin observaciones'}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {detail.reproductiveSummary && <div className="table-responsive mt-3"><table className="data-table"><tbody>
-              <tr><th>Servicios</th><td>{detail.reproductiveSummary.serviceCount}</td><th>Partos</th><td>{detail.reproductiveSummary.farrowingCount}</td></tr>
-              <tr><th>Primer parto</th><td>{detail.reproductiveSummary.firstFarrowingDate ?? 'Sin dato'}</td><th>Último parto</th><td>{detail.reproductiveSummary.lastFarrowingDate ?? 'Sin dato'}</td></tr>
-              <tr><th>Crías nacidas</th><td>{detail.reproductiveSummary.totalBorn}</td><th>Machos / hembras / sin sexar</th><td>{detail.reproductiveSummary.maleBorn} / {detail.reproductiveSummary.femaleBorn} / {detail.reproductiveSummary.unsexedBorn}</td></tr>
-              <tr><th>Peso promedio de crías vivas</th><td colSpan={3}>{formatWeight(detail.reproductiveSummary.averageBirthWeightKg)}{detail.reproductiveSummary.weighedBirths ? ` · ponderado por ${detail.reproductiveSummary.weighedBirths} crías vivas de camadas con peso registrado` : ''}</td></tr>
-            </tbody></table></div>}
-
+          {/* Sub-pestañas SaaS de la Ficha Técnica */}
+          <div className="admin-tabs mb-4" role="tablist" aria-label="Secciones de la ficha">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={fichaTab === 'resumen'}
+              className={`btn btn-sm ${fichaTab === 'resumen' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setFichaTab('resumen')}
+            >
+              <span className="inline-flex items-center justify-center gap-2 leading-none">
+                <IconPig size={14} />
+                <span>Datos técnicos</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={fichaTab === 'pesajes'}
+              className={`btn btn-sm ${fichaTab === 'pesajes' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setFichaTab('pesajes')}
+            >
+              <span className="inline-flex items-center justify-center gap-2 leading-none">
+                <IconScale size={14} />
+                <span>Pesajes y GMD</span>
+                {detail.weights.length > 0 && (
+                  <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{detail.weights.length}</span>
+                )}
+              </span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={fichaTab === 'trazabilidad'}
+              className={`btn btn-sm ${fichaTab === 'trazabilidad' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setFichaTab('trazabilidad')}
+            >
+              <span className="inline-flex items-center justify-center gap-2 leading-none">
+                <IconClipboard size={14} />
+                <span>Trazabilidad</span>
+                {detail.chronology.length > 0 && (
+                  <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{detail.chronology.length}</span>
+                )}
+              </span>
+            </button>
             {!soloLectura && (
-              <div className="form-actions">
-                <button type="button" className="btn btn-outline btn-sm" onClick={startEdit}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={fichaTab === 'operaciones'}
+                className={`btn btn-sm ${fichaTab === 'operaciones' ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setFichaTab('operaciones')}
+              >
+                <span className="inline-flex items-center justify-center gap-2 leading-none">
+                  <IconEdit size={14} />
+                  <span>Gestión y Traslados</span>
+                </span>
+              </button>
+            )}
+          </div>
+
+          {fichaTab === 'resumen' && (
+            <div className="card">
+              <div className="card-header-clean mb-2">
+                <span className="section-title">Datos técnicos y genealogía</span>
+                <span className="text-xs text-muted">Información productiva, procedencia e identificación</span>
+              </div>
+              <div className="table-responsive">
+                <table className="data-table">
+                  <tbody>
+                    <tr>
+                      <th>Arete oficial</th>
+                      <td className="font-mono font-bold">{detail.currentTag}</td>
+                      <th>Tipo</th>
+                      <td>{detail.animalTypeLabel}</td>
+                    </tr>
+                    <tr>
+                      <th>Sexo</th>
+                      <td>{detail.sexLabel}</td>
+                      <th>Raza</th>
+                      <td>{detail.breed ?? 'Sin dato'}</td>
+                    </tr>
+                    <tr>
+                      <th>Aptitud</th>
+                      <td>{detail.aptitude ?? 'Sin definir'}</td>
+                      <th>Procedencia</th>
+                      <td>
+                        {detail.originLabel}
+                        {detail.originDetail ? ` · ${detail.originDetail}` : ''}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Fecha de ingreso</th>
+                      <td className="tabular-nums">{detail.entryDate}</td>
+                      <th>Etapa de ingreso</th>
+                      <td>{detail.entryStageCode}</td>
+                    </tr>
+                    <tr>
+                      <th>Ubicación</th>
+                      <td>{detail.locationName ?? 'Sin asignar'}</td>
+                      <th>Lote</th>
+                      <td>{detail.lotName ? `Lote ${detail.lotName}` : 'Sin lote'}</td>
+                    </tr>
+                    <tr>
+                      <th>Marrana (Madre)</th>
+                      <td className="font-mono">{detail.mother ? (detail.mother.code ?? detail.mother.external ?? 'Sin dato') : 'Desconocida'}</td>
+                      <th>Verraco (Padre)</th>
+                      <td className="font-mono">{detail.father ? (detail.father.code ?? detail.father.external ?? 'Sin dato') : 'Desconocido'}</td>
+                    </tr>
+                    <tr>
+                      <th>Peso al nacer</th>
+                      <td className="tabular-nums font-mono font-bold">{formatWeight(detail.birthWeightKg)}</td>
+                      <th>Peso al destete</th>
+                      <td className="tabular-nums font-mono font-bold">{formatWeight(detail.weaningWeightKg)}</td>
+                    </tr>
+                    {detail.exitDate && (
+                      <tr>
+                        <th>Fecha de salida</th>
+                        <td className="tabular-nums">{detail.exitDate}</td>
+                        <th>Tipo de salida</th>
+                        <td>{detail.exitType === 'sale' ? 'Venta' : detail.exitType === 'death' ? 'Muerte' : detail.exitType === 'discard' ? 'Descarte' : '—'}{detail.exitCauseLabel ? ` · ${detail.exitCauseLabel}` : ''}</td>
+                      </tr>
+                    )}
+                    <tr>
+                      <th>Observaciones</th>
+                      <td colSpan={3}>{detail.observations ?? 'Sin observaciones'}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {detail.reproductiveSummary && (
+                <div className="table-responsive mt-3">
+                  <table className="data-table">
+                    <tbody>
+                      <tr>
+                        <th>Servicios de monta / IA</th>
+                        <td className="tabular-nums font-mono font-bold">{detail.reproductiveSummary.serviceCount}</td>
+                        <th>Partos registrados</th>
+                        <td className="tabular-nums font-mono font-bold">{detail.reproductiveSummary.farrowingCount}</td>
+                      </tr>
+                      <tr>
+                        <th>Primer parto</th>
+                        <td className="tabular-nums">{detail.reproductiveSummary.firstFarrowingDate ?? 'Sin dato'}</td>
+                        <th>Último parto</th>
+                        <td className="tabular-nums">{detail.reproductiveSummary.lastFarrowingDate ?? 'Sin dato'}</td>
+                      </tr>
+                      <tr>
+                        <th>Crías nacidas (camada)</th>
+                        <td className="tabular-nums font-mono font-bold">{detail.reproductiveSummary.totalBorn}</td>
+                        <th>Machos / hembras / sin sexar</th>
+                        <td className="tabular-nums font-mono">
+                          {detail.reproductiveSummary.maleBorn} / {detail.reproductiveSummary.femaleBorn} / {detail.reproductiveSummary.unsexedBorn}
+                        </td>
+                      </tr>
+                      <tr>
+                        <th>Peso promedio crías vivas</th>
+                        <td colSpan={3} className="tabular-nums font-mono font-bold">
+                          {formatWeight(detail.reproductiveSummary.averageBirthWeightKg)}
+                          {detail.reproductiveSummary.weighedBirths ? ` · ponderado por ${detail.reproductiveSummary.weighedBirths} crías vivas de camadas con peso registrado` : ''}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {!soloLectura && (
+                <div className="form-actions mt-3">
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={startEdit}
+                    aria-label={`Editar ficha del animal ${detail.code}`}
+                  >
+                    <span className="inline-flex items-center justify-center gap-2 leading-none">
+                      <IconEdit size={14} />
+                      <span>Editar ficha</span>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {fichaTab === 'pesajes' && (
+            <div className="card">
+              <div className="card-header-clean mb-2">
+                <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
+                  <IconScale size={16} className="text-primary" />
+                  <span>Pesajes y Ganancia Media Diaria (GMD)</span>
+                </span>
+                <span className="text-xs text-muted">Ordenados por fecha y hora; ubicación física preservada</span>
+              </div>
+              {weightError && (
+                <div className="alert alert-error mb-3" role="alert" aria-live="assertive">
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconEdit size={14} />
-                    <span>Editar ficha</span>
+                    <IconAlertCircle size={16} />
+                    <span>{weightError}</span>
                   </span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="card">
-            <div className="card-header-clean mb-2">
-              <span className="section-title">Cronología</span>
-              <span className="text-xs text-muted">Altas, aretes, tipos, pesajes y movimientos de inventario</span>
-            </div>
-            {detail.chronology.length === 0 ? (
-              <p className="text-sm text-muted">Aún no hay eventos registrados.</p>
-            ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Evento</th>
-                      <th>Detalle</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.chronology.map((item) => (
-                      <tr key={`${item.kind}-${item.date}-${item.id ?? 'alta'}`}>
-                        <td>{item.date}</td>
-                        <td className="font-semibold">{item.title}</td>
-                        <td>{item.detail}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="grid-2">
-            <div className="card">
-              <div className="card-header-clean mb-2">
-                <span className="section-title">Aretes históricos</span>
-                <span className="text-xs text-muted">Se conserva el anterior con su fecha</span>
-              </div>
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Arete</th>
-                      <th>Desde</th>
-                      <th>Hasta</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.tags.map((tag) => (
-                      <tr key={tag.id}>
-                        <td className="font-semibold">{tag.tag}</td>
-                        <td>{tag.validFrom}</td>
-                        <td>{tag.validTo ?? 'Vigente'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="card-header-clean mb-2">
-                <span className="section-title">Pesajes</span>
-                <span className="text-xs text-muted">Ordenados por fecha y hora; ubicación preservada</span>
-              </div>
-              {weightError && <div className="alert alert-error" role="alert">{weightError}</div>}
-              {!soloLectura && detail.exitDate === null && <form onSubmit={handleWeightSave} className="form-stack mb-4">
-                <div className="grid-3">
-                  <div className="form-group"><label className="form-label" htmlFor="ani-weight-date">Fecha</label><input id="ani-weight-date" className="form-input" type="date" value={weightForm.weighedOn} onChange={(event) => setWeightForm((prev) => ({ ...prev, weighedOn: event.target.value }))} required /></div>
-                  <div className="form-group"><label className="form-label" htmlFor="ani-weight-time">Hora</label><input id="ani-weight-time" className="form-input" type="time" value={weightForm.weighedTime} onChange={(event) => setWeightForm((prev) => ({ ...prev, weighedTime: event.target.value }))} required /></div>
-                  <div className="form-group"><label className="form-label" htmlFor="ani-weight-kg">Peso (kg)</label><input id="ani-weight-kg" className="form-input" type="number" min="0.01" max="500" step="0.01" value={weightForm.weightKg} onChange={(event) => setWeightForm((prev) => ({ ...prev, weightKg: event.target.value }))} required /></div>
                 </div>
-                <div className="grid-2">
-                  <div className="form-group"><label className="form-label" htmlFor="ani-weight-stage">Etapa</label><select id="ani-weight-stage" className="form-select" value={weightForm.stageCode || detail.stageCode} onChange={(event) => setWeightForm((prev) => ({ ...prev, stageCode: event.target.value }))}>{(options?.stages ?? []).map((stage) => <option key={stage.code} value={stage.code}>{stage.name}</option>)}</select><small className="text-muted">Si elige otra etapa, se actualizarán la ficha y el inventario desde la fecha del pesaje.</small></div>
-                  <div className="form-group"><label className="form-label" htmlFor="ani-weight-note">Nota</label><input id="ani-weight-note" className="form-input" value={weightForm.note} onChange={(event) => setWeightForm((prev) => ({ ...prev, note: event.target.value }))} maxLength={300} /></div>
-                </div>
-                <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>Registrar pesaje</button>
-              </form>}
+              )}
+              {!soloLectura && detail.exitDate === null && (
+                <form onSubmit={handleWeightSave} className="form-stack mb-4">
+                  <div className="grid-3">
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="ani-weight-date">Fecha</label>
+                      <input
+                        id="ani-weight-date"
+                        className="form-input"
+                        type="date"
+                        value={weightForm.weighedOn}
+                        max={farmToday()}
+                        onChange={(event) => setWeightForm((prev) => ({ ...prev, weighedOn: event.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="ani-weight-time">Hora</label>
+                      <input
+                        id="ani-weight-time"
+                        className="form-input"
+                        type="time"
+                        value={weightForm.weighedTime}
+                        onChange={(event) => setWeightForm((prev) => ({ ...prev, weighedTime: event.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="ani-weight-kg">Peso (kg)</label>
+                      <input
+                        id="ani-weight-kg"
+                        className="form-input font-numeric tabular-nums font-bold"
+                        type="number"
+                        min="0.01"
+                        max="500"
+                        step="0.01"
+                        placeholder="Ej. 85.5"
+                        value={weightForm.weightKg}
+                        onChange={(event) => setWeightForm((prev) => ({ ...prev, weightKg: event.target.value }))}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="ani-weight-stage">Etapa</label>
+                      <select
+                        id="ani-weight-stage"
+                        className="form-select"
+                        value={weightForm.stageCode || detail.stageCode}
+                        onChange={(event) => setWeightForm((prev) => ({ ...prev, stageCode: event.target.value }))}
+                      >
+                        {(options?.stages ?? []).map((stage) => (
+                          <option key={stage.code} value={stage.code}>{stage.name}</option>
+                        ))}
+                      </select>
+                      <small className="text-muted">Si elige otra etapa, se actualizarán la ficha y el inventario desde la fecha del pesaje.</small>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="ani-weight-note">Nota</label>
+                      <input
+                        id="ani-weight-note"
+                        className="form-input"
+                        value={weightForm.note}
+                        placeholder="Opcional"
+                        onChange={(event) => setWeightForm((prev) => ({ ...prev, note: event.target.value }))}
+                        maxLength={300}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-actions">
+                    <button
+                      type="submit"
+                      className="btn btn-primary btn-sm"
+                      disabled={busy}
+                      aria-label="Pesar animal y registrar en ficha"
+                    >
+                      <span className="inline-flex items-center justify-center gap-2 leading-none">
+                        <IconScale size={14} />
+                        <span>{busy ? 'Guardando…' : 'Pesar animal'}</span>
+                      </span>
+                    </button>
+                  </div>
+                </form>
+              )}
               {detail.weights.length === 0 ? (
-                <p className="text-sm text-muted">Sin pesajes registrados.</p>
+                <div className="card empty-state-card mt-3">
+                  <div className="empty-icon-wrap">
+                    <IconScale size={28} className="text-muted" />
+                  </div>
+                  <p className="font-semibold text-base">Sin pesajes registrados</p>
+                  <p className="text-sm text-muted">
+                    Registra el primer pesaje para monitorear la curva de crecimiento y la ganancia media diaria (GMD) de este animal.
+                  </p>
+                </div>
               ) : (
                 <div className="table-responsive">
-                  <table className="data-table">
+                  <table className="data-table" aria-label="Historial de pesajes">
                     <thead>
                       <tr>
-                        <th>Fecha</th>
-                        <th>Hora</th>
-                        <th>Peso</th>
-                        <th>Ganancia desde anterior</th>
-                        <th>Ubicación histórica</th>
-                        <th>Nota</th>
-                        {!soloLectura && <th>Acción</th>}
+                        <th className="text-left">Fecha</th>
+                        <th className="text-left">Hora</th>
+                        <th className="text-right">Peso vivo</th>
+                        <th className="text-right">Ganancia (GMD)</th>
+                        <th className="text-left">Ubicación histórica</th>
+                        <th className="text-left">Nota</th>
+                        {!soloLectura && <th className="text-center">Acción</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {detail.weights.map((weight) => (
-                        <React.Fragment key={weight.id}><tr>
-                          <td>{weight.weighedOn}</td>
-                          <td>{weight.weighedTime}</td>
-                          <td className="font-semibold">{weight.weightKg} kg</td>
-                          <td>{weight.corrected ? 'Corregido (ver registro nuevo)' : weight.gainDays === null ? '—' : `${weight.gainKg} kg / ${weight.gainDays} días (${(Number(weight.gainKg) / weight.gainDays).toFixed(2)} kg/día)`}</td>
-                          <td>{[weight.barnId ? data?.options.barns.find((barn) => barn.id === weight.barnId)?.name : null, weight.locationCode, weight.lotCode].filter(Boolean).join(' · ') || '—'}</td>
-                          <td>{weight.note ?? '—'}</td>
-                          {!soloLectura && <td>{!weight.corrected && detail.exitDate === null && <button type="button" className="btn btn-outline btn-sm" onClick={() => setWeightCorrection({ id: weight.id, kg: String(weight.weightKg), reason: '', operationKey: newOperationKey('ani-pesaje-corr') })}>Corregir</button>}</td>}
-                        </tr>{weightCorrection?.id === weight.id && <tr><td colSpan={7}><form onSubmit={handleWeightCorrection} className="form-stack"><div className="grid-2"><div className="form-group"><label className="form-label">Peso corregido (kg)</label><input className="form-input" type="number" min="0.01" max="500" step="0.01" value={weightCorrection.kg} onChange={(event) => setWeightCorrection((prev) => prev ? { ...prev, kg: event.target.value } : prev)} required /></div><div className="form-group"><label className="form-label">Motivo de corrección</label><input className="form-input" value={weightCorrection.reason} onChange={(event) => setWeightCorrection((prev) => prev ? { ...prev, reason: event.target.value } : prev)} required maxLength={300} /></div></div><div className="form-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>Guardar corrección</button><button type="button" className="btn btn-outline btn-sm" onClick={() => setWeightCorrection(null)}>Cancelar</button></div></form></td></tr>}</React.Fragment>
+                        <React.Fragment key={weight.id}>
+                          <tr>
+                            <td className="text-left tabular-nums font-mono">{weight.weighedOn}</td>
+                            <td className="text-left tabular-nums font-mono text-xs text-muted">{weight.weighedTime}</td>
+                            <td className="text-right tabular-nums font-mono font-bold">{weight.weightKg.toFixed(2)} kg</td>
+                            <td className="text-right tabular-nums font-mono">
+                              {weight.corrected ? (
+                                <span className="text-muted text-xs">Corregido</span>
+                              ) : weight.gainDays === null ? (
+                                '—'
+                              ) : (
+                                <span>
+                                  +{weight.gainKg} kg <span className="text-xs text-muted">({(Number(weight.gainKg) / weight.gainDays).toFixed(2)} kg/d)</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="text-left text-xs">{[weight.barnId ? data?.options.barns.find((barn) => barn.id === weight.barnId)?.name : null, weight.locationCode, weight.lotCode].filter(Boolean).join(' · ') || '—'}</td>
+                            <td className="text-left text-xs">{weight.note ?? '—'}</td>
+                            {!soloLectura && (
+                              <td className="text-center">
+                                {!weight.corrected && detail.exitDate === null && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline btn-sm"
+                                    onClick={() =>
+                                      setWeightCorrection({
+                                        id: weight.id,
+                                        kg: String(weight.weightKg),
+                                        reason: '',
+                                        operationKey: newOperationKey('ani-pesaje-corr'),
+                                      })
+                                    }
+                                    aria-label={`Corregir pesaje del ${weight.weighedOn}`}
+                                  >
+                                    <span className="inline-flex items-center justify-center gap-1 leading-none text-xs">
+                                      <IconEdit size={12} />
+                                      <span>Corregir</span>
+                                    </span>
+                                  </button>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                          {weightCorrection?.id === weight.id && (
+                            <tr>
+                              <td colSpan={7}>
+                                <form onSubmit={handleWeightCorrection} className="form-stack p-3 bg-subtle rounded-md border border-subtle">
+                                  <div className="grid-2">
+                                    <div className="form-group">
+                                      <label className="form-label" htmlFor={`weight-corr-kg-${weight.id}`}>Peso corregido (kg)</label>
+                                      <input
+                                        id={`weight-corr-kg-${weight.id}`}
+                                        className="form-input font-numeric tabular-nums font-bold"
+                                        type="number"
+                                        min="0.01"
+                                        max="500"
+                                        step="0.01"
+                                        value={weightCorrection.kg}
+                                        onChange={(event) =>
+                                          setWeightCorrection((prev) => prev ? { ...prev, kg: event.target.value } : prev)
+                                        }
+                                        required
+                                      />
+                                    </div>
+                                    <div className="form-group">
+                                      <label className="form-label" htmlFor={`weight-corr-reason-${weight.id}`}>Motivo de corrección</label>
+                                      <input
+                                        id={`weight-corr-reason-${weight.id}`}
+                                        className="form-input"
+                                        value={weightCorrection.reason}
+                                        placeholder="Ej. Error tipográfico en báscula"
+                                        onChange={(event) =>
+                                          setWeightCorrection((prev) => prev ? { ...prev, reason: event.target.value } : prev)
+                                        }
+                                        required
+                                        maxLength={300}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="form-actions">
+                                    <button
+                                      type="submit"
+                                      className="btn btn-primary btn-sm"
+                                      disabled={busy}
+                                      aria-label="Guardar corrección"
+                                    >
+                                      <span className="inline-flex items-center justify-center gap-2 leading-none">
+                                        <IconCheck size={14} />
+                                        <span>{busy ? 'Guardando…' : 'Guardar corrección'}</span>
+                                      </span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline btn-sm"
+                                      onClick={() => setWeightCorrection(null)}
+                                      aria-label="Cancelar corrección"
+                                    >
+                                      <span className="inline-flex items-center justify-center gap-2 leading-none">
+                                        <IconX size={14} />
+                                        <span>Cancelar</span>
+                                      </span>
+                                    </button>
+                                  </div>
+                                </form>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>
                 </div>
               )}
             </div>
-          </div>
-
-          {!soloLectura && detail.exitDate === null && (
-            <div className="grid-2">
-              <div className="card">
-                <div className="card-header-clean mb-2">
-                  <span className="section-title">Cambiar arete</span>
-                  <span className="text-xs text-muted">El número anterior queda con su fecha de vigencia</span>
-                </div>
-                <form onSubmit={handleTagChange} className="form-stack">
-                  {tagError && (
-                    <div className="alert alert-error" role="alert">
-                      <span className="inline-flex items-center justify-center gap-2 leading-none">
-                        <IconAlertCircle size={16} />
-                        <span>{tagError}</span>
-                      </span>
-                    </div>
-                  )}
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="ani-new-tag">Nuevo arete</label>
-                    <input
-                      id="ani-new-tag"
-                      type="text"
-                      className="form-input"
-                      value={tagForm.tag}
-                      onChange={(event) => setTagForm((prev) => ({ ...prev, tag: event.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="ani-tag-date">Fecha del cambio</label>
-                    <input
-                      id="ani-tag-date"
-                      type="date"
-                      className="form-input"
-                      value={tagForm.effectiveDate}
-                      max={farmToday()}
-                      onChange={(event) => setTagForm((prev) => ({ ...prev, effectiveDate: event.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="ani-tag-reason">Motivo</label>
-                    <input
-                      id="ani-tag-reason"
-                      type="text"
-                      className="form-input"
-                      value={tagForm.reason}
-                      onChange={(event) => setTagForm((prev) => ({ ...prev, reason: event.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="form-actions">
-                    <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
-                      <span className="inline-flex items-center justify-center gap-2 leading-none">
-                        <IconCheck size={14} />
-                        <span>{busy ? 'Guardando…' : 'Cambiar arete'}</span>
-                      </span>
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              <div className="card">
-                <div className="card-header-clean mb-2">
-                  <span className="section-title">Disponibilidad de la ficha</span>
-                  <span className="text-xs text-muted">
-                    No registra venta ni muerte; solo la retira de selecciones nuevas.
-                  </span>
-                </div>
-                <div className="form-stack">
-                  {toggleError && (
-                    <div className="alert alert-error" role="alert">
-                      <span className="inline-flex items-center justify-center gap-2 leading-none">
-                        <IconAlertCircle size={16} />
-                        <span>{toggleError}</span>
-                      </span>
-                    </div>
-                  )}
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="ani-toggle-reason">Motivo</label>
-                    <input
-                      id="ani-toggle-reason"
-                      type="text"
-                      className="form-input"
-                      value={toggleReason}
-                      onChange={(event) => setToggleReason(event.target.value)}
-                      placeholder={detail.isActive ? 'Ej. Animal reservado para otra evaluación' : 'Ej. La ficha vuelve al padrón'}
-                    />
-                  </div>
-                  <div className="form-actions">
-                    {detail.isActive ? (
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => void handleToggle(false)}
-                        disabled={busy}
-                      >
-                        <span className="inline-flex items-center justify-center gap-2 leading-none">
-                          <IconTrash size={14} />
-                          <span>Desactivar ficha</span>
-                        </span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={() => void handleToggle(true)}
-                        disabled={busy}
-                      >
-                        <span className="inline-flex items-center justify-center gap-2 leading-none">
-                          <IconRefreshCw size={14} />
-                          <span>Reactivar ficha</span>
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-              {detail.exitDate === null && detail.isActive && !soloLectura && (
-                <>
-                  <div className="card">
-                    <div className="card-header-clean mb-2"><span className="section-title">Trasladar animal</span><span className="text-xs text-muted">Actualiza ficha, historial de ubicación y libro de inventario en una operación.</span></div>
-                    <form className="form-stack" onSubmit={(event) => void handlePhysicalTransfer(event)}>
-                      {physicalActionError && <div className="alert alert-error" role="alert">{physicalActionError}</div>}
-                      <div className="form-grid">
-                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-barn">Galpón destino</label><select id="ani-transfer-barn" className="form-select" value={transferForm.destinationBarnId} onChange={(event) => setTransferForm((prev) => ({ ...prev, destinationBarnId: event.target.value }))} required><option value="">Seleccione destino</option>{data?.options.barns.map((barn) => <option key={barn.id} value={barn.id}>{barn.name}</option>)}</select></div>
-                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-stage">Etapa de destino</label><select id="ani-transfer-stage" className="form-select" value={transferForm.destinationStageCode || detail.stageCode} onChange={(event) => setTransferForm((prev) => ({ ...prev, destinationStageCode: event.target.value }))}>{(options?.stages ?? []).map((stage) => <option key={stage.code} value={stage.code}>{stage.name}</option>)}</select></div>
-                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-location">Ubicación</label><select id="ani-transfer-location" className="form-select" value={transferForm.locationCode} onChange={(event) => setTransferForm((prev) => ({ ...prev, locationCode: event.target.value }))}><option value="">Sin asignar</option>{data?.options.locations.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
-                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-lot">Lote</label><select id="ani-transfer-lot" className="form-select" value={transferForm.lotCode} onChange={(event) => setTransferForm((prev) => ({ ...prev, lotCode: event.target.value }))}><option value="">Sin lote</option>{data?.options.lots.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
-                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-date">Fecha efectiva</label><input id="ani-transfer-date" type="date" className="form-input" value={transferForm.effectiveDate} max={farmToday()} onChange={(event) => setTransferForm((prev) => ({ ...prev, effectiveDate: event.target.value }))} required /></div>
-                        <div className="form-group"><label className="form-label" htmlFor="ani-transfer-reason">Motivo</label><input id="ani-transfer-reason" className="form-input" value={transferForm.reason} onChange={(event) => setTransferForm((prev) => ({ ...prev, reason: event.target.value }))} required /></div>
-                      </div>
-                      <div className="form-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>{busy ? 'Guardando…' : 'Registrar traslado'}</button></div>
-                    </form>
-                  </div>
-                  <div className="card">
-                    <div className="card-header-clean mb-2"><span className="section-title">Registrar salida física</span><span className="text-xs text-muted">La venta, el descarte o la muerte actualiza la ficha y descuenta una cabeza del inventario.</span></div>
-                    <form className="form-stack" onSubmit={(event) => void handlePhysicalExit(event)}>
-                      {physicalActionError && <div className="alert alert-error" role="alert">{physicalActionError}</div>}
-                      <div className="form-grid">
-                        <div className="form-group"><label className="form-label" htmlFor="ani-exit-type">Tipo de salida</label><select id="ani-exit-type" className="form-select" value={exitForm.purchaseReturn?'purchase_return':exitForm.exitType} onChange={(event) => setExitForm((prev) => ({ ...prev, exitType: event.target.value==='death'?'death':event.target.value==='discard'?'discard':'sale', purchaseReturn:event.target.value==='purchase_return', causeCode: '' }))}><option value="sale">Venta</option><option value="discard">Descarte</option>{detail.originType==='compra'&&<option value="purchase_return">Devolución de compra al proveedor</option>}<option value="death">Muerte</option></select></div>
-                        <div className="form-group"><label className="form-label" htmlFor="ani-exit-cause">Causa</label><select id="ani-exit-cause" className="form-select" value={exitForm.causeCode} onChange={(event) => setExitForm((prev) => ({ ...prev, causeCode: event.target.value }))} required><option value="">Seleccione causa</option>{(exitForm.exitType === 'death' ? data?.options.deathCauses : data?.options.saleCauses)?.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
-                        <div className="form-group"><label className="form-label" htmlFor="ani-exit-date">Fecha efectiva</label><input id="ani-exit-date" type="date" className="form-input" value={exitForm.effectiveDate} max={farmToday()} onChange={(event) => setExitForm((prev) => ({ ...prev, effectiveDate: event.target.value }))} required /></div>
-                        {exitForm.exitType==='sale'&&!exitForm.purchaseReturn&&<><div className="form-group"><label className="form-label" htmlFor="ani-exit-amount">Importe de venta</label><input id="ani-exit-amount" type="number" min="0.01" step="0.01" className="form-input" value={exitForm.saleAmount} onChange={(event) => setExitForm((prev) => ({ ...prev, saleAmount: event.target.value }))} required /></div><div className="form-group"><label className="form-label" htmlFor="ani-exit-currency">Moneda</label><select id="ani-exit-currency" className="form-select" value={exitForm.currencyCode} onChange={(event) => setExitForm((prev) => ({ ...prev, currencyCode: event.target.value }))}><option value="PEN">PEN · Sol</option><option value="USD">USD · Dólar</option><option value="EUR">EUR · Euro</option></select></div><div className="form-group"><label className="form-label" htmlFor="ani-exit-buyer">Cliente</label><input id="ani-exit-buyer" className="form-input" value={exitForm.counterparty} onChange={(event) => setExitForm((prev) => ({ ...prev, counterparty: event.target.value }))} /></div><div className="form-group"><label className="form-label" htmlFor="ani-exit-document">Documento</label><input id="ani-exit-document" className="form-input" value={exitForm.documentReference} onChange={(event) => setExitForm((prev) => ({ ...prev, documentReference: event.target.value }))} /></div></>}
-                        {exitForm.purchaseReturn ? <p className="form-helper form-span-2">Se revertirán el pago original y la existencia comprada; no se permite una segunda devolución.</p> : null}
-                        <div className="form-group"><label className="form-label" htmlFor="ani-exit-reason">Motivo</label><input id="ani-exit-reason" className="form-input" value={exitForm.reason} onChange={(event) => setExitForm((prev) => ({ ...prev, reason: event.target.value }))} required /></div>
-                      </div>
-                      <div className="form-actions"><button type="submit" className="btn btn-danger btn-sm" disabled={busy}>{busy ? 'Guardando…' : 'Registrar salida'}</button></div>
-                    </form>
-                  </div>
-                </>
-              )}
-            </div>
           )}
+
+          {fichaTab === 'trazabilidad' && (
+            <>
+              <div className="card">
+                <div className="card-header-clean mb-2">
+                  <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
+                    <IconClipboard size={16} className="text-primary" />
+                    <span>Cronología operativa</span>
+                  </span>
+                  <span className="text-xs text-muted">Altas, aretes, tipos, pesajes y movimientos de inventario</span>
+                </div>
+                {detail.chronology.length === 0 ? (
+                  <div className="card empty-state-card mt-3">
+                    <div className="empty-icon-wrap">
+                      <IconClipboard size={28} className="text-muted" />
+                    </div>
+                    <p className="font-semibold text-base">Sin eventos en la cronología</p>
+                    <p className="text-sm text-muted">
+                      Los pesajes, traslados, aplicaciones sanitarias y eventos reproductivos se reflejarán aquí automáticamente.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th className="text-left">Fecha</th>
+                          <th className="text-left">Evento operativo</th>
+                          <th className="text-left">Detalle</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detail.chronology.map((item) => (
+                          <tr key={`${item.kind}-${item.date}-${item.id ?? 'alta'}`}>
+                            <td className="text-left tabular-nums font-mono">{item.date}</td>
+                            <td className="text-left font-semibold">{item.title}</td>
+                            <td className="text-left text-sm">{item.detail}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="card">
+                <div className="card-header-clean mb-2">
+                  <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
+                    <IconClipboard size={16} className="text-primary" />
+                    <span>Aretes históricos</span>
+                  </span>
+                  <span className="text-xs text-muted">Se conserva el historial de aretes y fechas de asignación</span>
+                </div>
+                {detail.tags.length === 0 ? (
+                  <div className="card empty-state-card mt-3">
+                    <div className="empty-icon-wrap">
+                      <IconClipboard size={28} className="text-muted" />
+                    </div>
+                    <p className="font-semibold text-base">Sin cambios de arete</p>
+                    <p className="text-sm text-muted">
+                      El animal conserva su arete oficial vigente ({detail.currentTag}).
+                    </p>
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th className="text-left">Arete oficial</th>
+                          <th className="text-left">Vigente desde</th>
+                          <th className="text-left">Vigente hasta</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detail.tags.map((tag) => (
+                          <tr key={tag.id}>
+                            <td className="text-left font-mono font-bold">{tag.tag}</td>
+                            <td className="text-left tabular-nums font-mono">{tag.validFrom}</td>
+                            <td className="text-left tabular-nums font-mono">{tag.validTo ?? 'Vigente'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {fichaTab === 'operaciones' && !soloLectura && (
+            <>
+              {detail.exitDate === null ? (
+                <div className="grid-2">
+                  <div className="card">
+                    <div className="card-header-clean mb-2">
+                      <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
+                        <IconClipboard size={16} className="text-primary" />
+                        <span>Cambiar arete oficial</span>
+                      </span>
+                      <span className="text-xs text-muted">El arete anterior queda registrado con su fecha de vigencia</span>
+                    </div>
+                    <form onSubmit={handleTagChange} className="form-stack">
+                      {tagError && (
+                        <div className="alert alert-error" role="alert" aria-live="assertive">
+                          <span className="inline-flex items-center justify-center gap-2 leading-none">
+                            <IconAlertCircle size={16} />
+                            <span>{tagError}</span>
+                          </span>
+                        </div>
+                      )}
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="ani-new-tag">Nuevo arete oficial</label>
+                        <input
+                          id="ani-new-tag"
+                          type="text"
+                          className="form-input font-mono"
+                          value={tagForm.tag}
+                          placeholder="Ej. A-402 o PE-9821"
+                          onChange={(event) => setTagForm((prev) => ({ ...prev, tag: event.target.value }))}
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="ani-tag-date">Fecha del cambio</label>
+                        <input
+                          id="ani-tag-date"
+                          type="date"
+                          className="form-input"
+                          value={tagForm.effectiveDate}
+                          max={farmToday()}
+                          onChange={(event) => setTagForm((prev) => ({ ...prev, effectiveDate: event.target.value }))}
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="ani-tag-reason">Motivo</label>
+                        <input
+                          id="ani-tag-reason"
+                          type="text"
+                          className="form-input"
+                          value={tagForm.reason}
+                          placeholder="Ej. Pérdida, desprendimiento o deterioro del arete previo"
+                          onChange={(event) => setTagForm((prev) => ({ ...prev, reason: event.target.value }))}
+                          required
+                        />
+                      </div>
+                      <div className="form-actions">
+                        <button
+                          type="submit"
+                          className="btn btn-primary btn-sm"
+                          disabled={busy}
+                          aria-label="Confirmar cambio de arete oficial"
+                        >
+                          <span className="inline-flex items-center justify-center gap-2 leading-none">
+                            <IconCheck size={14} />
+                            <span>{busy ? 'Guardando…' : 'Cambiar arete'}</span>
+                          </span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+
+                  <div className="card">
+                    <div className="card-header-clean mb-2">
+                      <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
+                        <IconEyeOff size={16} className="text-primary" />
+                        <span>Disponibilidad de la ficha</span>
+                      </span>
+                      <span className="text-xs text-muted">
+                        No registra venta ni muerte; solo la retira de selecciones nuevas.
+                      </span>
+                    </div>
+                    <div className="form-stack">
+                      {toggleError && (
+                        <div className="alert alert-error" role="alert" aria-live="assertive">
+                          <span className="inline-flex items-center justify-center gap-2 leading-none">
+                            <IconAlertCircle size={16} />
+                            <span>{toggleError}</span>
+                          </span>
+                        </div>
+                      )}
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="ani-toggle-reason">Motivo</label>
+                        <input
+                          id="ani-toggle-reason"
+                          type="text"
+                          className="form-input"
+                          value={toggleReason}
+                          onChange={(event) => setToggleReason(event.target.value)}
+                          placeholder={detail.isActive ? 'Ej. Animal reservado para otra evaluación' : 'Ej. La ficha vuelve al padrón'}
+                        />
+                      </div>
+                      <div className="form-actions">
+                        {detail.isActive ? (
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            onClick={() => void handleToggle(false)}
+                            disabled={busy}
+                            aria-label="Desactivar ficha de animal"
+                          >
+                            <span className="inline-flex items-center justify-center gap-2 leading-none">
+                              <IconEyeOff size={14} />
+                              <span>{busy ? 'Guardando…' : 'Desactivar ficha'}</span>
+                            </span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            onClick={() => void handleToggle(true)}
+                            disabled={busy}
+                            aria-label="Reactivar ficha de animal"
+                          >
+                            <span className="inline-flex items-center justify-center gap-2 leading-none">
+                              <IconRefreshCw size={14} />
+                              <span>{busy ? 'Guardando…' : 'Reactivar ficha'}</span>
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="card">
+                    <div className="card-header-clean mb-2">
+                      <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
+                        <IconArrowRight size={16} className="text-primary" />
+                        <span>Trasladar a galpón</span>
+                      </span>
+                      <span className="text-xs text-muted">Actualiza ficha, historial de ubicación y libro de inventario en una operación.</span>
+                    </div>
+                    <form className="form-stack" onSubmit={(event) => void handlePhysicalTransfer(event)}>
+                      {physicalActionError && (
+                        <div className="alert alert-error mb-3" role="alert" aria-live="assertive">
+                          <span className="inline-flex items-center justify-center gap-2 leading-none">
+                            <IconAlertCircle size={16} />
+                            <span>{physicalActionError}</span>
+                          </span>
+                        </div>
+                      )}
+                      <div className="form-grid">
+                        <div className="form-group">
+                          <label className="form-label" htmlFor="ani-transfer-barn">Galpón destino</label>
+                          <select
+                            id="ani-transfer-barn"
+                            className="form-select"
+                            value={transferForm.destinationBarnId}
+                            onChange={(event) => setTransferForm((prev) => ({ ...prev, destinationBarnId: event.target.value }))}
+                            required
+                          >
+                            <option value="">Seleccione destino</option>
+                            {data?.options.barns.map((barn) => (
+                              <option key={barn.id} value={barn.id}>{barn.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label" htmlFor="ani-transfer-stage">Etapa de destino</label>
+                          <select
+                            id="ani-transfer-stage"
+                            className="form-select"
+                            value={transferForm.destinationStageCode || detail.stageCode}
+                            onChange={(event) => setTransferForm((prev) => ({ ...prev, destinationStageCode: event.target.value }))}
+                          >
+                            {(options?.stages ?? []).map((stage) => (
+                              <option key={stage.code} value={stage.code}>{stage.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label" htmlFor="ani-transfer-location">Ubicación</label>
+                          <select
+                            id="ani-transfer-location"
+                            className="form-select"
+                            value={transferForm.locationCode}
+                            onChange={(event) => setTransferForm((prev) => ({ ...prev, locationCode: event.target.value }))}
+                          >
+                            <option value="">Sin asignar</option>
+                            {data?.options.locations.map((item) => (
+                              <option key={item.code} value={item.code}>{item.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label" htmlFor="ani-transfer-lot">Lote</label>
+                          <select
+                            id="ani-transfer-lot"
+                            className="form-select"
+                            value={transferForm.lotCode}
+                            onChange={(event) => setTransferForm((prev) => ({ ...prev, lotCode: event.target.value }))}
+                          >
+                            <option value="">Sin lote</option>
+                            {data?.options.lots.map((item) => (
+                              <option key={item.code} value={item.code}>{item.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label" htmlFor="ani-transfer-date">Fecha efectiva</label>
+                          <input
+                            id="ani-transfer-date"
+                            type="date"
+                            className="form-input"
+                            value={transferForm.effectiveDate}
+                            max={farmToday()}
+                            onChange={(event) => setTransferForm((prev) => ({ ...prev, effectiveDate: event.target.value }))}
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label" htmlFor="ani-transfer-reason">Motivo</label>
+                          <input
+                            id="ani-transfer-reason"
+                            className="form-input"
+                            value={transferForm.reason}
+                            placeholder="Ej. Paso a engorde"
+                            onChange={(event) => setTransferForm((prev) => ({ ...prev, reason: event.target.value }))}
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="form-actions">
+                        <button
+                          type="submit"
+                          className="btn btn-primary btn-sm"
+                          disabled={busy}
+                          aria-label="Trasladar animal a galpón"
+                        >
+                          <span className="inline-flex items-center justify-center gap-2 leading-none">
+                            <IconArrowRight size={14} />
+                            <span>{busy ? 'Guardando…' : 'Trasladar a galpón'}</span>
+                          </span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+
+                  <div className="card">
+                    <div className="card-header-clean mb-2">
+                      <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
+                        <IconAlertTriangle size={16} className="text-danger" />
+                        <span>Registrar baja de inventario</span>
+                      </span>
+                      <span className="text-xs text-muted">La venta, el descarte (saca) o la muerte actualiza la ficha y descuenta la cabeza del inventario de granja.</span>
+                    </div>
+                    <form className="form-stack" onSubmit={(event) => void handlePhysicalExit(event)}>
+                      {physicalActionError && (
+                        <div className="alert alert-error mb-3" role="alert" aria-live="assertive">
+                          <span className="inline-flex items-center justify-center gap-2 leading-none">
+                            <IconAlertCircle size={16} />
+                            <span>{physicalActionError}</span>
+                          </span>
+                        </div>
+                      )}
+                      <div className="form-grid">
+                        <div className="form-group">
+                          <label className="form-label" htmlFor="ani-exit-type">Tipo de salida</label>
+                          <select
+                            id="ani-exit-type"
+                            className="form-select"
+                            value={exitForm.purchaseReturn ? 'purchase_return' : exitForm.exitType}
+                            onChange={(event) =>
+                              setExitForm((prev) => ({
+                                ...prev,
+                                exitType:
+                                  event.target.value === 'death'
+                                    ? 'death'
+                                    : event.target.value === 'discard'
+                                      ? 'discard'
+                                      : 'sale',
+                                purchaseReturn: event.target.value === 'purchase_return',
+                                causeCode: '',
+                              }))
+                            }
+                          >
+                            <option value="sale">Venta</option>
+                            <option value="discard">Descarte (saca)</option>
+                            {detail.originType === 'compra' && (
+                              <option value="purchase_return">Devolución de compra al proveedor</option>
+                            )}
+                            <option value="death">Muerte</option>
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label" htmlFor="ani-exit-cause">Causa</label>
+                          <select
+                            id="ani-exit-cause"
+                            className="form-select"
+                            value={exitForm.causeCode}
+                            onChange={(event) => setExitForm((prev) => ({ ...prev, causeCode: event.target.value }))}
+                            required
+                          >
+                            <option value="">Seleccione causa</option>
+                            {(exitForm.exitType === 'death' ? data?.options.deathCauses : data?.options.saleCauses)?.map((item) => (
+                              <option key={item.code} value={item.code}>{item.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label" htmlFor="ani-exit-date">Fecha efectiva</label>
+                          <input
+                            id="ani-exit-date"
+                            type="date"
+                            className="form-input"
+                            value={exitForm.effectiveDate}
+                            max={farmToday()}
+                            onChange={(event) => setExitForm((prev) => ({ ...prev, effectiveDate: event.target.value }))}
+                            required
+                          />
+                        </div>
+                        {exitForm.exitType === 'sale' && !exitForm.purchaseReturn && (
+                          <>
+                            <div className="form-group">
+                              <label className="form-label" htmlFor="ani-exit-amount">Importe de venta</label>
+                              <input
+                                id="ani-exit-amount"
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                placeholder="0.00"
+                                className="form-input tabular-nums"
+                                value={exitForm.saleAmount}
+                                onChange={(event) => setExitForm((prev) => ({ ...prev, saleAmount: event.target.value }))}
+                                required
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label" htmlFor="ani-exit-currency">Moneda</label>
+                              <select
+                                id="ani-exit-currency"
+                                className="form-select"
+                                value={exitForm.currencyCode}
+                                onChange={(event) => setExitForm((prev) => ({ ...prev, currencyCode: event.target.value }))}
+                              >
+                                <option value="PEN">PEN · Sol peruano (S/)</option>
+                                <option value="USD">USD · Dólar ($)</option>
+                                <option value="EUR">EUR · Euro (€)</option>
+                              </select>
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label" htmlFor="ani-exit-buyer">Cliente</label>
+                              <input
+                                id="ani-exit-buyer"
+                                className="form-input"
+                                placeholder="Nombre del comprador"
+                                value={exitForm.counterparty}
+                                onChange={(event) => setExitForm((prev) => ({ ...prev, counterparty: event.target.value }))}
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label" htmlFor="ani-exit-document">Documento</label>
+                              <input
+                                id="ani-exit-document"
+                                className="form-input"
+                                placeholder="Ej. Guía / Factura"
+                                value={exitForm.documentReference}
+                                onChange={(event) => setExitForm((prev) => ({ ...prev, documentReference: event.target.value }))}
+                              />
+                            </div>
+                          </>
+                        )}
+                        {exitForm.purchaseReturn ? (
+                          <p className="form-helper form-col-span-full">
+                            Se revertirán el pago original y la existencia comprada; no se permite una segunda devolución.
+                          </p>
+                        ) : null}
+                        <div className="form-group form-col-span-full">
+                          <label className="form-label" htmlFor="ani-exit-reason">Motivo</label>
+                          <input
+                            id="ani-exit-reason"
+                            className="form-input"
+                            placeholder="Detalle o justificación de la salida"
+                            value={exitForm.reason}
+                            onChange={(event) => setExitForm((prev) => ({ ...prev, reason: event.target.value }))}
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="form-actions">
+                        <button
+                          type="submit"
+                          className="btn btn-danger btn-sm"
+                          disabled={busy}
+                          aria-label="Registrar baja de animal"
+                        >
+                          <span className="inline-flex items-center justify-center gap-2 leading-none">
+                            <IconAlertCircle size={14} />
+                            <span>{busy ? 'Guardando…' : 'Registrar baja'}</span>
+                          </span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              ) : (
+                <div className="card empty-state-card">
+                  <div className="empty-icon-wrap">
+                    <IconAlertCircle size={28} className="text-warning" />
+                  </div>
+                  <p className="font-semibold text-base">Ficha con baja registrada</p>
+                  <p className="text-sm text-muted">
+                    El animal registra salida ({detail.exitType === 'sale' ? 'Venta' : detail.exitType === 'death' ? 'Muerte' : 'Descarte'}) el {detail.exitDate}.
+                  </p>
+                </div>
+              )}
+
               {detail.exitDate !== null && detail.exitType === 'sale' && ['administrador', 'responsable'].includes(perfil) && (
-                <section className="card">
+                <section className="card mt-3">
                   <div className="card-header-clean mb-2">
-                    <span className="section-title">Devolver una venta</span>
+                    <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
+                      <IconRefreshCw size={16} className="text-primary" />
+                      <span>Devolver venta de animal</span>
+                    </span>
                     <span className="text-xs text-muted">Restaura la ficha y el inventario, y enlaza el asiento compensatorio con la venta original.</span>
                   </div>
-                  {physicalActionError && <div className="alert alert-error" role="alert">{physicalActionError}</div>}
+                  {physicalActionError && (
+                    <div className="alert alert-error mb-3" role="alert" aria-live="assertive">
+                      <span className="inline-flex items-center justify-center gap-2 leading-none">
+                        <IconAlertCircle size={16} />
+                        <span>{physicalActionError}</span>
+                      </span>
+                    </div>
+                  )}
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
                     disabled={busy}
-                    onClick={() => { setSaleReturnReason(''); setSaleReturnOperationKey(newOperationKey('ani-sale-return')); setPhysicalActionError(null); setSaleReturnModalOpen(true); }}
+                    onClick={() => {
+                      setSaleReturnReason('');
+                      setSaleReturnOperationKey(newOperationKey('ani-sale-return'));
+                      setPhysicalActionError(null);
+                      setSaleReturnModalOpen(true);
+                    }}
+                    aria-label="Abrir formulario para registrar devolución de venta"
                   >
-                    Registrar devolución de venta
+                    <span className="inline-flex items-center justify-center gap-2 leading-none">
+                      <IconRefreshCw size={14} />
+                      <span>Registrar devolución de venta</span>
+                    </span>
                   </button>
                 </section>
               )}
+            </>
+          )}
 
           {saleReturnModalOpen && detail && (
             <ModalDialog labelledBy="animal-sale-return-dialog-title" onDismiss={() => setSaleReturnModalOpen(false)} dismissDisabled={busy}>
-                <h4 id="animal-sale-return-dialog-title" className="text-lg font-bold mb-2">Devolver Venta de Animal</h4>
-                <p className="text-sm text-muted mb-3">
-                  Se cancelará el registro de salida del animal <strong>{detail.code}</strong>, se reintegrará 1 cabeza al inventario del galpón y se generará el contra-asiento financiero auditable.
-                </p>
-                <form onSubmit={(e) => { e.preventDefault(); void confirmSaleReturn(); }}>
-                  <div className="form-group mb-4">
-                    <label className="form-label text-sm" htmlFor="modal-sale-return-reason">
-                      Motivo de la devolución:
-                    </label>
-                    <input
-                      id="modal-sale-return-reason"
-                      className="form-input"
-                      value={saleReturnReason}
-                      onChange={(e) => setSaleReturnReason(e.target.value)}
-                      placeholder="ej. Reclamo del cliente / transacción revertida"
-                      required
-                      autoFocus
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      className="btn btn-outline"
-                      disabled={busy}
-                      onClick={() => setSaleReturnModalOpen(false)}
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={busy || !saleReturnReason.trim()}
-                    >
-                      {busy ? 'Guardando…' : 'Confirmar Devolución'}
-                    </button>
-                  </div>
-                </form>
+              <div className="card-header-clean mb-2">
+                <h4 id="animal-sale-return-dialog-title" className="text-lg font-bold inline-flex items-center justify-center gap-2 leading-none">
+                  <IconRefreshCw size={18} className="text-primary" />
+                  <span>Devolver venta de animal</span>
+                </h4>
+              </div>
+              <p className="text-sm text-muted mb-3">
+                Se cancelará el registro de salida del animal <strong>{detail.code}</strong>, se reintegrará 1 cabeza al inventario del galpón y se generará el contra-asiento financiero auditable.
+              </p>
+              <form onSubmit={(e) => { e.preventDefault(); void confirmSaleReturn(); }} className="form-stack">
+                <div className="form-group mb-4">
+                  <label className="form-label text-sm" htmlFor="modal-sale-return-reason">
+                    Motivo de la devolución:
+                  </label>
+                  <input
+                    id="modal-sale-return-reason"
+                    className="form-input"
+                    value={saleReturnReason}
+                    onChange={(e) => setSaleReturnReason(e.target.value)}
+                    placeholder="Ej. Reclamo del cliente / transacción revertida"
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div className="form-actions justify-end">
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    disabled={busy}
+                    onClick={() => setSaleReturnModalOpen(false)}
+                    aria-label="Cancelar devolución"
+                  >
+                    <span className="inline-flex items-center justify-center gap-2 leading-none">
+                      <IconX size={14} />
+                      <span>Cancelar</span>
+                    </span>
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={busy || !saleReturnReason.trim()}
+                    aria-label="Confirmar devolución de venta"
+                  >
+                    <span className="inline-flex items-center justify-center gap-2 leading-none">
+                      <IconCheck size={14} />
+                      <span>{busy ? 'Guardando…' : 'Confirmar devolución'}</span>
+                    </span>
+                  </button>
+                </div>
+              </form>
             </ModalDialog>
           )}
         </div>

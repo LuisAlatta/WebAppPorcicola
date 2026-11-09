@@ -16,6 +16,7 @@ test('muestra coberturas separadas y demanda compartida para el operario',async(
   await expect(stage).toContainText('Día: suficiente');await expect(stage).toContainText('Etapa: suficiente');await expect(stage).toContainText('Mes: faltan 203.5 kg');
   const shared=page.getByRole('row').filter({hasText:'Alimento gestación'});
   await expect(shared).toContainText('210 kg');await expect(shared).toContainText('160 kg');
-  await page.getByLabel('Movimiento').selectOption('delivery');await expect(page.getByLabel('Galpón destino')).toContainText('Galpón A');
+  await page.getByRole('tab',{name:'Registrar nuevo movimiento de insumo o alimento'}).click();
+  await page.getByLabel('Tipo de movimiento').selectOption('delivery');await expect(page.getByLabel('Galpón destino')).toContainText('Galpón A');
   expect(adminRequested).toBe(false);
 });

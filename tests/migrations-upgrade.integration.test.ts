@@ -46,14 +46,14 @@ async function seedOperation(db: D1Database, id: string, operationKey: string, t
 }
 
 describe('Actualización de esquema desde 0001–0005', () => {
-  it('aplica 0006–0025 sin perder datos legados ni romper relaciones', async () => {
+  it('aplica 0006–0026 sin perder datos legados ni romper relaciones', async () => {
     const db = await runtime.getD1Database('DB');
     await db.exec('PRAGMA foreign_keys = ON;');
     const migrationNames = (await readdir(new URL('../migrations/', import.meta.url)))
       .filter(name => /^\d+.*\.sql$/.test(name))
       .sort();
 
-    expect(migrationNames).toHaveLength(25);
+    expect(migrationNames).toHaveLength(26);
 
     for (const name of migrationNames.slice(0, 5)) await applyMigration(db, name);
 
