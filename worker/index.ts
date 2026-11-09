@@ -685,12 +685,14 @@ const worker = {
         if (path === '/api/reproduction/cycles' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof createReproductionCycle>[2];
           const result = await createReproductionCycle(env.DB, session.user.id, body, scope);
+          if(body.femaleCode)await generateAnimalVaccineSchedules(env.DB,String(body.femaleCode),session.user.id,scope);
           await reconcileAlerts(env.DB);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
         if (path === '/api/reproduction/antecedents' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof createPregnantAntecedent>[2];
           const result = await createPregnantAntecedent(env.DB, session.user.id, body, scope);
+          if(body.femaleCode)await generateAnimalVaccineSchedules(env.DB,String(body.femaleCode),session.user.id,scope);
           await reconcileAlerts(env.DB);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
@@ -725,6 +727,7 @@ const worker = {
         if (cycleId && parts.length === 4 && request.method === 'PUT') {
           const body = await request.json() as Parameters<typeof updateReproductionCycle>[3];
           const result = await updateReproductionCycle(env.DB, session.user.id, cycleId, body, scope);
+          const female=await env.DB.prepare('SELECT a.code FROM reproduction_cycles c JOIN animals a ON a.id=c.female_animal_id WHERE c.id=?').bind(cycleId).first<{code:string}>();if(female)await generateAnimalVaccineSchedules(env.DB,female.code,session.user.id,scope);
           await reconcileAlerts(env.DB);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 200 });
         }
@@ -736,11 +739,14 @@ const worker = {
         if (cycleId && parts.length === 5 && parts[4] === 'services' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof addReproductionService>[3];
           const result = await addReproductionService(env.DB, session.user.id, cycleId, body, scope);
+          const female=await env.DB.prepare('SELECT a.code FROM reproduction_cycles c JOIN animals a ON a.id=c.female_animal_id WHERE c.id=?').bind(cycleId).first<{code:string}>();if(female)await generateAnimalVaccineSchedules(env.DB,female.code,session.user.id,scope);
+          await reconcileAlerts(env.DB);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }
         if (cycleId && parts.length === 5 && parts[4] === 'events' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof recordReproductionEvent>[3];
           const result = await recordReproductionEvent(env.DB, session.user.id, cycleId, body, scope);
+          const female=await env.DB.prepare('SELECT a.code FROM reproduction_cycles c JOIN animals a ON a.id=c.female_animal_id WHERE c.id=?').bind(cycleId).first<{code:string}>();if(female)await generateAnimalVaccineSchedules(env.DB,female.code,session.user.id,scope);
           await reconcileAlerts(env.DB);
           return Response.json({ ok: true, ...result }, { status: result.replayed ? 200 : 201 });
         }

@@ -75,6 +75,11 @@ async function assertSireAccess(db: D1Database, sire: Row, effectiveDate: string
 function serviceLocationGuard(db:D1Database,context:Awaited<ReturnType<typeof femaleAtDate>>,sire:Row|null,sireBarnId:number|null,effectiveDate:string){
   return db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?) AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ?) AND (? IS NULL OR EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?) AND h.barn_id=?)) THEN 0 ELSE -1 END`).bind(context.female.id,effectiveDate,effectiveDate,effectiveDate,effectiveDate,context.barnId,context.locationCode,context.lotCode,sire?.id??null,sire?.id??null,effectiveDate,effectiveDate,effectiveDate,effectiveDate,sireBarnId);
 }
+function reschedulePrepartum(db:D1Database,cycleId:string,dueDate:string,now:string){return [
+  db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM vaccine_occurrences v JOIN vaccine_rules r ON r.id=v.rule_version_id JOIN animals a ON a.id=v.animal_id WHERE v.status='pending' AND v.source_event_type='expected_farrowing' AND v.source_event_id=? AND (date(?,printf('%+d days',r.offset_days))<a.entry_date OR (a.exit_date IS NOT NULL AND date(?,printf('%+d days',r.offset_days))>a.exit_date))) THEN 0 ELSE -1 END`).bind(cycleId,dueDate,dueDate),
+  db.prepare(`UPDATE vaccine_occurrences SET source_date=?,scheduled_date=date(?,printf('%+d days',(SELECT offset_days FROM vaccine_rules WHERE id=vaccine_occurrences.rule_version_id))),updated_at=? WHERE status='pending' AND source_event_type='expected_farrowing' AND source_event_id=? AND rule_version_id IS NOT NULL`).bind(dueDate,dueDate,now,cycleId),
+];}
+function openCycleGuard(db:D1Database,cycleId:string,updatedAt:unknown){return db.prepare("INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM reproduction_cycles WHERE id=? AND cycle_status='open' AND updated_at=?) THEN 0 ELSE -1 END").bind(cycleId,updatedAt);}
 function mapService(row: Row) {
   return { id: Number(row.id), serviceNumber: Number(row.service_number), serviceDate: String(row.service_date),
     serviceType: String(row.service_type), sireAnimalId: row.sire_animal_id === null ? null : Number(row.sire_animal_id),
@@ -258,7 +263,7 @@ export async function addReproductionService(db: D1Database, actorUserId: number
   if (replay) return { replayed: true, cycle: (await listReproductionCycles(db, {}, scope)).cycles.find((item) => item.id === cycleId) ?? null };
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'reproduction.service.add', authorUserId: actorUserId,
     entityType: 'reproduction_cycle', entityId: Number(cycle.female_animal_id), barnId: context.barnId, effectiveDate: serviceDate, payload, result: { cycleId, serviceNumber, due } });
-  const statements: D1PreparedStatement[] = [serviceLocationGuard(db,context,sire,sireBarnId,serviceDate),db.prepare(`INSERT INTO reproduction_services
+  const statements: D1PreparedStatement[] = [openCycleGuard(db,cycleId,cycle.updated_at),serviceLocationGuard(db,context,sire,sireBarnId,serviceDate),db.prepare(`INSERT INTO reproduction_services
     (cycle_id,service_number,service_date,service_type,sire_animal_id,sire_code_snapshot,sire_breed_snapshot,material_source,external_source,aptitude,observations,created_by_user_id,created_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(cycleId, serviceNumber, serviceDate, serviceType, sire?.id ?? null,
       sire?.code ?? (source === 'external' ? external : null), sireBreed, source, external, aptitude, observations, actorUserId, claim.recordedAt),
@@ -267,6 +272,7 @@ export async function addReproductionService(db: D1Database, actorUserId: number
   statements.push(db.prepare(`INSERT INTO reproduction_events (cycle_id,event_type,event_date,service_id,observations,created_by_user_id,created_at)
     VALUES (?,'repeat',?,(SELECT id FROM reproduction_services WHERE cycle_id=? AND service_number=?),?,?,?)`)
     .bind(cycleId, serviceDate, cycleId, serviceNumber, observations ?? `Servicio número ${serviceNumber}`, actorUserId, claim.recordedAt));
+  statements.push(...reschedulePrepartum(db,cycleId,due,claim.recordedAt));
   statements.push(db.prepare('DELETE FROM inventory_write_guard'));
   await commitOperation(db, claim, statements, [{ entityType: 'reproduction_cycle', entityId: Number(context.female.id), action: 'update', actorUserId, barnId: context.barnId,
     reason: 'Nuevo servicio del ciclo', previousData: { dueDate: cycle.probable_farrowing_date }, newData: payload, effectiveDate: serviceDate, recordedAt: claim.recordedAt }]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La ubicación o permanencia de un reproductor cambió; actualice antes de guardar');throw error;});
@@ -306,15 +312,16 @@ export async function recordReproductionEvent(db: D1Database, actorUserId: numbe
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: `reproduction.${eventType}`, authorUserId: actorUserId,
     entityType: 'reproduction_cycle', entityId: Number(context.female.id), barnId: context.barnId, effectiveDate: eventDate, payload, result: { cycleId, eventType } });
   const closes = eventType === 'abortion' || eventType === 'closed';
-  await commitOperation(db, claim, [db.prepare(`INSERT INTO reproduction_events
+  const committed=await commitOperation(db, claim, [openCycleGuard(db,cycleId,cycle.updated_at),db.prepare(`INSERT INTO reproduction_events
     (cycle_id,event_type,event_date,physiological_status,service_id,reason,observations,created_by_user_id,created_at)
     VALUES (?,?,?,?,?,?,?,?,?)`).bind(cycleId, eventType, eventDate, eventStatus, serviceId, reason, observations, actorUserId, claim.recordedAt),
   db.prepare(`UPDATE reproduction_cycles SET cycle_status=?,reproductive_status=?,updated_at=? WHERE id=?`)
-    .bind(closes ? (eventType === 'abortion' ? 'aborted' : 'closed') : 'open', status, claim.recordedAt, cycleId)],
+    .bind(closes ? (eventType === 'abortion' ? 'aborted' : 'closed') : 'open', status, claim.recordedAt, cycleId),
+  ...(closes?[db.prepare("UPDATE vaccine_occurrences SET status='cancelled',updated_at=? WHERE source_event_type='expected_farrowing' AND source_event_id=? AND status='pending'").bind(claim.recordedAt,cycleId)]:[]),db.prepare('DELETE FROM inventory_write_guard')],
   [{ entityType: 'reproduction_cycle', entityId: Number(context.female.id), action: closes ? 'annul' : 'update', actorUserId, barnId: context.barnId,
     reason: reason ?? `Evento ${eventType}`, previousData: { status: cycle.reproductive_status, cycleStatus: cycle.cycle_status }, newData: payload,
-    effectiveDate: eventDate, recordedAt: claim.recordedAt }]);
-  return { replayed: false, cycle: (await listReproductionCycles(db, {}, scope)).cycles.find((item) => item.id === cycleId) ?? null };
+    effectiveDate: eventDate, recordedAt: claim.recordedAt }]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'El ciclo cambió; actualice antes de registrar el evento');throw error;});
+  return { replayed: committed.replayed, cycle: (await listReproductionCycles(db, {}, scope)).cycles.find((item) => item.id === cycleId) ?? null };
 }
 
 export async function updateReproductionCycle(db: D1Database, actorUserId: number, cycleId: string, input: { dueDate?: unknown; dueDateReason?: unknown; observations?: unknown; operationKey?: string }, scope: ReproductionScope = {}) {
@@ -331,10 +338,12 @@ export async function updateReproductionCycle(db: D1Database, actorUserId: numbe
   if (replay) return { replayed: true, cycle: (await listReproductionCycles(db, {}, scope)).cycles.find((item) => item.id === cycleId) ?? null };
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'reproduction.cycle.update', authorUserId: actorUserId,
     entityType: 'reproduction_cycle', entityId: Number(cycle.female_animal_id), barnId: Number(cycle.barn_id), effectiveDate: currentFarmDate(), payload, result: { cycleId, dueDate } });
-  const statements: D1PreparedStatement[] = [db.prepare(`UPDATE reproduction_cycles SET probable_farrowing_date=?,due_date_source=?,due_date_reason=?,observations=?,updated_at=? WHERE id=?`)
+  const statements: D1PreparedStatement[] = [openCycleGuard(db,cycleId,cycle.updated_at),db.prepare(`UPDATE reproduction_cycles SET probable_farrowing_date=?,due_date_source=?,due_date_reason=?,observations=?,updated_at=? WHERE id=?`)
     .bind(dueDate, payload.dueDateSource, dueDateReason, observations, claim.recordedAt, cycleId)];
   if (input.dueDate) statements.push(db.prepare(`INSERT INTO reproduction_events (cycle_id,event_type,event_date,reason,observations,created_by_user_id,created_at)
     VALUES (?,'manual_due_date',?,?,?, ?,?)`).bind(cycleId, currentFarmDate(), dueDateReason, `Nueva fecha probable: ${dueDate}`, actorUserId, claim.recordedAt));
+  if(input.dueDate)statements.push(...reschedulePrepartum(db,cycleId,dueDate,claim.recordedAt));
+  statements.push(db.prepare('DELETE FROM inventory_write_guard'));
   await commitOperation(db, claim, statements, [{ entityType: 'reproduction_cycle', entityId: Number(cycle.female_animal_id), action: 'update', actorUserId, barnId: Number(cycle.barn_id),
     reason: String(dueDateReason ?? 'Actualización de ciclo reproductivo'), previousData: { dueDate: cycle.probable_farrowing_date, observations: cycle.observations }, newData: payload,
     effectiveDate: currentFarmDate(), recordedAt: claim.recordedAt }]);

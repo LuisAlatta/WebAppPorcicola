@@ -39,3 +39,16 @@ test('corrige una actuación grupal y conserva los datos ante un conflicto',asyn
   await expect(section.getByLabel('Producto / medicamento')).toHaveValue('Producto corregido');await section.getByRole('button',{name:'Guardar corrección'}).click();
   await expect(page.getByRole('status')).toContainText('Actuación corregida');expect(requests).toHaveLength(2);expect(requests[0].operationKey).toBe(requests[1].operationKey);
 });
+
+test('permite configurar una vacuna antes del parto probable',async({page})=>{
+  let body:Record<string,unknown>|undefined;
+  await page.route('**/api/**',route=>route.fulfill({status:200,json:{ok:true}}));
+  await page.route('**/api/auth/me',route=>route.fulfill({status:200,json:{ok:true,user:{role:'administrador',username:'admin@prueba.pe'}}}));
+  await page.route('**/api/animals?**',route=>route.fulfill({status:200,json:{animals:[]}}));
+  await page.route('**/api/vaccines/rules',route=>{if(route.request().method()==='POST'){body=route.request().postDataJSON() as Record<string,unknown>;return route.fulfill({status:201,json:{ok:true,eligible:1,created:1}});}return route.fulfill({status:200,json:{rules:[]}});});
+  await page.route('**/api/vaccines/schedules?**',route=>route.fulfill({status:200,json:{schedules:[]}}));
+  await page.route('**/api/health/events?**',route=>route.fulfill({status:200,json:{events:[]}}));await page.route('**/api/health/withdrawals?**',route=>route.fulfill({status:200,json:{alerts:[]}}));await page.route('**/api/health/upcoming?**',route=>route.fulfill({status:200,json:{events:[]}}));
+  await page.goto('/sanidad');const form=page.locator('form').filter({has:page.getByRole('heading',{name:'Nueva regla'})});
+  await form.getByLabel('Vacuna',{exact:true}).fill('Vacuna preparto');await form.getByLabel('Categoría').selectOption('cerda_primeriza');await form.getByLabel('Evento base').selectOption('farrowing');await form.getByLabel('Ajuste en días (negativo: antes del parto probable)').fill('-14');
+  await form.getByRole('button',{name:'Crear regla y generar agenda'}).click();await expect.poll(()=>body?.offsetDays).toBe(-14);expect(body).toMatchObject({baseEvent:'farrowing',targetCategory:'cerda_primeriza'});
+});

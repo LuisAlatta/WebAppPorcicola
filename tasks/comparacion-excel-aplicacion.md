@@ -9,7 +9,7 @@
 | Ficha reproductiva | Muestra servicios, partos, fechas, crías por sexo, peso promedio y causa de salida. |
 | Informes de pesos y nacimientos | Conectados a sus consultas, filtros, gráficos y exportaciones. |
 | Alimentación | Cuenta acumulados de lotes agotados y distingue cobertura diaria, por etapa, mensual y por alimento compartido. |
-| Sanidad | Dosis con unidad y retiro futuro; los flujos de vacuna y muerte se presentan por separado. Los tratamientos generales admiten corrección o anulación auditada y recalculan sus efectos. |
+| Sanidad | Dosis con unidad y retiro futuro; los flujos de vacuna y muerte se presentan por separado. Los tratamientos generales admiten corrección o anulación auditada y recalculan sus efectos. Las reglas de parto con ajuste negativo programan las dosis desde el parto probable y recalculan las pendientes al cambiar la fecha o registrar el parto. |
 | Camadas | La corrección de cantidades está disponible en pantalla y conserva la coherencia histórica del inventario. El plan postdestete usa la fecha real de la camada anterior cuando está registrada. |
 | Descarte y filtros | Hay salida por descarte sin venta ni muerte, vinculada a la camada cuando corresponde. El padrón filtra también por progenitores, raza, aptitud, procedencia y etapa de ingreso. |
 
