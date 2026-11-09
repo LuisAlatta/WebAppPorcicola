@@ -832,7 +832,6 @@ export async function transferInventory(
   if (!Number.isInteger(sourceBarnId) || !Number.isInteger(destinationBarnId) || sourceBarnId <= 0 || destinationBarnId <= 0) {
     throw new ApiError(400, 'Seleccione los galpones de origen y destino');
   }
-  if (sourceBarnId === destinationBarnId) throw new ApiError(400, 'El origen y destino deben ser diferentes');
   const quantity = Number(input.quantity);
   if (!Number.isInteger(quantity) || quantity <= 0) throw new ApiError(400, 'La cantidad debe ser un entero positivo');
   const stageCode = requireText(input.stageCode, 'Etapa', 60);
@@ -844,9 +843,12 @@ export async function transferInventory(
   const sourceLotCode = optionalCode(input.sourceLotCode ?? lotCode);
   const destinationLocationCode = optionalCode(input.destinationLocationCode ?? locationCode);
   const destinationLotCode = optionalCode(input.destinationLotCode ?? lotCode);
+  if (sourceBarnId === destinationBarnId && sourceLocationCode === destinationLocationCode && sourceLotCode === destinationLotCode) {
+    throw new ApiError(400, 'El origen y destino deben ser diferentes');
+  }
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Traslado interno' });
   const barns = await db.prepare('SELECT id, name, capacity FROM barns WHERE id IN (?, ?)').bind(sourceBarnId, destinationBarnId).all<{ id: number; name: string; capacity: number | null }>();
-  if ((barns.results ?? []).length !== 2) throw new ApiError(404, 'No se encontró uno de los galpones');
+  if ((barns.results ?? []).length !== (sourceBarnId === destinationBarnId ? 1 : 2)) throw new ApiError(404, 'No se encontró uno de los galpones');
   for (const barn of barns.results ?? []) {
     if (scope.allowedBarnNames && !scope.allowedBarnNames.includes(barn.name)) {
       throw new ApiError(403, 'Debe tener acceso a ambos galpones para registrar el traslado');
@@ -867,7 +869,7 @@ export async function transferInventory(
 
   const destinationBarn = barns.results?.find((barn) => Number(barn.id) === destinationBarnId);
   let warning: string | null = null;
-  if (destinationBarn?.capacity !== null && destinationBarn?.capacity !== undefined) {
+  if (sourceBarnId !== destinationBarnId && destinationBarn?.capacity !== null && destinationBarn?.capacity !== undefined) {
     const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out')
       THEN -quantity ELSE quantity END), 0) AS heads FROM inventory_movements WHERE barn_id = ? AND effective_date <= ?`)
       .bind(destinationBarnId, effectiveDate).first<{ heads: number }>();

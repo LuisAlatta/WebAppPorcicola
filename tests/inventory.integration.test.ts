@@ -467,6 +467,22 @@ describe('Inventario individual y colectivo · T08 (INV-01..INV-03)', () => {
     expect(stock.balances.find((row) => row.barnId === 2 && row.locationCode === 'galpon_b' && row.lotCode === null && row.stageCode === 'levante' && row.sex === 'macho')?.heads).toBe(13);
   });
 
+  it('permite trasladar un grupo entre ubicaciones del mismo galpón sin alterar su total', async () => {
+    const seeded = await register({ movementType: 'initial', barnId: 1, locationCode: null, lotCode: null, effectiveDate: '2026-05-03', quantity: 3, operationKey: 'same-barn-seed' });
+    expect(seeded.status).toBe(201);
+    const before = await snapshot('2026-05-03');
+    const response = await api('/api/inventory/transfers', { method: 'POST', body: JSON.stringify({
+      effectiveDate: '2026-05-03', sourceBarnId: 1, destinationBarnId: 1,
+      sourceLocationCode: null, sourceLotCode: null, destinationLocationCode: 'galpon_a', destinationLotCode: null,
+      stageCode: 'levante', sex: 'macho', quantity: 3, reason: 'Cambio de ubicación', operationKey: 'same-barn-transfer',
+    }) });
+    expect(response.status).toBe(201);
+    const after = await snapshot('2026-05-03');
+    const total = (s: typeof before) => s.balances.filter((b) => b.barnId === 1).reduce((sum, b) => sum + b.heads, 0);
+    expect(total(after)).toBe(total(before));
+    expect(after.balances.find((b) => b.barnId === 1 && b.locationCode === 'galpon_a' && b.lotCode === null && b.stageCode === 'levante' && b.sex === 'macho')?.heads).toBe(3);
+  });
+
   it('concilia el conteo físico con un ajuste aprobado y auditable', async () => {
     const seed = await register({ movementType: 'initial', barnId: 1, effectiveDate: '2026-06-01', quantity: 12, operationKey: 't10-count-seed' });
     expect(seed.status).toBe(201);
