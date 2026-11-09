@@ -49,9 +49,9 @@ describe('Bocetos navegables · T02', () => {
     const roles = DEMO_ACCOUNTS.map((a) => a.role);
     expect(roles).toEqual(['administrador', 'responsable', 'operario', 'veterinario']);
     for (const acc of DEMO_ACCOUNTS) {
+      expect(acc.label).toBeTruthy();
       expect(acc.username).toBeTruthy();
       expect(acc.password).toBeTruthy();
-      expect(acc.description).toBeTruthy();
     }
   });
 });

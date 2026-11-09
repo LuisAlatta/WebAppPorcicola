@@ -11,7 +11,6 @@ import {
   IconShield,
   IconLogIn,
   IconRefreshCw,
-  IconX,
   IconStethoscope,
 } from './icons';
 
@@ -20,8 +19,6 @@ export interface DemoAccount {
   label: string;
   username: string;
   password: string;
-  badge: string;
-  description: string;
 }
 
 export const DEMO_ACCOUNTS: DemoAccount[] = [
@@ -30,32 +27,24 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     label: 'Administrador',
     username: 'admin@granja.pe',
     password: 'Password123!',
-    badge: 'Control Total',
-    description: 'Acceso total a todos los módulos, reportes, configuración y administración.',
   },
   {
     role: 'responsable',
     label: 'Responsable',
     username: 'responsable@granja.pe',
     password: 'Password123!',
-    badge: 'Gestión Operativa',
-    description: 'Control de animales, reproducción, raciones, inventario y finanzas.',
   },
   {
     role: 'operario',
     label: 'Operario',
     username: 'operario@granja.pe',
     password: 'Password123!',
-    badge: 'Labores de Campo',
-    description: 'Registro de pesajes, alimentación e inventario de galpones asignados.',
   },
   {
     role: 'veterinario',
     label: 'Veterinario',
     username: 'veterinario@granja.pe',
     password: 'Password123!',
-    badge: 'Salud y Vacunas',
-    description: 'Gestión sanitaria, tratamientos clínicos y planes de vacunación.',
   },
 ];
 
@@ -172,13 +161,6 @@ export function BocetoLogin({ onLogin }: LoginProps) {
     void navigator.credentials?.preventSilentAccess?.().catch(() => undefined);
   };
 
-  const clearRememberedUsername = () => {
-    removeRememberedUsername();
-    setUsername('');
-    setPassword('');
-    setRemember(false);
-  };
-
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
@@ -245,51 +227,6 @@ export function BocetoLogin({ onLogin }: LoginProps) {
           <h1 className="login-title">Mi Granja Pro</h1>
           <p className="login-subtitle">Sistema integral de gestión porcícola</p>
         </header>
-
-        <section className="login-demo-section" aria-label="Cuentas demo de prueba">
-          <div className="login-demo-header">
-            <span className="login-demo-title">Acceso rápido de prueba (Demo)</span>
-          </div>
-          <div className="login-demo-grid">
-            {DEMO_ACCOUNTS.map((acc) => {
-              const isSelected = selectedRole === acc.role;
-              return (
-                <button
-                  key={acc.role}
-                  type="button"
-                  className={`btn-demo-role ${isSelected ? 'is-selected' : ''}`}
-                  onClick={() => fillDemoAccount(acc)}
-                  title={`Cargar datos de ${acc.label} (${acc.username})`}
-                  disabled={loading}
-                >
-                  <span className="demo-role-head">
-                    {acc.role === 'administrador' && <IconShield size={16} />}
-                    {acc.role === 'responsable' && <IconUser size={16} />}
-                    {acc.role === 'operario' && <IconPig size={16} />}
-                    {acc.role === 'veterinario' && <IconStethoscope size={16} />}
-                    <span className="demo-role-name">{acc.label}</span>
-                  </span>
-                  <span className="demo-role-badge">{acc.badge}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {selectedRole && (
-            <div className="login-demo-scope" role="status">
-              {(() => {
-                const acc = DEMO_ACCOUNTS.find((a) => a.role === selectedRole);
-                if (!acc) return null;
-                return (
-                  <>
-                    <strong className="demo-scope-title">{acc.label}:</strong>{' '}
-                    <span>{acc.description}</span>
-                  </>
-                );
-              })()}
-            </div>
-          )}
-        </section>
 
         <form onSubmit={submit} className="login-form" autoComplete="on">
           <div className="form-group">
@@ -378,25 +315,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 Recordar usuario y contraseña
               </span>
             </label>
-            {hasSaved && (
-              <button
-                type="button"
-                className="btn-forget-credentials"
-                onClick={clearRememberedUsername}
-                title="Borrar usuario recordado"
-                disabled={loading}
-              >
-                <span className="inline-flex items-center justify-center gap-1 leading-none">
-                  <IconX size={13} />
-                  <span>Borrar usuario recordado</span>
-                </span>
-              </button>
-            )}
           </div>
-
-          <p className="login-remember-help">
-            La app guarda solo el usuario. El gestor del navegador puede guardar la contraseña; para quitarla, elimínala allí.
-          </p>
 
           {error && (
             <div className="alert alert-danger login-alert" role="alert">
@@ -424,6 +343,29 @@ export function BocetoLogin({ onLogin }: LoginProps) {
               )}
             </span>
           </button>
+
+          <div className="login-quick-roles" aria-label="Perfiles de acceso rápido">
+            {DEMO_ACCOUNTS.map((acc) => {
+              const isSelected = selectedRole === acc.role;
+              return (
+                <button
+                  key={acc.role}
+                  type="button"
+                  className={`btn-quick-role ${isSelected ? 'is-selected' : ''}`}
+                  onClick={() => fillDemoAccount(acc)}
+                  disabled={loading}
+                >
+                  <span className="inline-flex items-center justify-center gap-1.5 leading-none">
+                    {acc.role === 'administrador' && <IconShield size={15} />}
+                    {acc.role === 'responsable' && <IconUser size={15} />}
+                    {acc.role === 'operario' && <IconPig size={15} />}
+                    {acc.role === 'veterinario' && <IconStethoscope size={15} />}
+                    <span>{acc.label}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </form>
 
         <footer className="login-card-footer">
