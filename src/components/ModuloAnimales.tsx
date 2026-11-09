@@ -123,6 +123,9 @@ interface AnimalDetail extends Animal {
   weights: WeightItem[];
   chronology: ChronologyItem[];
   ageReference: string;
+  exitCauseCode: string | null;
+  exitCauseLabel: string | null;
+  reproductiveSummary: {serviceCount:number;farrowingCount:number;firstFarrowingDate:string|null;lastFarrowingDate:string|null;totalBorn:number;maleBorn:number;femaleBorn:number;unsexedBorn:number;averageBirthWeightKg:number|null;weighedBirths:number}|null;
 }
 
 interface AnimalOptions {
@@ -1614,7 +1617,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                       <th>Salida</th>
                       <td>{detail.exitDate}</td>
                       <th>Tipo de salida</th>
-                      <td>{detail.exitType === 'sale' ? 'Venta' : detail.exitType === 'death' ? 'Muerte' : '—'}</td>
+                      <td>{detail.exitType === 'sale' ? 'Venta' : detail.exitType === 'death' ? 'Muerte' : '—'}{detail.exitCauseLabel ? ` · ${detail.exitCauseLabel}` : ''}</td>
                     </tr>
                   )}
                   <tr>
@@ -1624,6 +1627,13 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 </tbody>
               </table>
             </div>
+
+            {detail.reproductiveSummary && <div className="table-responsive mt-3"><table className="data-table"><tbody>
+              <tr><th>Servicios</th><td>{detail.reproductiveSummary.serviceCount}</td><th>Partos</th><td>{detail.reproductiveSummary.farrowingCount}</td></tr>
+              <tr><th>Primer parto</th><td>{detail.reproductiveSummary.firstFarrowingDate ?? 'Sin dato'}</td><th>Último parto</th><td>{detail.reproductiveSummary.lastFarrowingDate ?? 'Sin dato'}</td></tr>
+              <tr><th>Crías nacidas</th><td>{detail.reproductiveSummary.totalBorn}</td><th>Machos / hembras / sin sexar</th><td>{detail.reproductiveSummary.maleBorn} / {detail.reproductiveSummary.femaleBorn} / {detail.reproductiveSummary.unsexedBorn}</td></tr>
+              <tr><th>Peso promedio de crías vivas</th><td colSpan={3}>{formatWeight(detail.reproductiveSummary.averageBirthWeightKg)}{detail.reproductiveSummary.weighedBirths ? ` · ponderado por ${detail.reproductiveSummary.weighedBirths} crías vivas de camadas con peso registrado` : ''}</td></tr>
+            </tbody></table></div>}
 
             {!soloLectura && (
               <div className="form-actions">

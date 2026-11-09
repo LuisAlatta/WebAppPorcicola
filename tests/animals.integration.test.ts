@@ -692,7 +692,8 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const replay = await api('/api/animals/T10-EXIT-01/exit', { method: 'POST', body: JSON.stringify(payload) });
     expect(replay.status).toBe(200);
     const detail = await api('/api/animals/T10-EXIT-01');
-    expect((await detail.json() as { animal: AnimalSummary }).animal.status).toBe('muerto');
+    const exitDetail=(await detail.json() as {animal:AnimalSummary & {exitCauseCode:string|null;exitCauseLabel:string|null}}).animal;
+    expect(exitDetail).toMatchObject({status:'muerto',exitCauseCode:'enfermedad',exitCauseLabel:expect.any(String)});
     const linked = await db.prepare("SELECT COUNT(*) AS n FROM inventory_movements WHERE animal_id = (SELECT id FROM animals WHERE code = 'T10-EXIT-01') AND movement_type = 'death'").first<{ n: number }>();
     expect(linked?.n).toBe(1);
     const linkedHealth = await db.prepare("SELECT COUNT(*) AS n FROM health_events WHERE event_type='death' AND id=(SELECT health_event_id FROM inventory_movements WHERE animal_id=(SELECT id FROM animals WHERE code='T10-EXIT-01') AND movement_type='death')").first<{ n: number }>();
@@ -908,6 +909,22 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(antecCycle).toMatchObject({ femaleCode: 'T12-ANTEC', antecedent: true, serviceAnchorDate: null, services: [] });
   }, 15000);
 
+  it('limita el resumen reproductivo a los servicios del galpón autorizado en cada fecha', async () => {
+    const sow=await create({code:'SOW-SCOPE-HISTORY',animalType:'cerda',sex:'hembra',birthDate:'2024-01-01',entryDate:'2026-01-01',entryStageCode:'gestacion',barnId:2,locationCode:null,originType:'compra'});
+    expect(sow.status).toBe(201);
+    const cycle=await api('/api/reproduction/cycles',{method:'POST',body:JSON.stringify({femaleCode:'SOW-SCOPE-HISTORY',serviceDate:'2026-06-01',serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'ORIGEN-PRIVADO-B',operationKey:'scope-history-cycle'})});
+    expect(cycle.status,await cycle.clone().text()).toBe(201);
+    const cycleId=(await cycle.json() as {createdCycleId:string}).createdCycleId;
+    const transfer=await api('/api/animals/SOW-SCOPE-HISTORY/transfer',{method:'POST',body:JSON.stringify({destinationBarnId:1,locationCode:'galpon_a',lotCode:null,effectiveDate:'2026-07-01',reason:'Traslado entre galpones',operationKey:'scope-history-move'})});
+    expect(transfer.status,await transfer.clone().text()).toBe(201);
+    const repeat=await api(`/api/reproduction/cycles/${cycleId}/services`,{method:'POST',body:JSON.stringify({serviceDate:'2026-08-01',serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'ORIGEN-VISIBLE-A',operationKey:'scope-history-repeat'})});
+    expect(repeat.status,await repeat.clone().text()).toBe(201);
+    const detail=await api('/api/animals/SOW-SCOPE-HISTORY',{},operarioToken);
+    expect(detail.status).toBe(200);
+    const body=await detail.text();expect(body).not.toContain('ORIGEN-PRIVADO-B');expect(body).toContain('ORIGEN-VISIBLE-A');
+    expect((JSON.parse(body) as {animal:{reproductiveSummary:{serviceCount:number}}}).animal.reproductiveSummary.serviceCount).toBe(1);
+  });
+
   it('registra parto en una sola operación, suma solo vivos e individualiza cabezas de la camada', async () => {
     const sowRes = await create({ code: 'T13-MADRE', animalType: 'cerda', sex: 'hembra', birthDate: '2024-01-01',
       entryDate: '2026-01-01', entryStageCode: 'gestacion', originType: 'compra', operationKey: 'ani-t13-sow' });
@@ -924,6 +941,8 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(farrowRes.status, await farrowRes.clone().text()).toBe(201);
     const farrow = await farrowRes.json() as { litterId: string; liveCount: number; stillbornCount: number; totalBorn: number; mortalityPercent: number; expectedWeaningDate: string };
     expect(farrow).toMatchObject({ liveCount: 8, stillbornCount: 1, totalBorn: 9, mortalityPercent: expect.closeTo(11.111, 2), expectedWeaningDate: '2026-10-07' });
+    const motherDetail=await api('/api/animals/T13-MADRE');
+    expect((await motherDetail.json() as {animal:{reproductiveSummary:unknown}}).animal.reproductiveSummary).toMatchObject({serviceCount:1,farrowingCount:1,firstFarrowingDate:'2026-09-16',lastFarrowingDate:'2026-09-16',totalBorn:9,maleBorn:6,femaleBorn:3,unsexedBorn:0,averageBirthWeightKg:1.4,weighedBirths:8});
     const retry = await api(`/api/reproduction/cycles/${cycleId}/farrowing`, { method: 'POST', body: JSON.stringify(farrowingBody) });
     expect(retry.status, await retry.clone().text()).toBe(200);
     expect((await inventoryTotals('2026-09-16')).summary.total.available).toBe(before + 8);
@@ -989,6 +1008,13 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     }) });
     expect(allowedCorrection.status, await allowedCorrection.clone().text()).toBe(201);
     expect((await inventoryTotals('2026-11-08')).summary.total.available).toBe(correctionBefore - 1);
+    const secondCycle=await api('/api/reproduction/cycles',{method:'POST',body:JSON.stringify({femaleCode:'T13-MADRE',serviceDate:'2026-09-20',serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'Segunda prueba',operationKey:'rep-t13-second-cycle'})});
+    expect(secondCycle.status,await secondCycle.clone().text()).toBe(201);
+    const secondId=(await secondCycle.json() as {createdCycleId:string}).createdCycleId;
+    const secondFarrow=await api(`/api/reproduction/cycles/${secondId}/farrowing`,{method:'POST',body:JSON.stringify({farrowingDate:'2026-10-20',maleAlive:1,maleStillborn:9,averageWeightKg:2,reason:'Segundo parto de prueba',operationKey:'rep-t13-second-farrow'})});
+    expect(secondFarrow.status,await secondFarrow.clone().text()).toBe(201);
+    const summaryResponse=await api('/api/animals/T13-MADRE');
+    expect((await summaryResponse.json() as {animal:{reproductiveSummary:unknown}}).animal.reproductiveSummary).toMatchObject({serviceCount:2,farrowingCount:2,totalBorn:19,maleBorn:16,femaleBorn:3,weighedBirths:9,averageBirthWeightKg:1.47,firstFarrowingDate:'2026-09-16',lastFarrowingDate:'2026-10-20'});
   }, 15000);
 
   it('registra bajas y destete parcial por sexo y conserva los intervalos de celo del ciclo', async () => {

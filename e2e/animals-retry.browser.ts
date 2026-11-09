@@ -72,6 +72,16 @@ async function mockAnimalApi(page: Page, initial: ReturnType<typeof initialAnima
   await page.route('**/api/animals/RETRY-001', route => route.fulfill({ status: 200, json: { ok: true, animal: initial } }));
 }
 
+test('ficha muestra el resumen reproductivo y la causa de salida', async ({ page }) => {
+  const animal = { ...initialAnimal(), sex: 'hembra', sexLabel: 'Hembra', exitDate: '2026-11-07', exitType: 'death', status: 'muerto', statusLabel: 'Muerto', exitCauseCode: 'enfermedad', exitCauseLabel: 'Enfermedad', reproductiveSummary: {serviceCount: 3, farrowingCount: 2, firstFarrowingDate: '2026-01-10', lastFarrowingDate: '2026-09-10', totalBorn: 19, maleBorn: 10, femaleBorn: 9, unsexedBorn: 0, averageBirthWeightKg: 1.45, weighedBirths: 17} };
+  await mockAnimalApi(page, animal);
+  await page.goto('/animal/RETRY-001');
+  await expect(page.getByRole('cell', {name:'Muerte · Enfermedad'})).toBeVisible();
+  await expect(page.getByRole('row').filter({hasText:'Servicios'})).toContainText('3');
+  await expect(page.getByRole('row').filter({hasText:'Primer parto'})).toContainText('2026-01-10');
+  await expect(page.getByRole('row').filter({hasText:'Peso promedio de crías vivas'})).toContainText('17 crías vivas');
+});
+
 test('cambiar arete reintenta la misma operación después de perderse la respuesta', async ({ page }) => {
   let animal = initialAnimal();
   const operationKeys: string[] = [];

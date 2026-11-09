@@ -175,6 +175,9 @@ export interface AnimalDetail extends AnimalListItem {
   weights: WeightItem[];
   chronology: ChronologyItem[];
   ageReference: string;
+  exitCauseCode: string | null;
+  exitCauseLabel: string | null;
+  reproductiveSummary: { serviceCount: number; farrowingCount: number; firstFarrowingDate: string | null; lastFarrowingDate: string | null; totalBorn: number; maleBorn: number; femaleBorn: number; unsexedBorn: number; averageBirthWeightKg: number | null; weighedBirths: number } | null;
 }
 
 export interface AnimalOptions {
@@ -616,6 +619,10 @@ export async function getAnimal(
   const maps = configMaps(config);
   const base = animalRowBase(row, maps, asOf);
   const id = base.id;
+  const serviceBarnScope = scopeSql(barnIds, 'h.barn_id');
+  const serviceScope = barnIds === null ? '' : ` AND EXISTS (SELECT 1 FROM animal_location_history h WHERE h.animal_id=c.female_animal_id
+    AND h.valid_from<=s.service_date AND (h.valid_until IS NULL OR h.valid_until>s.service_date)${serviceBarnScope.sql})`;
+  const litterScope = scopeSql(barnIds, 'l.barn_id');
 
   const [tagRows, typeRows, weightRows, movementRows, serviceRows, litterRows, healthRows] = await Promise.all([
     db.prepare(`
@@ -631,22 +638,23 @@ export async function getAnimal(
       FROM animal_weights WHERE animal_id = ? ORDER BY weighed_on ASC, weighed_time ASC, id ASC
     `).bind(id).all<Row>(),
     db.prepare(`
-      SELECT id, movement_type, effective_date, quantity FROM inventory_movements
+      SELECT id, movement_type, effective_date, quantity, cause_code FROM inventory_movements
       WHERE animal_id = ? ORDER BY effective_date ASC, id ASC
     `).bind(id).all<Row>(),
     db.prepare(`
       SELECT s.id, s.service_date, s.service_type, s.service_number, s.sire_code_snapshot
       FROM reproduction_services s
       JOIN reproduction_cycles c ON c.id = s.cycle_id
-      WHERE c.female_animal_id = ? OR s.sire_animal_id = ?
+      WHERE (c.female_animal_id = ? OR s.sire_animal_id = ?)${serviceScope}
       ORDER BY s.service_date ASC, s.id ASC
-    `).bind(id, id).all<Row>().catch(() => ({ results: [] })),
+    `).bind(id, id, ...serviceBarnScope.params).all<Row>().catch(() => ({ results: [] })),
     db.prepare(`
-      SELECT l.id, l.farrowing_date, l.parity_number, l.live_count, l.stillborn_count
+      SELECT l.id, l.farrowing_date, l.parity_number, l.live_count, l.stillborn_count, l.total_born,
+        l.male_alive, l.female_alive, l.unsexed_alive, l.male_stillborn, l.female_stillborn, l.unsexed_stillborn, l.average_weight_kg
       FROM litters l
-      WHERE l.female_animal_id = ?
+      WHERE l.female_animal_id = ?${litterScope.sql}
       ORDER BY l.farrowing_date ASC, l.id ASC
-    `).bind(id).all<Row>().catch(() => ({ results: [] })),
+    `).bind(id, ...litterScope.params).all<Row>().catch(() => ({ results: [] })),
     db.prepare(`
       SELECT h.id, h.event_type, h.effective_date, h.product, h.dosage, h.dosage_unit
       FROM health_events h
@@ -795,6 +803,12 @@ export async function getAnimal(
   });
 
   const originType = String(row.origin_type) as OriginType;
+  const litters = litterRows.results ?? [];
+  const weighedLitters = litters.filter((litter) => litter.average_weight_kg !== null && litter.average_weight_kg !== undefined && Number(litter.live_count) > 0);
+  const weighedBirths = weighedLitters.reduce((sum, litter) => sum + Number(litter.live_count), 0);
+  const exitMovement = (movementRows.results ?? []).filter((movement) => base.exitDate && movement.effective_date === base.exitDate && movement.movement_type === base.exitType).at(-1);
+  const exitCauseCode = exitMovement?.cause_code == null ? null : String(exitMovement.cause_code);
+  const exitCauses = catalogItems(config, base.exitType === 'death' ? 'causa_muerte' : 'causa_descarte');
 
   return {
     ...base,
@@ -810,6 +824,20 @@ export async function getAnimal(
     weights,
     chronology,
     ageReference: base.exitDate ?? asOf,
+    exitCauseCode,
+    exitCauseLabel: exitCauseCode ? exitCauses.find((cause) => cause.code === exitCauseCode)?.name ?? exitCauseCode : null,
+    reproductiveSummary: base.sex === 'hembra' ? {
+      serviceCount: (serviceRows.results ?? []).length,
+      farrowingCount: litters.length,
+      firstFarrowingDate: litters.length ? String(litters[0].farrowing_date) : null,
+      lastFarrowingDate: litters.length ? String(litters[litters.length - 1].farrowing_date) : null,
+      totalBorn: litters.reduce((sum, litter) => sum + Number(litter.total_born), 0),
+      maleBorn: litters.reduce((sum, litter) => sum + Number(litter.male_alive) + Number(litter.male_stillborn), 0),
+      femaleBorn: litters.reduce((sum, litter) => sum + Number(litter.female_alive) + Number(litter.female_stillborn), 0),
+      unsexedBorn: litters.reduce((sum, litter) => sum + Number(litter.unsexed_alive) + Number(litter.unsexed_stillborn), 0),
+      averageBirthWeightKg: weighedBirths ? round2(weighedLitters.reduce((sum, litter) => sum + Number(litter.average_weight_kg) * Number(litter.live_count), 0) / weighedBirths) : null,
+      weighedBirths,
+    } : null,
   };
 }
 
