@@ -1935,17 +1935,54 @@ fieldset legend {
 
 /* Pestañas de navegación interna */
 .admin-tabs {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  background: #ebf2ec;
+  border: 1px solid #d1ded4;
+  border-radius: var(--radius-md, 8px);
+  overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1.25rem;
 }
 
 .admin-tabs .btn {
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.45rem 0.85rem;
+  min-height: 38px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
   transition: transform var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.admin-tabs .btn:hover:not(:disabled) {
-  transform: translateY(-1px);
+.admin-tabs .btn.btn-outline {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text-secondary, #445e52);
+}
+
+.admin-tabs .btn.btn-outline:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--color-primary-dark, #123326);
+  border-color: rgba(200, 218, 205, 0.6);
+  transform: none;
+}
+
+.admin-tabs .btn.btn-primary {
+  background: var(--color-surface, #ffffff);
+  color: var(--color-primary, #184636);
+  border-color: #c7d9cc;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-weight: 600;
+}
+
+.admin-tabs .btn.btn-primary:hover:not(:disabled) {
+  background: #ffffff;
+  color: var(--color-primary, #184636);
+  transform: none;
 }
 
 .admin-tabs .btn:active:not(:disabled) {
@@ -2020,15 +2057,15 @@ fieldset legend {
 
   .admin-tabs {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.35rem;
     overflow-x: auto;
-    padding-bottom: 0.35rem;
+    padding: 0.35rem;
     -webkit-overflow-scrolling: touch;
     width: 100%;
   }
 
   .admin-tabs .btn {
-    min-height: 44px;
+    min-height: 40px;
     flex-shrink: 0;
   }
 

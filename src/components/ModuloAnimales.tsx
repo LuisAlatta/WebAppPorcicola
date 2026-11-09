@@ -869,19 +869,6 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
               <span>Actualizar padrón</span>
             </span>
           </button>
-          {!soloLectura && (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={startCreate}
-              aria-label="Registrar nuevo animal en el padrón"
-            >
-              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                <IconPlus size={14} />
-                <span>Registrar animal</span>
-              </span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -924,6 +911,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconList size={14} />
             <span>Padrón general</span>
+            {total > 0 && (
+              <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{total}</span>
+            )}
           </span>
         </button>
         {!soloLectura && (
@@ -937,7 +927,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
           >
             <span className="inline-flex items-center justify-center gap-2 leading-none">
               {editingCode ? <IconEdit size={14} /> : <IconPlus size={14} />}
-              <span>{editingCode ? 'Editar ficha' : 'Registrar animal'}</span>
+              <span>{editingCode ? `Editar ficha ${editingCode}` : 'Registrar animal'}</span>
             </span>
           </button>
         )}
@@ -1327,16 +1317,35 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
       {section === 'alta' && !soloLectura && (
         <div className="card">
-          <div className="card-header-clean mb-2">
-            <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
-              {editingCode ? <IconEdit size={16} className="text-primary" /> : <IconPlus size={16} className="text-primary" />}
-              <span>{editingCode ? `Editar ficha ${editingCode}` : 'Alta de animal'}</span>
-            </span>
-            <span className="text-xs text-muted">
-              {editingCode
-                ? 'El código y la ubicación física no cambian desde esta pantalla'
-                : 'El código es permanente y conserva sus ceros iniciales'}
-            </span>
+          <div className="card-header-clean mb-3 flex-wrap gap-2 justify-between">
+            <div>
+              <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
+                {editingCode ? <IconEdit size={16} className="text-primary" /> : <IconPlus size={16} className="text-primary" />}
+                <span>{editingCode ? `Editar ficha ${editingCode}` : 'Alta de animal'}</span>
+              </span>
+              <p className="text-xs text-muted mt-1">
+                {editingCode
+                  ? 'El código y la ubicación física no cambian desde esta pantalla'
+                  : 'El código es permanente y conserva sus ceros iniciales'}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => {
+                if (editingCode && detail) {
+                  setSection('ficha');
+                } else {
+                  setSection('padron');
+                }
+              }}
+              aria-label="Volver al padrón de animales"
+            >
+              <span className="inline-flex items-center justify-center gap-2 leading-none">
+                <IconArrowLeft size={14} />
+                <span>Volver al padrón</span>
+              </span>
+            </button>
           </div>
 
           <form onSubmit={handleSubmit} className="form-stack">
@@ -1838,15 +1847,28 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
         <div className="section-block">
           {/* Tarjeta héroe focal dominante */}
           <div className="card">
-            <div className="card-header-clean mb-2 flex-wrap gap-2">
-              <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
-                <IconPig size={18} className="text-primary" />
-                <span>Ficha {detail.code}</span>
-                {detail.alias ? <span className="text-sm text-muted">({detail.alias})</span> : null}
-              </span>
-              <span className={detail.isActive ? 'badge-status badge-success' : 'badge-status badge-outline'}>
-                {detail.isActive ? 'Disponible' : 'Inactiva'}
-              </span>
+            <div className="card-header-clean mb-3 flex-wrap gap-2 justify-between">
+              <div className="inline-flex items-center gap-2">
+                <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
+                  <IconPig size={18} className="text-primary" />
+                  <span>Ficha {detail.code}</span>
+                  {detail.alias ? <span className="text-sm text-muted">({detail.alias})</span> : null}
+                </span>
+                <span className={detail.isActive ? 'badge-status badge-success' : 'badge-status badge-outline'}>
+                  {detail.isActive ? 'Disponible' : 'Inactiva'}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setSection('padron')}
+                aria-label="Volver al padrón general"
+              >
+                <span className="inline-flex items-center justify-center gap-2 leading-none">
+                  <IconArrowLeft size={14} />
+                  <span>Volver al padrón</span>
+                </span>
+              </button>
             </div>
 
             <div className="grid-3">

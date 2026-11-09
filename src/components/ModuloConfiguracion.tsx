@@ -205,6 +205,27 @@ export function ModuloConfiguracion() {
   const [historyRows, setHistoryRows] = useState<unknown[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [canInstall, setCanInstall] = useState<boolean>(() => typeof window !== 'undefined' && Boolean(window.__pwaInstallPrompt));
+
+  useEffect(() => {
+    const check = () => setCanInstall(Boolean(typeof window !== 'undefined' && window.__pwaInstallPrompt));
+    check();
+    window.addEventListener('pwa-install-ready', check);
+    window.addEventListener('pwa-installed', check);
+    return () => {
+      window.removeEventListener('pwa-install-ready', check);
+      window.removeEventListener('pwa-installed', check);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (typeof window !== 'undefined' && window.__pwaInstallPrompt) {
+      await window.__pwaInstallPrompt.prompt();
+      await window.__pwaInstallPrompt.userChoice;
+      window.__pwaInstallPrompt = null;
+      setCanInstall(false);
+    }
+  };
 
   const loadConfig = useCallback(async (date: string) => {
     setLoading(true);
@@ -639,7 +660,8 @@ export function ModuloConfiguracion() {
       ) : (
         <>
           {section === 'parametros' && (
-            <div className="card p-4">
+            <>
+              <div className="card p-4">
               <h4 className="font-bold mb-2">Parámetros generales de la granja</h4>
               <p className="text-xs text-muted mb-4">
                 Cada valor se versiona por fecha. Los informes históricos conservan el valor que estaba vigente.
@@ -686,7 +708,29 @@ export function ModuloConfiguracion() {
                 </button>
               </form>
             </div>
-          )}
+
+            <div className="card p-4 mt-4">
+              <h4 className="font-bold mb-2">Aplicación en Dispositivo y Acceso Directo</h4>
+              <p className="text-xs text-muted mb-3">
+                Instale Mi Granja Pro en la pantalla de inicio o escritorio para una experiencia completa y acceso rápido sin barras de navegador.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                {canInstall ? (
+                  <button type="button" className="btn btn-primary btn-sm" onClick={handleInstallClick}>
+                    <span className="inline-flex items-center justify-center gap-2 leading-none">
+                      <IconPlus size={14} />
+                      <span>Instalar aplicación en este dispositivo</span>
+                    </span>
+                  </button>
+                ) : (
+                  <span className="text-xs text-muted">
+                    La aplicación ya está instalada o este navegador no requiere instalación adicional.
+                  </span>
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
           {section === 'catalogos' && (
             <div className="card p-4">

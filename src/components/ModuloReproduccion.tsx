@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   IconActivity,
   IconAlertTriangle,
+  IconArrowLeft,
   IconCalendar,
   IconCheck,
   IconEdit,
@@ -172,6 +173,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
   const [targetLitters, setTargetLitters] = useState<LitterTarget[]>([]);
   const [form, setForm] = useState<FormState>(initialForm);
   const [isAntecedent, setIsAntecedent] = useState(false);
+  const [section, setSection] = useState<'ciclos' | 'registro'>('ciclos');
   const [operationKey, setOperationKey] = useState(() => newOperationKey('rep-ciclo'));
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -339,6 +341,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       setForm(initialForm());
       setOperationKey(newOperationKey('rep-ciclo'));
       await load();
+      setSection('ciclos');
     } catch {
       setError('No se pudo confirmar el registro. Puede reintentar con el mismo formulario.');
     } finally {
@@ -693,71 +696,78 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       {error && <div className="alert alert-error" role="alert" aria-live="assertive">{error}</div>}
       {notice && <div className="alert alert-success" role="status" aria-live="polite">{notice}</div>}
 
-      {/* Tablero Focal Reproductivo */}
-      <div className="grid-4 mb-4">
-        <div className="metric-card">
-          <span className="kpi-label">
-            <IconHeart size={16} className="text-success" />
-            <span>Marranas gestantes</span>
+      <div className="admin-tabs mb-4" role="tablist" aria-label="Secciones del módulo reproductivo">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={section === 'ciclos'}
+          className={`btn btn-sm ${section === 'ciclos' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setSection('ciclos')}
+        >
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconHeart size={14} />
+            <span>Ciclos reproductivos</span>
+            {cycles.length > 0 && (
+              <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{cycles.length}</span>
+            )}
           </span>
-          <span className="kpi-value tabular-nums">
-            {cycles.filter((c) => c.reproductiveStatus === 'gestation').length}
-          </span>
-          <span className="kpi-detail">Preñez confirmada en curso</span>
-        </div>
-
-        <div className="metric-card">
-          <span className="kpi-label">
-            <IconCalendar size={16} className="text-warning" />
-            <span>Partos próximos (≤ 7d)</span>
-          </span>
-          <span className="kpi-value tabular-nums">
-            {cycles.filter((c) => c.daysRemaining >= 0 && c.daysRemaining <= 7).length}
-          </span>
-          <span className="kpi-detail">Atención prioritaria de maternidad</span>
-        </div>
-
-        <div className="metric-card">
-          <span className="kpi-label">
-            <IconActivity size={16} className="text-primary" />
-            <span>Posible preñez</span>
-          </span>
-          <span className="kpi-value tabular-nums">
-            {cycles.filter((c) => c.reproductiveStatus === 'possible_pregnancy').length}
-          </span>
-          <span className="kpi-detail">Evaluación o ecografía pendiente</span>
-        </div>
-
-        <div className="metric-card">
-          <span className="kpi-label">
-            <IconHeart size={16} className="text-body" />
-            <span>Ciclos activos</span>
-          </span>
-          <span className="kpi-value tabular-nums">{cycles.length}</span>
-          <span className="kpi-detail">Marranas en seguimiento</span>
-        </div>
+        </button>
+        {!soloLectura && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={section === 'registro'}
+            className={`btn btn-sm ${section === 'registro' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setSection('registro')}
+          >
+            <span className="inline-flex items-center justify-center gap-2 leading-none">
+              <IconPlus size={14} />
+              <span>Registrar servicio / Gestante</span>
+            </span>
+          </button>
+        )}
       </div>
 
-      {!soloLectura && (
-        <div className="card">
-          <div className="card-header-clean mb-3">
-            <span className="section-title">
-              {isAntecedent ? 'Ingreso de marrana gestante (antecedente)' : 'Registrar servicio de monta / inseminación'}
-            </span>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              aria-label={isAntecedent ? 'Cambiar a registrar servicio de monta o IA' : 'Cambiar a registrar marrana gestante o antecedente'}
-              onClick={() => {
-                setIsAntecedent(!isAntecedent);
-                setForm(initialForm());
-              }}
-            >
-              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                <IconPlus size={14} />
-                <span>{isAntecedent ? 'Registrar servicio de monta / IA' : 'Registrar marrana gestante'}</span>
+      {section === 'registro' && !soloLectura && (
+        <div className="card mb-4">
+          <div className="card-header-clean mb-3 flex-wrap gap-2 justify-between">
+            <div>
+              <span className="section-title">
+                {isAntecedent ? 'Ingreso de marrana gestante (antecedente)' : 'Registrar servicio de monta / inseminación'}
               </span>
-            </button>
+              <p className="text-xs text-muted mt-0.5">
+                {isAntecedent
+                  ? 'Registra preñez confirmada o adquirida sin requerir servicio previo en el sistema.'
+                  : 'Abre un nuevo ciclo reproductivo vinculando a la marrana y el macho o material genético.'}
+              </p>
+            </div>
+            <div className="inline-flex items-center gap-2">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                aria-label={isAntecedent ? 'Cambiar a registrar servicio de monta o IA' : 'Cambiar a registrar marrana gestante o antecedente'}
+                onClick={() => {
+                  setIsAntecedent(!isAntecedent);
+                  setForm(initialForm());
+                }}
+              >
+                <span className="inline-flex items-center justify-center gap-2 leading-none">
+                  <IconPlus size={14} />
+                  <span>{isAntecedent ? 'Cambiar a servicio monta/IA' : 'Cambiar a antecedente gestante'}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setSection('ciclos')}
+                aria-label="Volver a la lista de ciclos reproductivos"
+              >
+                <span className="inline-flex items-center justify-center gap-2 leading-none">
+                  <IconArrowLeft size={14} />
+                  <span>Volver a ciclos</span>
+                </span>
+              </button>
+            </div>
           </div>
 
           <form onSubmit={submitCycle} className="form-stack">
@@ -937,28 +947,90 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         </div>
       )}
 
-      <div className="card">
-        <div className="card-header-clean mb-3">
-          <div>
-            <span className="section-title">Ciclos reproductivos</span>
-            <p className="text-xs text-muted mt-0.5">
-              Rango inclusivo por fecha del último servicio (antecedente: fecha probable)
-            </p>
-          </div>
-          {hasActiveFilters && (
-            <button
-              type="button"
-              className="btn btn-outline btn-xs"
-              onClick={clearFilters}
-              aria-label="Limpiar filtros de ciclos reproductivos"
-            >
-              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                <IconX size={12} />
-                <span>Limpiar filtros</span>
+      {section === 'ciclos' && (
+        <>
+          {/* Tablero Focal Reproductivo */}
+          <div className="grid-4 mb-4">
+            <div className="metric-card">
+              <span className="kpi-label">
+                <IconHeart size={16} className="text-success" />
+                <span>Marranas gestantes</span>
               </span>
-            </button>
-          )}
-        </div>
+              <span className="kpi-value tabular-nums">
+                {cycles.filter((c) => c.reproductiveStatus === 'gestation').length}
+              </span>
+              <span className="kpi-detail">Preñez confirmada en curso</span>
+            </div>
+
+            <div className="metric-card">
+              <span className="kpi-label">
+                <IconCalendar size={16} className="text-warning" />
+                <span>Partos próximos (≤ 7d)</span>
+              </span>
+              <span className="kpi-value tabular-nums">
+                {cycles.filter((c) => c.daysRemaining >= 0 && c.daysRemaining <= 7).length}
+              </span>
+              <span className="kpi-detail">Atención prioritaria de maternidad</span>
+            </div>
+
+            <div className="metric-card">
+              <span className="kpi-label">
+                <IconActivity size={16} className="text-primary" />
+                <span>Posible preñez</span>
+              </span>
+              <span className="kpi-value tabular-nums">
+                {cycles.filter((c) => c.reproductiveStatus === 'possible_pregnancy').length}
+              </span>
+              <span className="kpi-detail">Evaluación o ecografía pendiente</span>
+            </div>
+
+            <div className="metric-card">
+              <span className="kpi-label">
+                <IconHeart size={16} className="text-body" />
+                <span>Ciclos activos</span>
+              </span>
+              <span className="kpi-value tabular-nums">{cycles.length}</span>
+              <span className="kpi-detail">Marranas en seguimiento</span>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header-clean mb-3">
+              <div>
+                <span className="section-title">Ciclos reproductivos</span>
+                <p className="text-xs text-muted mt-0.5">
+                  Rango inclusivo por fecha del último servicio (antecedente: fecha probable)
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-2">
+                {!soloLectura && (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => setSection('registro')}
+                    aria-label="Registrar nuevo servicio"
+                  >
+                    <span className="inline-flex items-center justify-center gap-2 leading-none">
+                      <IconPlus size={14} />
+                      <span>Nuevo servicio</span>
+                    </span>
+                  </button>
+                )}
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-xs"
+                    onClick={clearFilters}
+                    aria-label="Limpiar filtros de ciclos reproductivos"
+                  >
+                    <span className="inline-flex items-center justify-center gap-2 leading-none">
+                      <IconX size={12} />
+                      <span>Limpiar filtros</span>
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
 
         <div className="grid-3 mb-4">
           <div className="form-group">
@@ -2032,6 +2104,8 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
           </div>
         )}
       </div>
-    </section>
+    </>
+  )}
+</section>
   );
 }

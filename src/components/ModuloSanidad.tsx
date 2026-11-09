@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   IconActivity,
   IconAlertTriangle,
+  IconArrowLeft,
   IconCalendar,
   IconCheck,
   IconEdit,
+  IconPlus,
   IconRefreshCw,
   IconShield,
   IconX,
@@ -92,6 +94,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
     observations: '',
     reason: '',
   });
+  const [section, setSection] = useState<'retiros' | 'vacunacion' | 'registro' | 'historial'>('retiros');
   const [editing, setEditing] = useState<HealthEvent | null>(null);
   const [showAnnulModal, setShowAnnulModal] = useState(false);
   const [operationKey, setOperationKey] = useState(() => newOperationKey('sanidad'));
@@ -158,6 +161,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
 
   const startCorrection = (row: HealthEvent) => {
     setEditing(row);
+    setSection('registro');
     setOperationKey(newOperationKey('sanidad-correccion'));
     setForm({
       eventType: row.eventType,
@@ -207,6 +211,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
       setOperationKey(newOperationKey('sanidad'));
       setSelected([]);
       await load();
+      setSection('historial');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar');
     } finally {
@@ -282,13 +287,75 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
         </div>
       </div>
 
-      {/* Módulo Vacunas embebido */}
-      <ModuloVacunas perfil={perfil} />
-
       {error && <div className="alert alert-error" role="alert" aria-live="assertive">{error}</div>}
       {notice && <div className="alert alert-success" role="status" aria-live="polite">{notice}</div>}
 
-      {/* Periodo de Retiro Vigente */}
+      <div className="admin-tabs mb-4" role="tablist" aria-label="Secciones del módulo de sanidad">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={section === 'retiros'}
+          className={`btn btn-sm ${section === 'retiros' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setSection('retiros')}
+        >
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconShield size={14} />
+            <span>Retiros y Pendientes</span>
+            {alerts.length > 0 && (
+              <span className="badge-status badge-warning tabular-nums font-numeric ml-1">{alerts.length}</span>
+            )}
+          </span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={section === 'vacunacion'}
+          className={`btn btn-sm ${section === 'vacunacion' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setSection('vacunacion')}
+        >
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconCalendar size={14} />
+            <span>Plan de Vacunación</span>
+          </span>
+        </button>
+        {canWrite && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={section === 'registro'}
+            className={`btn btn-sm ${section === 'registro' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setSection('registro')}
+          >
+            <span className="inline-flex items-center justify-center gap-2 leading-none">
+              <IconPlus size={14} />
+              <span>{editing ? 'Editar actuación' : 'Registrar tratamiento'}</span>
+            </span>
+          </button>
+        )}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={section === 'historial'}
+          className={`btn btn-sm ${section === 'historial' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setSection('historial')}
+        >
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconActivity size={14} />
+            <span>Historial clínico</span>
+            {events.length > 0 && (
+              <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{events.length}</span>
+            )}
+          </span>
+        </button>
+      </div>
+
+      {section === 'vacunacion' && (
+        <ModuloVacunas perfil={perfil} />
+      )}
+
+      {section === 'retiros' && (
+        <>
+          {/* Periodo de Retiro Vigente */}
       <section className="card">
         <div className="card-header">
           <div>
@@ -413,18 +480,31 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
           </table>
         </div>
       </section>
+    </>
+  )}
 
-      {/* Formulario de Registro o Corrección Sanitaria */}
-      {canWrite && (
-        <section className="card" id="corregir-sanidad">
-          <div className="card-header">
-            <div>
-              <h2>{editing ? 'Corregir o anular actuación sanitaria' : 'Registrar tratamiento o actuación sanitaria'}</h2>
-              <p className="text-xs text-muted mt-0.5">
-                El profesional responsable queda registrado automáticamente en el historial.
-              </p>
-            </div>
-          </div>
+  {/* Formulario de Registro o Corrección Sanitaria */}
+  {section === 'registro' && canWrite && (
+    <section className="card" id="corregir-sanidad">
+      <div className="card-header flex-wrap gap-2 justify-between">
+        <div>
+          <h2>{editing ? 'Corregir o anular actuación sanitaria' : 'Registrar tratamiento o actuación sanitaria'}</h2>
+          <p className="text-xs text-muted mt-0.5">
+            El profesional responsable queda registrado automáticamente en el historial.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn btn-outline btn-sm"
+          onClick={() => setSection('retiros')}
+          aria-label="Volver a retiros y pendientes"
+        >
+          <span className="inline-flex items-center justify-center gap-2 leading-none">
+            <IconArrowLeft size={14} />
+            <span>Volver a retiros</span>
+          </span>
+        </button>
+      </div>
 
           <form className="form-stack" onSubmit={submit}>
             <div className="grid-2">
@@ -713,35 +793,51 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
         </ModalDialog>
       )}
 
-      {!canWrite && (
+      {section === 'registro' && !canWrite && (
         <div className="note-box">
           Este perfil puede consultar el historial sanitario. Solo el veterinario y el administrador pueden registrar actuaciones clínicas.
         </div>
       )}
 
       {/* Historial Clínico */}
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h2>Historial clínico</h2>
-            <p className="text-xs text-muted mt-0.5">
-              Registro trazable de eventos sanitarios aplicados en la granja.
-            </p>
+      {section === 'historial' && (
+        <section className="card">
+          <div className="card-header flex-wrap gap-2 justify-between">
+            <div>
+              <h2>Historial clínico</h2>
+              <p className="text-xs text-muted mt-0.5">
+                Registro trazable de eventos sanitarios aplicados en la granja.
+              </p>
+            </div>
+            <div className="inline-flex items-center gap-2">
+              {canWrite && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setSection('registro')}
+                  aria-label="Registrar nuevo tratamiento"
+                >
+                  <span className="inline-flex items-center justify-center gap-2 leading-none">
+                    <IconPlus size={14} />
+                    <span>Nuevo tratamiento</span>
+                  </span>
+                </button>
+              )}
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={clearFilters}
+                  aria-label="Limpiar filtros del historial clínico"
+                >
+                  <span className="inline-flex items-center justify-center gap-2 leading-none">
+                    <IconX size={14} />
+                    <span>Limpiar filtros</span>
+                  </span>
+                </button>
+              )}
+            </div>
           </div>
-          {hasActiveFilters && (
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={clearFilters}
-              aria-label="Limpiar filtros del historial clínico"
-            >
-              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                <IconX size={14} />
-                <span>Limpiar filtros</span>
-              </span>
-            </button>
-          )}
-        </div>
 
         <div className="grid-3 mb-4">
           <div className="form-group">
@@ -896,6 +992,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
           </table>
         </div>
       </section>
-    </main>
+    )}
+  </main>
   );
 }

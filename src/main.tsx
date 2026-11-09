@@ -193,8 +193,6 @@ function App() {
 
   return (
     <div className="app-shell">
-      <PwaControls />
-      {logoutError&&<div className="alert alert-danger" role="alert">{logoutError}</div>}
       {estaAutenticado && vistaActual !== 'login' && (
         <Navbar
           vistaActual={vistaActual}
@@ -204,6 +202,8 @@ function App() {
           onLogout={handleLogout}
         />
       )}
+      <PwaControls />
+      {logoutError && <div className="alert alert-danger" role="alert">{logoutError}</div>}
 
       <main className="main-content">
         {renderVista()}
