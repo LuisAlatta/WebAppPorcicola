@@ -170,6 +170,12 @@ const worker = {
           `).bind(now),
         ]);
 
+        const locationColumns = await env.DB.prepare('PRAGMA table_info(location_versions)').all<{ name: string }>();
+        if (locationColumns.results?.some(column => column.name === 'barn_id')) {
+          await env.DB.prepare(`UPDATE location_versions SET barn_id=(SELECT id FROM barns WHERE code=CASE location_versions.code WHEN 'galpon_a' THEN 'G-A' WHEN 'galpon_b' THEN 'G-B' END)
+            WHERE barn_id IS NULL AND code IN ('galpon_a','galpon_b') AND location_type='galpon' AND parent_code IS NULL AND effective_from='2026-01-01' AND created_at='2026-01-01T00:00:00.000Z'`).run();
+        }
+
         const adminUser = await findUserByUsername(env.DB, username);
         if (!adminUser) {
           return Response.json({ error: 'Error al inicializar administrador' }, { status: 500 });

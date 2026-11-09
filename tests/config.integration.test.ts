@@ -76,7 +76,7 @@ describe('Configuración versionada de la granja · T07 (CFG-01..CFG-05)', () =>
       '0001_initial_schema.sql',
       '0002_administration_schema.sql',
       '0003_events_audit_schema.sql',
-      '0004_farm_config_schema.sql',
+      '0004_farm_config_schema.sql','0027_location_barns.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -285,6 +285,7 @@ describe('Configuración versionada de la granja · T07 (CFG-01..CFG-05)', () =>
         code: 'galpon_c',
         name: 'Galpón C',
         locationType: 'galpon',
+        barnId: 2,
         parentCode: null,
         effectiveFrom: '2026-08-01',
         reason: 'Nuevo galpón construido',

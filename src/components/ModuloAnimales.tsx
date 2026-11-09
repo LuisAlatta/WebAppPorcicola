@@ -134,7 +134,7 @@ interface AnimalDetail extends Animal {
 interface AnimalOptions {
   barns: { id: number; code: string; name: string }[];
   stages: { code: string; name: string }[];
-  locations: { code: string; name: string; locationType: string }[];
+  locations: { code: string; name: string; locationType: string; barnId?: number | null }[];
   lots: { code: string; name: string }[];
   aptitudes: { code: string; name: string }[];
   types: { code: string; name: string }[];
@@ -392,7 +392,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     listRequest.current++;
     setPage(0);
-    setFilters((prev) => ({ ...prev, [key]: value }));
+    setFilters((prev) => ({ ...prev, [key]: value, ...(key === 'barnId' ? {location: ''} : {}) }));
   };
 
   const hasActiveFilters = useMemo(() => {
@@ -427,7 +427,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   }, []);
 
   const setField = <K extends keyof AnimalForm>(key: K, value: AnimalForm[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => ({ ...prev, [key]: value, ...(key === 'barnId' ? {locationCode: ''} : {}) }));
     if (fieldErrors[key] || fieldErrors.mother || fieldErrors.father || fieldErrors.weaningDate) {
       setFieldErrors((prev) => {
         const next = { ...prev };
@@ -1083,7 +1083,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                   onChange={(event) => setFilter('location', event.target.value)}
                 >
                   <option value="">Todas</option>
-                  {(options?.locations ?? []).map((location) => (
+                  {(options?.locations ?? []).filter(location => !filters.barnId || location.barnId === undefined || location.barnId === Number(filters.barnId)).map((location) => (
                     <option key={location.code} value={location.code}>{location.name}</option>
                   ))}
                 </select>
@@ -1661,7 +1661,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                       onChange={(event) => setField('locationCode', event.target.value)}
                     >
                       <option value="">Sin asignar</option>
-                      {(options?.locations ?? []).map((location) => (
+                      {(options?.locations ?? []).filter(location => location.barnId === undefined || location.barnId === Number(form.barnId)).map((location) => (
                         <option key={location.code} value={location.code}>{location.name}</option>
                       ))}
                     </select>
@@ -2529,7 +2529,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                             id="ani-transfer-barn"
                             className="form-select"
                             value={transferForm.destinationBarnId}
-                            onChange={(event) => setTransferForm((prev) => ({ ...prev, destinationBarnId: event.target.value }))}
+                            onChange={(event) => setTransferForm((prev) => ({ ...prev, destinationBarnId: event.target.value, locationCode: '' }))}
                             required
                           >
                             <option value="">Seleccione destino</option>
@@ -2560,7 +2560,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                             onChange={(event) => setTransferForm((prev) => ({ ...prev, locationCode: event.target.value }))}
                           >
                             <option value="">Sin asignar</option>
-                            {data?.options.locations.map((item) => (
+                            {data?.options.locations.filter(item => item.barnId === undefined || item.barnId === Number(transferForm.destinationBarnId)).map((item) => (
                               <option key={item.code} value={item.code}>{item.name}</option>
                             ))}
                           </select>

@@ -55,11 +55,11 @@ it('concilia ingreso y parto el mismo día y rechaza un parto anterior a un tras
 
   await post('/api/animals', { code: 'ETAPA-POSTERIOR', animalType: 'cerda', sex: 'hembra', entryDate: '2026-01-01', entryStageCode: 'gestacion', barnId: 1, originType: 'inicial', reason: 'Alta para cronología', operationKey: 'farrowing-stage-later-mother' });
   const laterCycle = await post('/api/reproduction/cycles', { femaleCode: 'ETAPA-POSTERIOR', serviceDate: '2026-05-01', serviceType: 'inseminacion_artificial', materialSource: 'external', externalSource: 'Prueba', operationKey: 'farrowing-stage-later-cycle' });
-  await post('/api/animals/ETAPA-POSTERIOR/transfer', { effectiveDate: '2026-10-01', destinationBarnId: 1, destinationStageCode: 'gestacion', locationCode: 'galpon_b', reason: 'Traslado posterior guardado', operationKey: 'farrowing-stage-later-transfer' });
+  await post('/api/animals/ETAPA-POSTERIOR/transfer', { effectiveDate: '2026-10-01', destinationBarnId: 1, destinationStageCode: 'gestacion', locationCode: 'corral_maternidad', reason: 'Traslado posterior guardado', operationKey: 'farrowing-stage-later-transfer' });
   const response = await api(`/api/reproduction/cycles/${laterCycle.createdCycleId}/farrowing`, { farrowingDate: '2026-09-16', maleAlive: 1, reason: 'Parto anterior al traslado', operationKey: 'farrowing-stage-later-birth' });
   expect(response.status, await response.clone().text()).toBe(409);
   expect(await db.prepare('SELECT COUNT(*) n FROM litters WHERE cycle_id=?').bind(laterCycle.createdCycleId).first()).toMatchObject({ n: 0 });
-  expect(await db.prepare("SELECT location_code,current_stage_code FROM animals WHERE code='ETAPA-POSTERIOR'").first()).toMatchObject({ location_code: 'galpon_b', current_stage_code: 'gestacion' });
+  expect(await db.prepare("SELECT location_code,current_stage_code FROM animals WHERE code='ETAPA-POSTERIOR'").first()).toMatchObject({ location_code: 'corral_maternidad', current_stage_code: 'gestacion' });
 }, 60000);
 
 it('revierte todo el parto si la ficha cambia antes del commit', async () => {
@@ -87,13 +87,13 @@ it('corrige la transición antes de un traslado posterior y revierte historial y
   const { api, db } = fixture;
   const motherId = (await db.prepare("SELECT id FROM animals WHERE code='ETAPA-MADRE'").first<{ id: number }>())!.id;
   const litterId = (await db.prepare('SELECT id FROM litters WHERE female_animal_id=?').bind(motherId).first<{ id: string }>())!.id;
-  const transfer = await api('/api/animals/ETAPA-MADRE/transfer', { effectiveDate: '2026-10-01', destinationBarnId: 1, locationCode: 'galpon_b', reason: 'Ubicación posterior de la madre', operationKey: 'farrowing-stage-mother-transfer' });
+  const transfer = await api('/api/animals/ETAPA-MADRE/transfer', { effectiveDate: '2026-10-01', destinationBarnId: 1, locationCode: 'corral_maternidad', reason: 'Ubicación posterior de la madre', operationKey: 'farrowing-stage-mother-transfer' });
   expect(transfer.status, await transfer.clone().text()).toBe(201);
   const correction = { farrowingDate: '2026-09-20', expectedCurrentDate: '2026-09-18', reason: 'Corrección previa al traslado', operationKey: 'farrowing-stage-before-transfer' };
   const path = `/api/reproduction/litters/${litterId}/date-correction`;
   const response = await api(path, correction);
   expect(response.status, await response.clone().text()).toBe(201);
-  expect(await db.prepare('SELECT location_code,current_stage_code FROM animals WHERE id=?').bind(motherId).first()).toMatchObject({ location_code: 'galpon_b', current_stage_code: 'lactancia' });
+  expect(await db.prepare('SELECT location_code,current_stage_code FROM animals WHERE id=?').bind(motherId).first()).toMatchObject({ location_code: 'corral_maternidad', current_stage_code: 'lactancia' });
   expect(await db.prepare("SELECT stage_code FROM animal_location_history WHERE animal_id=? AND valid_from<='2026-09-19' AND (valid_until IS NULL OR valid_until>'2026-09-19')").bind(motherId).first()).toMatchObject({ stage_code: 'gestacion' });
   const crossed = await api(path, { ...correction, farrowingDate: '2026-10-02', expectedCurrentDate: '2026-09-20', operationKey: 'farrowing-stage-cross-transfer' });
   expect(crossed.status).toBe(409);

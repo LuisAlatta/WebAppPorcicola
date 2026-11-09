@@ -161,6 +161,32 @@ test('traslada la ficha a otro corral y lote dentro del mismo galpón',async({pa
   await expect(page.getByText('Animal RETRY-001 trasladado y su historial de galpón actualizado.')).toBeVisible();
 });
 
+test('filtra los corrales por galpón y limpia el destino anterior al cambiarlo', async ({page}) => {
+  await mockAnimalApi(page, initialAnimal());
+  await page.route('**/api/animals?**', route => route.fulfill({status:200,json:{
+    animals:[initialAnimal()],total:1,options:{...listOptions,
+      barns:[...listOptions.barns,{id:2,code:'B',name:'Galpón B'}],
+      locations:[{code:'corral_a',name:'Corral A',barnId:1},{code:'corral_b',name:'Corral B',barnId:2}],
+    },
+  }}));
+  await page.goto('/animales');
+  await page.getByRole('tab',{name:'Registrar animal en el padrón',exact:true}).click();
+  await page.locator('#ani-barn').selectOption('1');
+  await expect(page.locator('#ani-location option[value="corral_b"]')).toHaveCount(0);
+  await page.locator('#ani-location').selectOption('corral_a');
+  await page.locator('#ani-barn').selectOption('2');
+  await expect(page.locator('#ani-location')).toHaveValue('');
+  await expect(page.locator('#ani-location option[value="corral_a"]')).toHaveCount(0);
+  await page.getByRole('tab',{name:'Ir a sección padrón de animales',exact:true}).click();
+  await page.getByRole('button',{name:'Ver ficha'}).click();
+  await page.getByRole('tab',{name:/Gestión y Traslados/}).click();
+  await page.getByLabel('Galpón destino').selectOption('1');
+  await page.getByLabel('Ubicación').selectOption('corral_a');
+  await page.getByLabel('Galpón destino').selectOption('2');
+  await expect(page.getByLabel('Ubicación')).toHaveValue('');
+  await expect(page.locator('#ani-transfer-location option[value="corral_a"]')).toHaveCount(0);
+});
+
 async function mockAnimalApi(page: Page, initial: ReturnType<typeof initialAnimal>) {
   await page.route('**/api/**', route => route.fulfill({ status: 200, json: { ok: true } }));
   await page.route('**/api/auth/me', route => route.fulfill({ status: 200, json: { ok: true, user: { role: 'administrador', username: 'admin@prueba.pe' } } }));

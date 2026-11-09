@@ -1,6 +1,7 @@
 import { getConfigSnapshot } from './config';
 import { ApiError, AuditRecordInput, commitOperation, createOperationClaim, currentFarmDate, isValidDateString, lookupExistingOperation, normalizeReason } from './events';
 import { locationEventGuardStatement, stockGuardStatement } from './inventory';
+import { assertLocationForBarn } from './locations';
 
 type Row = Record<string, unknown>;
 export type FarrowingInput = {
@@ -105,6 +106,11 @@ export async function recordLitterEvent(db: D1Database, actorUserId: number, lit
   if (eventType === 'death' && !payload.cause) throw new ApiError(400,'Indique la causa de la baja');
   const replay = await lookupExistingOperation(db,actorUserId,input.operationKey,payload);
   if (replay) return { replayed:true,balance:await litterBalance(db,litter,sex) };
+  const destinationLocationGuard = eventType==='weaning'
+    ? await assertLocationForBarn(db,targetBarnId!,destinationLocation,effectiveDate,{ongoing:animalCodes.length>0,stockAfterWrite:true})
+    : eventType==='adoption'&&target
+      ? await assertLocationForBarn(db,Number(target.barn_id),target.location_code==null?null:String(target.location_code),effectiveDate,{ongoing:animalCodes.length>0,stockAfterWrite:true})
+      : null;
   if(lastSourceEvent?.date&&effectiveDate<String(lastSourceEvent.date)) throw new ApiError(409,'Registre el evento después del último movimiento de esta camada y sexo');
   if(lastTargetDate&&effectiveDate<lastTargetDate) throw new ApiError(409,'La adopción debe ser posterior al último movimiento de la camada destino');
   if (quantity > available) throw new ApiError(409, `La camada solo tiene ${available} cabezas pendientes de ese sexo`);
@@ -234,9 +240,10 @@ export async function recordLitterEvent(db: D1Database, actorUserId: number, lit
     if (eventType === 'weaning')for(const animal of selectedAnimals)statements.push(stockGuardStatement(db,Number(animal.barn_id),animal.location_code==null?null:String(animal.location_code),animal.lot_code==null?null:String(animal.lot_code),'preinicio',sex));
     statements.push(db.prepare('DELETE FROM inventory_write_guard'));
   }
+  if(destinationLocationGuard){statements.push(destinationLocationGuard,db.prepare('DELETE FROM inventory_write_guard'));}
   statements.push(db.prepare('DELETE FROM litter_event_guard'));
   const committed=await commitOperation(db,claim,statements,[{entityType:'litter',entityId:0,action:'update',actorUserId,barnId:Number(litter.barn_id),reason,
-    previousData:{available,sex},newData:payload,effectiveDate,recordedAt:now},...extraAudits]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La camada o una ficha cambió, o existe un servicio o actuación sanitaria en esa fecha o posterior; revise los datos');throw error;});
+    previousData:{available,sex},newData:payload,effectiveDate,recordedAt:now},...extraAudits]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La ubicación, la camada o una ficha cambió, o existe un servicio o actuación sanitaria en esa fecha o posterior; revise los datos');throw error;});
   return {replayed:committed.replayed,balance:await litterBalance(db,litter,sex)};
 }
 
@@ -287,6 +294,7 @@ export async function recordFarrowing(db: D1Database, actorUserId: number, cycle
   const payload = { cycleId, farrowingDate, parityNumber, maleAlive, femaleAlive, unsexedAlive, maleStillborn, femaleStillborn, unsexedStillborn, weight, observations, historicalOnly };
   const existing = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (existing) return { replayed: true, litterId: String((existing.result as { litterId: string }).litterId), liveCount, stillbornCount, totalBorn, mortalityPercent, expectedWeaningDate, historicalOnly, motherStageCode: (existing.result as {motherStageCode?:string|null}).motherStageCode ?? null };
+  const locationGuard=historicalOnly?null:await assertLocationForBarn(db,barnId,location?.location_code==null?null:String(location.location_code),farrowingDate,{ongoing:true,stockAfterWrite:true});
   if (cycle.cycle_status !== 'open') throw new ApiError(409, 'El ciclo ya tiene un parto registrado');
   if (!historicalOnly && (!lactation || location?.valid_until !== null || cycle.exit_date || cycle.animal_status !== 'activo')) throw new ApiError(409, 'El parto requiere pasar la madre a Lactancia; reconcilie sus movimientos posteriores o su salida antes de guardar');
   const id = crypto.randomUUID();
@@ -338,6 +346,7 @@ export async function recordFarrowing(db: D1Database, actorUserId: number, cycle
     for (const [sex, quantity] of groups) if (quantity > 0) statements.push(stockGuardStatement(db,barnId,locationCode,lotCode,'preinicio',sex));
     statements.push(db.prepare('DELETE FROM inventory_write_guard'));
   }
+  if(locationGuard)statements.push(locationGuard,db.prepare('DELETE FROM inventory_write_guard'));
   const committed = await commitOperation(db, claim, statements, [{ entityType: 'litter', entityId: 0, action: 'create', actorUserId, barnId, reason,
     previousData: null, newData: { ...payload, litterId:id, liveCount, stillbornCount,totalBorn,mortalityPercent,expectedWeaningDate },effectiveDate:farrowingDate,recordedAt:claim.recordedAt },
     ...(!historicalOnly && location!.stage_code !== 'lactancia' ? [{entityType:'animal',entityId:Number(cycle.female_animal_id),action:'update' as const,actorUserId,barnId,reason,
@@ -366,6 +375,7 @@ export async function correctLitter(db: D1Database, actorUserId: number, litterI
   const payload = { litterId, counts, reason, ...(expectedCounts ? {expectedCounts} : {}) };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) return { replayed:true, litterId, liveCount, stillbornCount, totalBorn, mortalityPercent };
+  const locationGuard=await assertLocationForBarn(db,Number(litter.barn_id),litter.location_code==null?null:String(litter.location_code),String(litter.farrowing_date),{stockAfterWrite:true});
   const originalCounts=fields.map(field=>Number(litter[field]));
   if (expectedCounts && expectedCounts.some((value,index)=>value!==originalCounts[index])) throw new ApiError(409,'La camada cambió desde que abrió el formulario; actualice los datos antes de corregir');
   const eventRows=await db.prepare('SELECT id,sex,event_type,quantity FROM litter_events WHERE litter_id=? ORDER BY effective_date,id').bind(litterId).all<{id:number;sex:string;event_type:string;quantity:number}>();
@@ -405,8 +415,9 @@ export async function correctLitter(db: D1Database, actorUserId: number, litterI
     live_count=?,stillborn_count=?,total_born=?,mortality_percent=?,actual_weaning_date=CASE WHEN ?>0 THEN NULL ELSE actual_weaning_date END WHERE id=?`).bind(maleAlive,femaleAlive,unsexedAlive,maleStillborn,femaleStillborn,unsexedStillborn,liveCount,stillbornCount,totalBorn,mortalityPercent,remaining.macho+remaining.hembra+remaining.pendiente,litterId));
   statements.push(db.prepare(`INSERT INTO litter_corrections (litter_id,operation_log_id,reason,previous_data,new_data,effective_date,actor_user_id,created_at)
     VALUES (?,?,?,?,?,?,?,?)`).bind(litterId,claim.id,reason,JSON.stringify(Object.fromEntries(fields.map((field)=>[field,litter[field]]))),JSON.stringify(Object.fromEntries(fields.map((field,index)=>[field,counts[index]]))),currentFarmDate(),actorUserId,now));
+  if(locationGuard)statements.push(locationGuard,db.prepare('DELETE FROM inventory_write_guard'));
   const committed=await commitOperation(db,claim,statements,[{entityType:'litter',entityId:0,action:'correct',actorUserId,barnId:Number(litter.barn_id),reason,
-    previousData:Object.fromEntries(fields.map((field)=>[field,litter[field]])),newData:{...payload,liveCount,stillbornCount,totalBorn,mortalityPercent},effectiveDate:currentFarmDate(),recordedAt:now}]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La camada o su inventario cambió; actualice los datos antes de corregir');throw error;});
+    previousData:Object.fromEntries(fields.map((field)=>[field,litter[field]])),newData:{...payload,liveCount,stillbornCount,totalBorn,mortalityPercent},effectiveDate:currentFarmDate(),recordedAt:now}]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La ubicación, la camada o su inventario cambió; revise su vigencia antes de corregir');throw error;});
   return {replayed:committed.replayed,litterId,liveCount,stillbornCount,totalBorn,mortalityPercent};
 }
 
@@ -460,6 +471,7 @@ export async function correctLitterDate(db:D1Database,actorUserId:number,litterI
   if(scope.allowedBarnNames){const currentBarn=await db.prepare('SELECT name FROM barns WHERE id=?').bind(litter.animal_barn_id).first<{name:string}>();if(!currentBarn||!scope.allowedBarnNames.includes(currentBarn.name))throw new ApiError(403,'Sin acceso al galpón actual de la madre');}
   const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);if(replay)return{...(replay.result as {litterId:string;farrowingDate:string}),replayed:true};
   if(Number(litter.historical_only)===1)throw new ApiError(409,'Reconciliar el antecedente histórico antes de cambiar su fecha');
+  const locationGuard=await assertLocationForBarn(db,Number(litter.barn_id),litter.location_code==null?null:String(litter.location_code),farrowingDate,{stockAfterWrite:true});
   if(await db.prepare('SELECT 1 FROM litter_identified_adoptions WHERE source_litter_id=? OR target_litter_id=? LIMIT 1').bind(litterId,litterId).first())throw new ApiError(409,'La camada tiene adopciones de crías identificadas; reconcilie sus fichas antes de cambiar la fecha');
   if(String(litter.farrowing_date)!==expectedCurrentDate)throw new ApiError(409,'La fecha de la camada cambió; actualice antes de corregir');
   if(farrowingDate===expectedCurrentDate)throw new ApiError(400,'La nueva fecha debe ser distinta');
@@ -498,6 +510,7 @@ export async function correctLitterDate(db:D1Database,actorUserId:number,litterI
     FROM litters l JOIN animals a ON a.id=l.female_animal_id JOIN vaccine_rules r ON r.base_event='farrowing' AND r.is_active=1 AND r.is_current=1 AND r.target_category=CASE WHEN a.animal_type='cerda' THEN CASE WHEN (SELECT COALESCE(MAX(parity_number),0) FROM litters WHERE female_animal_id=a.id AND historical_only=0)>0 THEN 'cerda_multipara' ELSE 'cerda_primeriza' END ELSE a.animal_type END
     WHERE l.id=? AND l.historical_only=0 AND a.is_active=1 AND a.exit_date IS NULL AND NOT EXISTS(SELECT 1 FROM vaccine_occurrences v WHERE v.rule_key=r.rule_key AND v.animal_id=a.id AND v.source_event_type='expected_farrowing' AND v.source_event_id=l.cycle_id) AND date(l.farrowing_date,printf('%+d days',r.offset_days))>=a.entry_date AND EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.valid_from<=date(l.farrowing_date,printf('%+d days',r.offset_days)) AND (h.valid_until IS NULL OR h.valid_until>date(l.farrowing_date,printf('%+d days',r.offset_days))))
     ON CONFLICT(rule_key,animal_id,source_event_type,source_event_id,occurrence_number) DO NOTHING`).bind(actorUserId,claim.recordedAt,claim.recordedAt,litterId));
+  if(locationGuard)statements.push(locationGuard,db.prepare('DELETE FROM inventory_write_guard'));
   const committed=await commitOperation(db,claim,statements,[{entityType:'litter',entityId:0,action:'correct',actorUserId,barnId:Number(litter.barn_id),reason,previousData:{litterId,farrowingDate:expectedCurrentDate},newData:result,effectiveDate:currentFarmDate(),recordedAt:claim.recordedAt},...maternal.audits])
     .catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La camada o la cronología de la madre cambió, o hay actuaciones incompatibles entre las fechas; actualice antes de corregir');throw error;});
   return{...result,replayed:committed.replayed};

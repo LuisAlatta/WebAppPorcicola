@@ -28,7 +28,7 @@ describe('Módulo exclusivo de administración · T05', () => {
     await db.exec('PRAGMA foreign_keys = ON;');
 
     // Ejecutar migraciones 0001 y 0002
-    const migrationFiles = ['0001_initial_schema.sql', '0002_administration_schema.sql', '0003_events_audit_schema.sql', '0004_farm_config_schema.sql', '0005_inventory_schema.sql', '0006_animals_schema.sql', '0007_transfer_and_stock_guard.sql', '0008_animal_location_history.sql'];
+    const migrationFiles = ['0001_initial_schema.sql', '0002_administration_schema.sql', '0003_events_audit_schema.sql', '0004_farm_config_schema.sql','0027_location_barns.sql', '0005_inventory_schema.sql', '0006_animals_schema.sql', '0007_transfer_and_stock_guard.sql', '0008_animal_location_history.sql'];
     for (const file of migrationFiles) {
       const schemaSql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
       const cleanSql = schemaSql

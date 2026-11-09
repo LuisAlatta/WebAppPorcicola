@@ -130,7 +130,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0001_initial_schema.sql',
       '0002_administration_schema.sql',
       '0003_events_audit_schema.sql',
-      '0004_farm_config_schema.sql',
+      '0004_farm_config_schema.sql','0027_location_barns.sql',
       '0005_inventory_schema.sql',
       '0006_animals_schema.sql',
       '0007_transfer_and_stock_guard.sql',

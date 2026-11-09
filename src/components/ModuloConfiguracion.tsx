@@ -60,6 +60,7 @@ interface LocationItem {
   name: string;
   locationType: string;
   parentCode: string | null;
+  barnId: number | null;
   effectiveFrom: string;
   effectiveTo: string | null;
   status: 'active' | 'retired';
@@ -177,6 +178,9 @@ export function ModuloConfiguracion() {
   const [locationName, setLocationName] = useState<string>('');
   const [locationType, setLocationType] = useState<string>('galpon');
   const [locationParent, setLocationParent] = useState<string>('');
+  const [locationBarnId, setLocationBarnId] = useState<string>('');
+  const [locationChoices, setLocationChoices] = useState<LocationItem[]>([]);
+  const [barns, setBarns] = useState<{ id: number; name: string; status: string }[]>([]);
   const [locationDate, setLocationDate] = useState<string>(() => farmToday());
   const [locationReason, setLocationReason] = useState<string>('');
   const [locationKey, setLocationKey] = useState<string>(() => newOperationKey('cfg-loc'));
@@ -231,13 +235,20 @@ export function ModuloConfiguracion() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/config?asOf=${encodeURIComponent(date)}`);
+      const [res, barnResponse] = await Promise.all([
+        fetch(`/api/config?asOf=${encodeURIComponent(date)}`),
+        fetch('/api/admin/barns'),
+      ]);
       const body = await res.json() as { error?: string } & Snapshot;
       if (!res.ok) {
         setError(body.error || 'No se pudo cargar la configuración');
         return;
       }
       setData(body);
+      if (barnResponse.ok) {
+        const barnBody = await barnResponse.json() as { barns: { id: number; name: string; status: string }[] };
+        setBarns(barnBody.barns);
+      }
       const map: Record<string, string> = {};
       for (const setting of body.settings) map[setting.key] = setting.value;
       setSettings(map);
@@ -254,6 +265,30 @@ export function ModuloConfiguracion() {
     }, 0);
     return () => clearTimeout(timer);
   }, [asOf, loadConfig]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/config?asOf=${encodeURIComponent(locationDate)}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const snapshot = await response.json() as Snapshot;
+        setLocationChoices(snapshot.locations);
+      }).catch(() => { if (!controller.signal.aborted) setLocationChoices([]); });
+    return () => controller.abort();
+  }, [locationDate, data]);
+
+  const validLocationParents = locationChoices.filter((candidate) => {
+    if (candidate.barnId === null) return false;
+    const seen = new Set<string>([locationCode.trim().toLowerCase()]);
+    let current: LocationItem | undefined = candidate;
+    while (current) {
+      if (seen.has(current.code)) return false;
+      seen.add(current.code);
+      if (!current.parentCode) return true;
+      current = locationChoices.find((item) => item.code === current?.parentCode);
+    }
+    return false;
+  });
 
   const openRetire = (target: RetireTarget) => {
     setRetireTarget(target);
@@ -502,6 +537,7 @@ export function ModuloConfiguracion() {
           name: locationName,
           locationType,
           parentCode: locationParent,
+          barnId: locationParent ? null : numberOrNull(locationBarnId),
           effectiveFrom: locationDate,
           reason: locationReason,
           operationKey: locationKey,
@@ -518,6 +554,7 @@ export function ModuloConfiguracion() {
       setLocationCode('');
       setLocationName('');
       setLocationParent('');
+      setLocationBarnId('');
       setLocationReason('');
       setLocationKey(newOperationKey('cfg-loc'));
       await loadConfig(asOf);
@@ -1005,6 +1042,7 @@ export function ModuloConfiguracion() {
                       <th>Nombre</th>
                       <th>Tipo</th>
                       <th>Ubicación padre</th>
+                      <th>Galpón vinculado</th>
                       <th>Vigente desde</th>
                       <th>Acciones</th>
                     </tr>
@@ -1016,9 +1054,15 @@ export function ModuloConfiguracion() {
                         <td>{location.name}</td>
                         <td><span className="badge badge-outline">{LOCATION_TYPE_LABEL[location.locationType] ?? location.locationType}</span></td>
                         <td className="font-mono text-xs">{location.parentCode ?? 'Sin padre'}</td>
+                        <td>{barns.find((barn) => barn.id === location.barnId)?.name ?? 'Sin vínculo'}</td>
                         <td className="font-mono text-xs">{location.effectiveFrom}</td>
                         <td>
                           <div className="inline-flex items-center gap-2 flex-wrap">
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
+                              setLocationCode(location.code); setLocationName(location.name); setLocationType(location.locationType);
+                              setLocationParent(location.parentCode ?? ''); setLocationBarnId(location.barnId === null ? '' : String(location.barnId));
+                              setLocationDate(farmToday()); setLocationReason(''); setLocationKey(newOperationKey('cfg-loc')); setLocationError(null);
+                            }}>Editar</button>
                             <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory({ entity: 'location', code: location.code, label: location.name })}>
                               <span className="inline-flex items-center justify-center gap-2 leading-none">
                                 <IconClock size={14} />
@@ -1059,7 +1103,10 @@ export function ModuloConfiguracion() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Tipo</label>
-                    <select className="form-select" value={locationType} onChange={(e) => setLocationType(e.target.value)}>
+                    <select className="form-select" value={locationType} onChange={(e) => {
+                      setLocationType(e.target.value);
+                      if (e.target.value === 'galpon') setLocationParent('');
+                    }}>
                       <option value="galpon">Galpón</option>
                       <option value="corral">Corral</option>
                       <option value="area">Área</option>
@@ -1067,8 +1114,22 @@ export function ModuloConfiguracion() {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Ubicación padre (opcional)</label>
-                    <input type="text" className="form-input" value={locationParent} onChange={(e) => setLocationParent(e.target.value)} placeholder="Ej. galpon_a" />
+                    <label className="form-label" htmlFor="location-parent">Ubicación padre{locationType === 'corral' ? '' : ' (opcional)'}</label>
+                    <select id="location-parent" className="form-select" required={locationType === 'corral'} disabled={locationType === 'galpon'} value={locationParent} onChange={(e) => setLocationParent(e.target.value)}>
+                      <option value="">Sin padre (ubicación raíz)</option>
+                      {validLocationParents.map((location) => <option key={location.code} value={location.code}>{location.name} · {location.code}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="location-barn">Galpón vinculado</label>
+                    {locationParent ? (
+                      <p className="text-sm">{barns.find((barn) => barn.id === locationChoices.find((location) => location.code === locationParent)?.barnId)?.name ?? 'Seleccione un padre vigente'} · heredado del padre</p>
+                    ) : (
+                      <select id="location-barn" className="form-select" required value={locationBarnId} onChange={(e) => setLocationBarnId(e.target.value)}>
+                        <option value="">Seleccione un galpón</option>
+                        {barns.filter((barn) => barn.status !== 'inactivo').map((barn) => <option key={barn.id} value={barn.id}>{barn.name}</option>)}
+                      </select>
+                    )}
                   </div>
                   <div className="form-group">
                     <label className="form-label">Vigente desde</label>

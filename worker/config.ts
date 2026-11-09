@@ -7,6 +7,7 @@ import {
   lookupExistingOperation,
   normalizeReason,
 } from './events';
+import { getLocationHierarchySnapshot, linkedLocationsAt, locationConfigHierarchyGuard, locationReassignmentGuards, resolveLocationBarnId } from './locations';
 
 /**
  * Configuración versionada de la granja (T07 · CFG-01..CFG-05).
@@ -78,6 +79,7 @@ export interface LocationItem {
   name: string;
   locationType: string;
   parentCode: string | null;
+  barnId: number | null;
   effectiveFrom: string;
   effectiveTo: string | null;
   status: 'active' | 'retired';
@@ -197,6 +199,7 @@ function mapLocation(row: Row): LocationItem {
     name: String(row.name),
     locationType: String(row.location_type),
     parentCode: row.parent_code === null || row.parent_code === undefined ? null : String(row.parent_code),
+    barnId: row.barn_id === null || row.barn_id === undefined ? null : Number(row.barn_id),
     effectiveFrom: String(row.effective_from),
     effectiveTo: row.effective_to === null || row.effective_to === undefined ? null : String(row.effective_to),
     status: row.status === 'retired' ? 'retired' : 'active',
@@ -264,12 +267,13 @@ export async function getConfigSnapshot(db: D1Database, asOfInput?: string | nul
     items: catalogRows.map(mapCatalog).filter((item) => item.catalogKey === key),
   }));
 
+  const locations = locationRows.map(mapLocation);
   return {
     asOf,
     settings: SETTING_KEYS.map((key) => settingsByKey.get(key)).filter((value): value is SettingItem => Boolean(value)),
     catalogs,
     stages: stageRows.map(mapStage),
-    locations: locationRows.map(mapLocation),
+    locations: locations.map((location) => ({ ...location, barnId: resolveLocationBarnId(locations, location.code) })),
     lots: lotRows.map(mapLot),
   };
 }
@@ -574,6 +578,7 @@ interface SaveLocationInput {
   name?: string;
   locationType?: string;
   parentCode?: string | null;
+  barnId?: number | string | null;
   effectiveFrom?: string;
   operationKey?: string;
   reason?: string;
@@ -590,16 +595,47 @@ export async function saveLocation(db: D1Database, actorUserId: number, input: S
   const from = effectiveDate(input.effectiveFrom);
 
   if (parentCode === code) throw new ApiError(400, 'Una ubicación no puede ser su propia ubicación padre');
+  const requestedBarnId = optionalInteger(input.barnId, 'Galpón vinculado');
 
-  const payload = { code, name, locationType, parentCode, effectiveFrom: from };
+  const payload = { code, name, locationType, parentCode,
+    ...(input.barnId === undefined ? {} : { barnId: requestedBarnId }), effectiveFrom: from };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) return { item: replay.result as LocationItem, replayed: true };
 
-  const open = await findOpenVersion(db, 'location_versions', 'code', code);
+  const snapshot = await getLocationHierarchySnapshot(db);
+  const open = snapshot.versions.filter((version) => version.code === code && version.effectiveTo === null)
+    .map((version) => ({ id: version.id, effective_from: version.effectiveFrom }))
+    .sort((left, right) => right.effective_from.localeCompare(left.effective_from))[0] ?? null;
   assertVersionDate(open, from);
 
+  if (locationType === 'galpon' && parentCode) throw new ApiError(400, 'El galpón debe ser una ubicación raíz');
+  if (locationType === 'corral' && !parentCode) throw new ApiError(400, 'Seleccione una ubicación padre para el corral');
+  const locations = linkedLocationsAt(snapshot, from);
+  const candidate = { code, parentCode, barnId: requestedBarnId };
+  const hierarchy = [...locations.filter((location) => location.code !== code), candidate];
+  const barnId = resolveLocationBarnId(hierarchy, code);
+  if (barnId === null || barnId <= 0) {
+    throw new ApiError(400, parentCode
+      ? 'La ubicación padre no está vigente o forma un ciclo sin galpón vinculado'
+      : 'Seleccione el galpón vinculado para la ubicación raíz');
+  }
+  if (parentCode && requestedBarnId !== null && requestedBarnId !== barnId) {
+    throw new ApiError(400, 'La ubicación hija debe heredar el galpón de su ubicación padre');
+  }
+  const boundaries = new Set(snapshot.versions.flatMap((version) => [version.effectiveFrom, version.effectiveTo])
+    .filter((date): date is string => date !== null && date > from));
+  for (const boundary of boundaries) {
+    const future = linkedLocationsAt(snapshot, boundary);
+    if (resolveLocationBarnId([...future.filter((location) => location.code !== code), candidate], code) === null) {
+      throw new ApiError(400, 'La ubicación formaría un ciclo o perdería su galpón con las vigencias ya programadas');
+    }
+  }
+  const barn = await db.prepare("SELECT id FROM barns WHERE id = ? AND status <> 'inactivo'").bind(barnId).first();
+  if (!barn) throw new ApiError(400, 'El galpón vinculado no existe o está inactivo');
+  const assignmentGuards = await locationReassignmentGuards(db, snapshot, candidate, from);
+
   const id = await nextId(db, 'location_versions');
-  const item: LocationItem = { id, code, name, locationType, parentCode, effectiveFrom: from, effectiveTo: null, status: 'active' };
+  const item: LocationItem = { id, code, name, locationType, parentCode, barnId, effectiveFrom: from, effectiveTo: null, status: 'active' };
   const claim = await createOperationClaim({
     operationKey: input.operationKey,
     operationType: 'config.location.save',
@@ -611,13 +647,13 @@ export async function saveLocation(db: D1Database, actorUserId: number, input: S
     result: item,
   });
 
-  const statements: D1PreparedStatement[] = [];
+  const statements: D1PreparedStatement[] = [locationConfigHierarchyGuard(db, snapshot), ...assignmentGuards];
   if (open) statements.push(db.prepare('UPDATE location_versions SET effective_to = ? WHERE id = ?').bind(from, open.id));
   statements.push(db.prepare(`
     INSERT INTO location_versions
-      (id, code, name, location_type, parent_code, effective_from, effective_to, status, created_by_user_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, NULL, 'active', ?, ?)
-  `).bind(id, code, name, locationType, parentCode, from, actorUserId, claim.recordedAt));
+      (id, code, name, location_type, parent_code, barn_id, effective_from, effective_to, status, created_by_user_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'active', ?, ?)
+  `).bind(id, code, name, locationType, parentCode, parentCode ? null : barnId, from, actorUserId, claim.recordedAt));
 
   const result = await commitOperation(db, claim, statements, [{
     entityType: 'farm_location',
@@ -629,7 +665,12 @@ export async function saveLocation(db: D1Database, actorUserId: number, input: S
     newData: item,
     effectiveDate: from,
     recordedAt: claim.recordedAt,
-  }]);
+  }]).catch((error: unknown) => {
+    if (/CHECK constraint failed:.*location_type/.test(String(error))) {
+      throw new ApiError(409, 'La jerarquía o la ocupación cambió; actualice antes de guardar la ubicación');
+    }
+    throw error;
+  });
 
   return { item: result.replayed ? (result.result as LocationItem) : item, replayed: result.replayed };
 }
@@ -832,19 +873,55 @@ export async function retireStage(db: D1Database, actorUserId: number, codeInput
 export async function retireLocation(db: D1Database, actorUserId: number, codeInput: string, input: RetireInput) {
   const code = normalizeCode(codeInput);
   const from = effectiveDate(input.effectiveFrom);
-  return retireSimple(db, actorUserId, {
-    table: 'location_versions',
-    codeColumn: 'code',
-    code,
-    fieldLabel: 'la ubicación',
-    entityType: 'farm_location',
-    operationType: 'config.location.retire',
-    payload: { code, effectiveFrom: from, retired: true },
+  const payload = { code, effectiveFrom: from, retired: true };
+  const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (replay) return { item: replay.result, replayed: true };
+
+  const snapshot = await getLocationHierarchySnapshot(db);
+  const open = snapshot.versions.filter((version) => version.code === code && version.effectiveTo === null)
+    .map((version) => ({ id: version.id, effective_from: version.effectiveFrom }))
+    .sort((left, right) => right.effective_from.localeCompare(left.effective_from))[0] ?? null;
+  if (!open) throw new ApiError(404, 'No existe una versión vigente de la ubicación');
+  assertVersionDate(open, from);
+  const dates = new Set([from, ...snapshot.versions.flatMap((version) => [version.effectiveFrom, version.effectiveTo])
+    .filter((date): date is string => date !== null && date > from)]);
+  for (const date of dates) {
+    const locations = linkedLocationsAt(snapshot, date);
+    const remaining = locations.filter((location) => location.code !== code);
+    if (remaining.some((location) => resolveLocationBarnId(locations, location.code) !== null
+      && resolveLocationBarnId(remaining, location.code) === null)) {
+      throw new ApiError(409, 'La ubicación tiene hijos vigentes o programados; retire o reubique primero esos hijos');
+    }
+  }
+  const assignmentGuards = await locationReassignmentGuards(db, snapshot, { code, parentCode: null, barnId: null }, from);
+  const row = await db.prepare('SELECT * FROM location_versions WHERE id=?').bind(open.id).first<Row>();
+  if (!row) throw new ApiError(409, 'La ubicación cambió; actualice antes de retirarla');
+  const previous = mapLocation(row);
+  const item = { ...previous, effectiveTo: from, status: 'retired' as const };
+  const claim = await createOperationClaim({
     operationKey: input.operationKey,
-    reason: input.reason,
-    effectiveFrom: from,
-    map: (row) => mapLocation(row),
+    operationType: 'config.location.retire',
+    authorUserId: actorUserId,
+    entityType: 'farm_location',
+    entityId: open.id,
+    effectiveDate: from,
+    payload,
+    result: item,
   });
+  const result = await commitOperation(db, claim, [
+    locationConfigHierarchyGuard(db, snapshot), ...assignmentGuards,
+    db.prepare("UPDATE location_versions SET effective_to=?,status='retired' WHERE id=?").bind(from, open.id),
+  ], [{
+    entityType: 'farm_location', entityId: open.id, action: 'annul', actorUserId,
+    reason: normalizeReason(input.reason, { required: true, fallback: 'Retiro de configuración' }),
+    previousData: previous, newData: item, effectiveDate: from, recordedAt: claim.recordedAt,
+  }]).catch((error: unknown) => {
+    if (/CHECK constraint failed:.*location_type/.test(String(error))) {
+      throw new ApiError(409, 'La jerarquía o la ocupación cambió; actualice antes de retirar la ubicación');
+    }
+    throw error;
+  });
+  return { item: result.replayed ? result.result : item, replayed: result.replayed };
 }
 
 export async function retireLot(db: D1Database, actorUserId: number, codeInput: string, input: RetireInput) {

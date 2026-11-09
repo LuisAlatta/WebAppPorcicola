@@ -92,10 +92,11 @@ interface Snapshot {
   balances: InventoryBalance[];
   summary: { byStage: StageSummary[]; total: StageSummary };
   movements: InventoryMovement[];
+  capacityWarnings: { barnId:number; barnName:string; capacity:number; heads:number; excessHeads:number }[];
   options: {
     barns: { id: number; code: string; name: string }[];
     stages: { code: string; name: string }[];
-    locations: { code: string; name: string; locationType: string }[];
+    locations: { code: string; name: string; locationType: string; barnId:number|null }[];
     lots: { code: string; name: string }[];
     sexes: { code: string; name: string }[];
     deathCauses: { code: string; name: string }[];
@@ -323,8 +324,10 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
   }, [movements, movementSearch]);
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+    if(key==='barnId')setTransferCoordinates(prev=>({...prev,sourceLocationCode:''}));
     setForm((prev) => {
       const next = { ...prev, [key]: value };
+      if(key==='barnId')next.locationCode='';
       if (key === 'movementType' && value !== 'sale' && value !== 'death') {
         next.causeCode = '';
       }
@@ -644,6 +647,13 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
               <span>Reintentar carga</span>
             </span>
           </button>
+        </div>
+      )}
+
+      {data && !!data.capacityWarnings?.length && (
+        <div className="alert alert-warning" role="status">
+          <strong>Sobre capacidad al {data.asOf}</strong>
+          <ul>{data.capacityWarnings.map(item => <li key={item.barnId}>{item.barnName}: {item.heads} cabezas para una capacidad de {item.capacity} · exceso de {item.excessHeads}.</li>)}</ul>
         </div>
       )}
 
@@ -999,7 +1009,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     onChange={(event) => setField('locationCode', event.target.value)}
                   >
                     <option value="">Sin asignar</option>
-                    {(options?.locations ?? []).map((location) => (
+                    {(options?.locations ?? []).filter(location=>location.barnId===Number(form.barnId)).map((location) => (
                       <option key={location.code} value={location.code}>{location.name}</option>
                     ))}
                   </select>
@@ -1217,7 +1227,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                       id="t10-dest"
                       className="form-select"
                       value={transferDestination}
-                      onChange={(event) => setTransferDestination(event.target.value)}
+                      onChange={(event) => {setTransferDestination(event.target.value);setTransferCoordinates(prev=>({...prev,destinationLocationCode:''}));}}
                       required
                     >
                       <option value="">Seleccione destino</option>
@@ -1300,7 +1310,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                         onChange={(event) => setTransferCoordinates((prev) => ({ ...prev, sourceLocationCode: event.target.value }))}
                       >
                         <option value="">Sin asignar</option>
-                        {options?.locations.map((location) => (
+                        {options?.locations.filter(location=>location.barnId===Number(form.barnId)).map((location) => (
                           <option key={location.code} value={location.code}>{location.name}</option>
                         ))}
                       </select>
@@ -1315,7 +1325,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                         onChange={(event) => setTransferCoordinates((prev) => ({ ...prev, destinationLocationCode: event.target.value }))}
                       >
                         <option value="">Sin asignar</option>
-                        {options?.locations.map((location) => (
+                        {options?.locations.filter(location=>location.barnId===Number(transferDestination)).map((location) => (
                           <option key={location.code} value={location.code}>{location.name}</option>
                         ))}
                       </select>
@@ -1362,7 +1372,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                         onChange={(event) => setField('locationCode', event.target.value)}
                       >
                         <option value="">Sin asignar</option>
-                        {options?.locations.map((location) => (
+                        {options?.locations.filter(location=>location.barnId===Number(form.barnId)).map((location) => (
                           <option key={location.code} value={location.code}>{location.name}</option>
                         ))}
                       </select>

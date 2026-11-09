@@ -10,6 +10,7 @@ import {
 } from './events';
 import { getConfigSnapshot, type ConfigSnapshot } from './config';
 import { locationEventGuardStatement, stockGuardStatement } from './inventory';
+import { assertLocationForBarn } from './locations';
 
 /**
  * Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)
@@ -183,7 +184,7 @@ export interface AnimalDetail extends AnimalListItem {
 export interface AnimalOptions {
   barns: { id: number; code: string; name: string }[];
   stages: { code: string; name: string }[];
-  locations: { code: string; name: string; locationType: string }[];
+  locations: { code: string; name: string; locationType: string; barnId: number | null }[];
   lots: { code: string; name: string }[];
   aptitudes: { code: string; name: string }[];
   types: { code: string; name: string }[];
@@ -397,10 +398,11 @@ async function buildOptions(db: D1Database, config: ConfigSnapshot, barnIds: num
       name: String(barn.name),
     })),
     stages: config.stages.map((stage) => ({ code: stage.code, name: stage.name })),
-    locations: config.locations.map((location) => ({
+    locations: config.locations.filter((location) => location.barnId !== null && (barnIds === null || barnIds.includes(location.barnId))).map((location) => ({
       code: location.code,
       name: location.name,
       locationType: location.locationType,
+      barnId: location.barnId,
     })),
     lots: config.lots.map((lot) => ({ code: lot.code, name: lot.name })),
     aptitudes: catalogItems(config, 'aptitud'),
@@ -1149,9 +1151,7 @@ export async function createAnimal(
   if (!config.stages.some((stage) => stage.code === stageCode)) {
     throw new ApiError(400, 'La etapa no está vigente en la fecha de ingreso');
   }
-  if (locationCode && !config.locations.some((location) => location.code === locationCode)) {
-    throw new ApiError(400, 'La ubicación no está vigente en la fecha de ingreso');
-  }
+  const locationGuard = await assertLocationForBarn(db, barnId, locationCode, entryDate, {ongoing:true});
   if (lotCode && !config.lots.some((lot) => lot.code === lotCode)) {
     throw new ApiError(400, 'El lote no está vigente en la fecha de ingreso');
   }
@@ -1338,7 +1338,8 @@ export async function createAnimal(
   }
   if(originType==='interna'){statements.unshift(unidentifiedHeadGuard(db,barnId,locationCode,lotCode,stageCode,sex,entryDate));statements.push(db.prepare('DELETE FROM litter_identification_guard'));}
 
-  await commitOperation(db, claim, statements, audits).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La camada o su historial cambió; revise la fecha y las crías pendientes');throw error;});
+  if(locationGuard){statements.unshift(locationGuard);statements.push(db.prepare('DELETE FROM inventory_write_guard'));}
+  await commitOperation(db, claim, statements, audits).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La ubicación, la camada o su historial cambió; revise la fecha y las crías pendientes');throw error;});
 
   const animal = await getAnimal(db, code, scope);
   return { animal, replayed: false };
@@ -1750,6 +1751,8 @@ export async function registerAnimalWeight(db: D1Database, actorUserId: number, 
   const animalId=Number(context.row.id);const stageChanged=stageCode!==context.stageAtDate;
   const statements:D1PreparedStatement[]=[db.prepare('INSERT INTO inventory_write_guard(guard_id) VALUES(1)'),db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?) AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ? AND h.stage_code=?) THEN 0 ELSE -1 END`).bind(animalId,weighedOn,weighedOn,weighedOn,weighedOn,context.barnId,context.locationCode,context.lotCode,context.stageAtDate)];
   if(stageChanged){
+    const locationGuard=await assertLocationForBarn(db,context.barnId,context.locationCode,weighedOn,{ongoing:true});
+    if(locationGuard)statements.push(locationGuard);
     if(context.row.exit_date!==null||Number(context.row.is_active)!==1)throw new ApiError(409,'La ficha no está activa para cambiar de etapa');
     if(context.row.litter_id&&context.stageAtDate==='preinicio'&&!await db.prepare(`SELECT 1 FROM inventory_movements m JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=? AND m.litter_id=? AND m.quantity<0 AND o.operation_type='litter.weaning'`).bind(animalId,context.row.litter_id).first())throw new ApiError(409,'Use el destete de la camada para cambiar la etapa de este lechón');
     const group=crypto.randomUUID();const sex=String(context.row.sex) as Sex;
@@ -1843,7 +1846,7 @@ export async function transferAnimal(
   if (destinationBarnId === sourceBarnId && locationCode === (row.location_code ?? null) && lotCode === (row.lot_code ?? null) && destinationStageCode === stageCode) throw new ApiError(400, 'El origen y destino deben ser diferentes');
   const config = await getConfigSnapshot(db, effectiveDate);
   if (!config.stages.some((stage) => stage.code === destinationStageCode)) throw new ApiError(400, 'La etapa de destino no está vigente en esa fecha');
-  if (locationCode && !config.locations.some((item) => item.code === locationCode)) throw new ApiError(400, 'La ubicación no está vigente en esa fecha');
+  const destinationLocationGuard = await assertLocationForBarn(db, destinationBarnId, locationCode, effectiveDate, {ongoing:true});
   if (lotCode && !config.lots.some((item) => item.code === lotCode)) throw new ApiError(400, 'El lote no está vigente en esa fecha');
   const later = await db.prepare('SELECT id FROM animal_location_history WHERE animal_id = ? AND valid_from > ? LIMIT 1')
     .bind(Number(row.id), effectiveDate).first();
@@ -1886,6 +1889,7 @@ export async function transferAnimal(
       .bind(animalId, destinationBarnId, locationCode, lotCode, destinationStageCode, effectiveDate, claim.id, actorUserId, createdAt),
     db.prepare('UPDATE animals SET barn_id = ?, location_code = ?, lot_code = ?, current_stage_code = ?, updated_at = ? WHERE id = ?')
       .bind(destinationBarnId, locationCode, lotCode, destinationStageCode, createdAt, animalId),
+    ...(destinationLocationGuard ? [destinationLocationGuard] : []),
     insertLeg(sourceBarnId, sourceLocation, sourceLot, 'transfer_out'),
     insertLeg(destinationBarnId, locationCode, lotCode, 'transfer_in'),
     stockGuardStatement(db, sourceBarnId, sourceLocation, sourceLot, stageCode, sex),
@@ -1894,7 +1898,7 @@ export async function transferAnimal(
   ], [{ entityType: 'animal', entityId: animalId, action: 'update', actorUserId, barnId: sourceBarnId, reason,
     previousData: { barnId: sourceBarnId, locationCode: sourceLocation, lotCode: sourceLot, stageCode },
     newData: { barnId: destinationBarnId, locationCode, lotCode, stageCode: destinationStageCode, transferGroupId }, effectiveDate, recordedAt: createdAt }]).catch((error: unknown) => {
-      if (/guard_id/.test(String(error))) throw new ApiError(409, 'La ficha o el saldo cambió, o hay pesajes, servicios o actuaciones sanitarias en esa fecha o posteriores; revise la fecha antes de trasladar');
+      if (/guard_id/.test(String(error))) throw new ApiError(409, 'La ubicación, la ficha o el saldo cambió, o hay pesajes, servicios o actuaciones sanitarias en esa fecha o posteriores; revise la fecha antes de trasladar');
       throw error;
     });
   return { animal: await getAnimal(db, key, scope), transferGroupId, warning, replayed: false };
@@ -2029,6 +2033,7 @@ export async function registerAnimalSaleReturn(db:D1Database,actorUserId:number,
   const financeId=Number((await db.prepare('SELECT COALESCE(MAX(id),0)+1 AS id FROM financial_entries').first<{id:number}>())?.id??1);const movementId=Date.now()*1000+Math.floor(Math.random()*1000);
   const claim=await createOperationClaim({operationKey:input.operationKey,operationType:'animal.sale.return',authorUserId:actorUserId,entityType:'animal',entityId:animalId,barnId,effectiveDate,payload,result:{animalId,originalEntryId:Number(original.id),financeId,movementId}});const now=claim.recordedAt;
   const allocation=allocations.results![0];const location=sourceLocation.location_code===null?null:String(sourceLocation.location_code);const lot=sourceLocation.lot_code===null?null:String(sourceLocation.lot_code);const stage=String(sourceLocation.stage_code);const sex=String(animal.sex) as Sex;
+  const locationGuard=await assertLocationForBarn(db,barnId,location,effectiveDate,{ongoing:true});
   const committed=await commitOperation(db,claim,[
     db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
     db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM financial_entries WHERE id=? AND reversed_at IS NULL) AND EXISTS(SELECT 1 FROM animals WHERE id=? AND status='vendido' AND exit_date=?) THEN 0 ELSE -1 END`).bind(Number(original.id),animalId,original.operation_date),
@@ -2040,12 +2045,12 @@ export async function registerAnimalSaleReturn(db:D1Database,actorUserId:number,
     db.prepare(`INSERT INTO inventory_movements(id,operation_log_id,movement_type,effective_date,barn_id,location_code,lot_code,stage_code,sex,quantity,reverses_movement_id,notes,animal_id,created_by_user_id,created_at) VALUES(?,?,'purchase',?,?,?,?,?,?,1,?,?,?,?,?)`).bind(movementId,claim.id,effectiveDate,barnId,location,lot,stage,sex,Number(originalMovement.id),`Devolución de venta #${Number(original.id)}`,animalId,actorUserId,now),
     db.prepare(`INSERT INTO financial_entries(id,operation_log_id,direction,category,concept,operation_date,amount_minor,currency_code,counterparty,reference,notes,created_by_user_id,created_at,source_type,source_id,reversal_of_id) VALUES(?,?,'expense','Devolución de venta de animal',?,?,?,?,?,?,?,?,?,'reversal',?,?)`).bind(financeId,claim.id,`Devolución de venta del animal ${String(animal.code)}`,effectiveDate,Number(original.amount_minor),String(original.currency_code),original.counterparty,original.reference,reason,actorUserId,now,String(original.id),Number(original.id)),
     db.prepare(`INSERT INTO financial_allocations(entry_id,barn_id,barn_name_snapshot,amount_minor,animal_id,animal_code_snapshot,lot_code,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(financeId,allocation.barn_id,allocation.barn_name_snapshot,Number(allocation.amount_minor),animalId,String(animal.code),lot,now),
-    stockGuardStatement(db,barnId,location,lot,stage,sex),db.prepare('DELETE FROM inventory_write_guard'),
+    stockGuardStatement(db,barnId,location,lot,stage,sex),...(locationGuard?[locationGuard]:[]),db.prepare('DELETE FROM inventory_write_guard'),
   ],[
     {entityType:'animal',entityId:animalId,action:'update',actorUserId,barnId,reason,previousData:{status:'vendido',exitDate:animal.exit_date},newData:{status:'activo',returnedFromSale:Number(original.id),inventoryMovementId:movementId},effectiveDate,recordedAt:now},
     {entityType:'financial_entry',entityId:Number(original.id),action:'update',actorUserId,barnId,reason,previousData:{reversedAt:null},newData:{reversedAt:now,reversalEntryId:financeId},effectiveDate,recordedAt:now},
     {entityType:'financial_entry',entityId:financeId,action:'create',actorUserId,barnId,reason,previousData:null,newData:{direction:'expense',reversalOfId:Number(original.id),amountMinor:Number(original.amount_minor),currencyCode:String(original.currency_code)},effectiveDate,recordedAt:now},
-  ]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La venta o la camada cambió; actualice antes de devolver');throw error;});
+  ]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La venta, la camada o la configuración de ubicaciones cambió; actualice antes de devolver');throw error;});
   return{animal:await getAnimal(db,key,scope),replayed:committed.replayed};
 }
 

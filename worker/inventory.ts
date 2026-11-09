@@ -8,6 +8,7 @@ import {
   normalizeReason,
 } from './events';
 import { getConfigSnapshot, type ConfigSnapshot } from './config';
+import { assertLocationForBarn } from './locations';
 
 /**
  * Inventario individual y colectivo · T08 (INV-01..INV-03)
@@ -115,10 +116,11 @@ export interface InventorySnapshot {
     total: StageSummary;
   };
   movements: InventoryMovement[];
+  capacityWarnings: { barnId:number; barnName:string; capacity:number; heads:number; excessHeads:number }[];
   options: {
     barns: { id: number; code: string; name: string }[];
     stages: { code: string; name: string }[];
-    locations: { code: string; name: string; locationType: string }[];
+    locations: { code: string; name: string; locationType: string; barnId:number|null }[];
     lots: { code: string; name: string }[];
     sexes: { code: string; name: string }[];
     deathCauses: { code: string; name: string }[];
@@ -266,6 +268,7 @@ function buildOptions(config: ConfigSnapshot): Omit<InventorySnapshot['options']
       code: location.code,
       name: location.name,
       locationType: location.locationType,
+      barnId: location.barnId,
     })),
     lots: config.lots.map((lot) => ({ code: lot.code, name: lot.name })),
     sexes: catalogItems(config, 'sexo'),
@@ -340,10 +343,10 @@ export async function getInventorySnapshot(
 
   const barnScope = barnFilterSql(barnIds, 'b.id');
   const barnRows = await db.prepare(`
-    SELECT b.id, b.code, b.name FROM barns b
+    SELECT b.id, b.code, b.name, b.capacity FROM barns b
     WHERE 1 = 1${barnScope.sql}
     ORDER BY b.code
-  `).bind(...barnScope.params).all<{ id: number; code: string; name: string }>();
+  `).bind(...barnScope.params).all<{ id: number; code: string; name: string; capacity:number|null }>();
   const barns = (barnRows.results ?? []).map((barn) => ({
     id: Number(barn.id),
     code: String(barn.code),
@@ -560,12 +563,21 @@ export async function getInventorySnapshot(
     limit: input.movementLimit ?? 50,
   }, maps);
 
+  const headsByBarn=new Map<number,number>();
+  for(const balance of balances)headsByBarn.set(balance.barnId,(headsByBarn.get(balance.barnId)??0)+balance.heads);
+  const capacityWarnings=(barnRows.results??[]).flatMap(barn=>{
+    const heads=headsByBarn.get(Number(barn.id))??0;
+    if(barn.capacity===null||heads<=Number(barn.capacity))return[];
+    return[{barnId:Number(barn.id),barnName:String(barn.name),capacity:Number(barn.capacity),heads,excessHeads:heads-Number(barn.capacity)}];
+  });
+
   return {
     asOf,
     from,
     balances,
     summary: { byStage: stages, total },
     movements,
+    capacityWarnings,
     options: { ...buildOptions(config), barns },
   };
 }
@@ -742,6 +754,7 @@ export async function registerMovement(
   const payload=sale?{...legacyPayload,sale}:legacyPayload;
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) return { movement: replay.result as InventoryMovement, replayed: true };
+  const locationGuard = await assertLocationForBarn(db,barnId,locationCode,effectiveDate,{stockAfterWrite:['initial','purchase','birth'].includes(type)||(type==='adjustment'&&quantity>0)});
 
   // Comprobación cronológica del grupo: también detecta correcciones retroactivas
   // que dejarían un saldo negativo en fechas posteriores.
@@ -829,6 +842,7 @@ export async function registerMovement(
       db.prepare(`INSERT INTO financial_entries(id,operation_log_id,direction,category,concept,operation_date,amount_minor,currency_code,counterparty,reference,notes,created_by_user_id,created_at,source_type,source_id) VALUES(?,?,'income','Venta grupal',?,?,?,?,?,?,?,?,?,'inventory_sale',?)`).bind(id,claim.id,`Venta grupal de ${quantity} cabezas · ${movement.stageName}`,effectiveDate,sale.amountMinor,sale.currencyCode,sale.counterparty,sale.documentReference,reason,actorUserId,createdAt,String(id)),
       db.prepare(`INSERT INTO financial_allocations(entry_id,barn_id,barn_name_snapshot,amount_minor,lot_code,quantity,created_at) VALUES(?,?,?,?,?,?,?)`).bind(id,barnId,barn.name,sale.amountMinor,lotCode,quantity,createdAt),
     ]:[]),
+    ...(locationGuard ? [locationGuard] : []),
     db.prepare('DELETE FROM inventory_write_guard'),
   ], [{
     entityType: 'inventory_movement',
@@ -841,7 +855,10 @@ export async function registerMovement(
     newData: movement,
     effectiveDate,
     recordedAt: claim.recordedAt,
-  },...(sale?[{entityType:'financial_entry',entityId:id,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{direction:'income',category:'Venta grupal',inventoryMovementId:id,amountMinor:sale.amountMinor,currencyCode:sale.currencyCode,counterparty:sale.counterparty,reference:sale.documentReference,quantity},effectiveDate,recordedAt:claim.recordedAt}]:[])]);
+  },...(sale?[{entityType:'financial_entry',entityId:id,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{direction:'income',category:'Venta grupal',inventoryMovementId:id,amountMinor:sale.amountMinor,currencyCode:sale.currencyCode,counterparty:sale.counterparty,reference:sale.documentReference,quantity},effectiveDate,recordedAt:claim.recordedAt}]:[])]).catch((error:unknown)=>{
+    if(/guard_id/.test(String(error)))throw new ApiError(409,'La ubicación o el saldo cambió, o el grupo quedaría en una ubicación sin vigencia; revise las fechas y el destino');
+    throw error;
+  });
 
   return {
     movement: result.replayed ? (result.result as InventoryMovement) : movement,
@@ -919,6 +936,8 @@ export async function transferInventory(
     destinationLocationCode, destinationLotCode, stageCode, sex, quantity, ...(requestedStageCode ? { destinationStageCode: requestedStageCode } : {}) };
   const existing = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (existing) return { ...(existing.result as { transferGroupId: string; warning: string | null }), replayed: true };
+  const sourceLocationGuard = await assertLocationForBarn(db,sourceBarnId,sourceLocationCode,effectiveDate);
+  const destinationLocationGuard = await assertLocationForBarn(db,destinationBarnId,destinationLocationCode,effectiveDate,{stockAfterWrite:true});
 
   const destinationBarn = barns.results?.find((barn) => Number(barn.id) === destinationBarnId);
   let warning: string | null = null;
@@ -964,6 +983,7 @@ export async function transferInventory(
   `).bind(claim.id, type, effectiveDate, barnId, location, lot, type === 'transfer_in' ? destinationStageCode : stageCode, sex, quantity,
     transferGroupId, typeof input.notes === 'string' ? input.notes.slice(0, 300) : null, actorUserId, claim.recordedAt);
   const commit = await commitOperation(db, claim, [
+    ...(sourceLocationGuard ? [sourceLocationGuard] : []),
     db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
     insert(sourceBarnId, sourceLocationCode, sourceLotCode, 'transfer_out'),
     insert(destinationBarnId, destinationLocationCode, destinationLotCode, 'transfer_in'),
@@ -980,11 +1000,15 @@ export async function transferInventory(
         )) THEN 0 ELSE -1 END`).bind(sourceBarnId, sourceLocationCode, sourceLotCode, stageCode, sex, effectiveDate,
           sex, effectiveDate, effectiveDate, sourceBarnId, sourceLocationCode, sourceLotCode, stageCode, effectiveDate, effectiveDate,
           sourceBarnId, sourceLocationCode, sourceLotCode, stageCode),
+    ...(destinationLocationGuard ? [destinationLocationGuard] : []),
     db.prepare('DELETE FROM inventory_write_guard'),
   ], [
     { entityType: 'inventory_transfer', entityId: 1, action: 'create', actorUserId, barnId: sourceBarnId,
       reason, previousData: null, newData: { ...payload, transferGroupId }, effectiveDate, recordedAt: claim.recordedAt },
-  ]);
+  ]).catch((error:unknown)=>{
+    if(/guard_id/.test(String(error)))throw new ApiError(409,'La ubicación o el saldo cambió, o el grupo quedaría en una ubicación sin vigencia; revise las fechas y el destino');
+    throw error;
+  });
   return { ...(commit.result as { transferGroupId: string; warning: string | null }), replayed: commit.replayed };
 }
 
@@ -1033,6 +1057,7 @@ export async function reconcileInventory(
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Conciliación física' });
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) return { ...(replay.result as Omit<Awaited<ReturnType<typeof reconcileInventory>>, 'replayed'>), replayed: true };
+  const locationGuard = await assertLocationForBarn(db,barnId,locationCode,effectiveDate,{stockAfterWrite:variance>0});
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'inventory.reconciliation',
     authorUserId: actorUserId, entityType: 'inventory_reconciliation', entityId: 0, barnId, effectiveDate,
     payload, result: { expectedHeads, countedHeads, variance } });
@@ -1050,9 +1075,13 @@ export async function reconcileInventory(
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(claim.id, barnId, locationCode, lotCode, stageCode, sex, effectiveDate, expectedHeads, countedHeads, variance, adjustmentId, actorUserId, createdAt));
   effects.push(stockGuardStatement(db, barnId, locationCode, lotCode, stageCode, sex));
+  if(locationGuard)effects.push(locationGuard);
   effects.push(db.prepare('DELETE FROM inventory_write_guard'));
   const commit = await commitOperation(db, claim, effects, [{ entityType: 'inventory_reconciliation', entityId: 0,
-    action: 'create', actorUserId, barnId, reason, previousData: { expectedHeads }, newData: payload, effectiveDate, recordedAt: createdAt }]);
+    action: 'create', actorUserId, barnId, reason, previousData: { expectedHeads }, newData: payload, effectiveDate, recordedAt: createdAt }]).catch((error:unknown)=>{
+      if(/guard_id/.test(String(error)))throw new ApiError(409,'La ubicación o el saldo cambió; actualice el inventario antes de conciliar');
+      throw error;
+    });
   return { ...(commit.result as Omit<Awaited<ReturnType<typeof reconcileInventory>>, 'replayed'>), replayed: commit.replayed };
 }
 
@@ -1079,6 +1108,7 @@ async function cancelGroupSale(db:D1Database,actorUserId:number,original:Row,inp
   try{
     const{entry,allocations}=await cancellableGroupSale(db,original);
     const effectiveDate=String(original.effective_date);const reversalId=Date.now()*1000+Math.floor(Math.random()*1000);
+    const locationGuard=await assertLocationForBarn(db,barnId,original.location_code==null?null:String(original.location_code),effectiveDate,{stockAfterWrite:true});
     const result={originalMovementId:movementId,correctedQuantity:0};
     const claim=await createOperationClaim({operationKey:input.operationKey,operationType:'inventory.sale.cancel',authorUserId:actorUserId,entityType:'inventory_movement',entityId:movementId,barnId,effectiveDate,payload,result});
     const now=claim.recordedAt;
@@ -1090,6 +1120,7 @@ async function cancelGroupSale(db:D1Database,actorUserId:number,original:Row,inp
       db.prepare(`INSERT INTO financial_entries(id,operation_log_id,direction,category,concept,operation_date,amount_minor,currency_code,counterparty,reference,notes,created_by_user_id,created_at,source_type,source_id,reversal_of_id) VALUES(?,?,'expense','Anulación de venta grupal',?,?,?,?,?,?,?,?,?,'inventory_sale_cancellation',?,?)`).bind(reversalId,claim.id,`Anulación de venta grupal #${movementId}`,effectiveDate,entry.amount_minor,entry.currency_code,entry.counterparty,entry.reference,reason,actorUserId,now,String(entry.id),entry.id),
       ...allocations.map(line=>db.prepare(`INSERT INTO financial_allocations(entry_id,barn_id,barn_name_snapshot,amount_minor,animal_id,animal_code_snapshot,lot_code,supply_code,quantity,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`).bind(reversalId,line.barn_id,line.barn_name_snapshot,line.amount_minor,line.animal_id,line.animal_code_snapshot,line.lot_code,line.supply_code,line.quantity,now)),
       stockGuardStatement(db,barnId,original.location_code==null?null:String(original.location_code),original.lot_code==null?null:String(original.lot_code),String(original.stage_code),String(original.sex) as Sex),
+      ...(locationGuard?[locationGuard]:[]),
       db.prepare('DELETE FROM inventory_write_guard'),
     ],[
       {entityType:'inventory_movement',entityId:movementId,action:'annul',actorUserId,barnId,reason,previousData:{quantity:Number(original.quantity),financialEntryId:Number(entry.id)},newData:{quantity:0,reversalEntryId:reversalId},effectiveDate,recordedAt:now},
@@ -1100,7 +1131,7 @@ async function cancelGroupSale(db:D1Database,actorUserId:number,original:Row,inp
   }catch(error){
     const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);
     if(replay)return{...(replay.result as {originalMovementId:number;correctedQuantity:number}),replayed:true};
-    if(/guard_id/.test(String(error)))throw new ApiError(409,'La venta cambió o recibió un cobro; actualice antes de anular');
+    if(/guard_id/.test(String(error)))throw new ApiError(409,'La venta cambió, recibió un cobro o repondría cabezas en una ubicación sin vigencia; revise los datos antes de anular');
     throw error;
   }
 }
@@ -1188,6 +1219,7 @@ export async function correctInventoryMovement(
   const oldDelta = movementDelta(type, oldQuantity);
   const newDelta = type === 'adjustment' ? correctedQuantity : movementDelta(type, correctedQuantity);
   const inverseDelta = -oldDelta;
+  const locationGuard = newDelta>oldDelta ? await assertLocationForBarn(db,barnId,locationCode,effectiveDate,{stockAfterWrite:true}) : null;
   const rows = await db.prepare(`SELECT id, effective_date, movement_type, quantity FROM inventory_movements m
     WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
     AND NOT (m.movement_type='adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
@@ -1218,9 +1250,13 @@ export async function correctInventoryMovement(
     insert('adjustment', inverseDelta, `Reversión del movimiento #${movementId}`),
     insert(type, correctedQuantity, `Corrección del movimiento #${movementId}`),
     stockGuardStatement(db, barnId, locationCode, lotCode, stageCode, sex),
+    ...(locationGuard?[locationGuard]:[]),
     db.prepare('DELETE FROM inventory_write_guard'),
   ], [{ entityType: 'inventory_movement', entityId: movementId, action: 'correct', actorUserId, barnId,
     reason, previousData: { movementType: type, quantity: oldQuantity, effectiveDate },
-    newData: { movementType: type, quantity: correctedQuantity, effectiveDate }, effectiveDate, recordedAt: createdAt }]);
+    newData: { movementType: type, quantity: correctedQuantity, effectiveDate }, effectiveDate, recordedAt: createdAt }]).catch((error:unknown)=>{
+      if(/guard_id/.test(String(error)))throw new ApiError(409,'La corrección dejaría un saldo incompatible o cabezas en una ubicación sin vigencia; revise las fechas');
+      throw error;
+    });
   return { originalMovementId: movementId, correctedQuantity, replayed: false };
 }
