@@ -203,7 +203,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 disabled={loading}
               />
               <span className="login-remember-text">
-                Recordar usuario y contraseña en esta PWA
+                Recordar usuario y contraseña
               </span>
             </label>
             {hasSaved && (
@@ -211,7 +211,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 type="button"
                 className="btn-forget-credentials"
                 onClick={clearSavedCredentials}
-                title="Olvidar credenciales guardadas en este dispositivo"
+                title="Olvidar credenciales guardadas"
                 disabled={loading}
               >
                 <span className="inline-flex items-center justify-center gap-1 leading-none">
