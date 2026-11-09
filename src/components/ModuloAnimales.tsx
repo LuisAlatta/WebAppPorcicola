@@ -158,6 +158,12 @@ interface Filters {
   location: string;
   lot: string;
   active: string;
+  mother: string;
+  father: string;
+  breed: string;
+  aptitude: string;
+  originType: string;
+  entryStage: string;
 }
 
 interface AnimalForm {
@@ -286,6 +292,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     location: '',
     lot: '',
     active: '',
+    mother: '', father: '', breed: '', aptitude: '', originType: '', entryStage: '',
   });
   const [form, setForm] = useState<AnimalForm>(emptyForm);
   const [editingCode, setEditingCode] = useState<string | null>(null);
@@ -321,6 +328,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     if (filters.location) params.set('location', filters.location);
     if (filters.lot) params.set('lot', filters.lot);
     if (filters.active) params.set('active', filters.active);
+    for (const key of ['mother','father','breed','aptitude','originType','entryStage'] as const) if (filters[key].trim()) params.set(key,filters[key].trim());
     const text = params.toString();
     return text ? `?${text}` : '';
   }, [filters]);
@@ -1047,6 +1055,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                   <option value="0">Solo inactivas</option>
                 </select>
               </div>
+              <div className="form-group"><label className="form-label" htmlFor="filter-mother">Madre</label><input id="filter-mother" className="form-input" value={filters.mother} onChange={event=>setFilter('mother',event.target.value)} placeholder="Código, alias o referencia" /></div>
+              <div className="form-group"><label className="form-label" htmlFor="filter-father">Padre</label><input id="filter-father" className="form-input" value={filters.father} onChange={event=>setFilter('father',event.target.value)} placeholder="Código, alias o referencia" /></div>
+              <div className="form-group"><label className="form-label" htmlFor="filter-breed">Raza</label><input id="filter-breed" className="form-input" value={filters.breed} onChange={event=>setFilter('breed',event.target.value)} /></div>
+              <div className="form-group"><label className="form-label" htmlFor="filter-aptitude">Aptitud</label><select id="filter-aptitude" className="form-select" value={filters.aptitude} onChange={event=>setFilter('aptitude',event.target.value)}><option value="">Todas</option>{(options?.aptitudes??[]).map(item=><option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
+              <div className="form-group"><label className="form-label" htmlFor="filter-origin">Procedencia</label><select id="filter-origin" className="form-select" value={filters.originType} onChange={event=>setFilter('originType',event.target.value)}><option value="">Todas</option><option value="nacimiento">Nacimiento</option><option value="compra">Compra</option><option value="interna">Interna</option><option value="inicial">Inventario inicial</option></select></div>
+              <div className="form-group"><label className="form-label" htmlFor="filter-entry-stage">Etapa de ingreso</label><select id="filter-entry-stage" className="form-select" value={filters.entryStage} onChange={event=>setFilter('entryStage',event.target.value)}><option value="">Todas</option>{(options?.stages??[]).map(item=><option key={item.code} value={item.code}>{item.name}</option>)}</select></div>
             </div>
           </div>
 

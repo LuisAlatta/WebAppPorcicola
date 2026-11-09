@@ -448,6 +448,12 @@ export interface ListAnimalFilters {
   lot?: string | null;
   barnId?: number | null;
   active?: string | null;
+  mother?: string | null;
+  father?: string | null;
+  breed?: string | null;
+  aptitude?: string | null;
+  originType?: string | null;
+  entryStage?: string | null;
   includeExited?: boolean;
   limit?: number | null;
   offset?: number | null;
@@ -513,6 +519,12 @@ export async function listAnimals(
   if (filters.lot) {
     where.push('a.lot_code = ?');
     params.push(filters.lot);
+  }
+  for(const [value,column] of [[filters.breed,'a.breed'],[filters.aptitude,'a.aptitude'],[filters.originType,'a.origin_type'],[filters.entryStage,'a.entry_stage_code']] as const){
+    if(value?.trim()){where.push(`${column} ${column==='a.breed'?'LIKE':'='} ?`);params.push(column==='a.breed'?`%${value.trim()}%`:value.trim());}
+  }
+  for(const [value,parentColumn,externalColumn] of [[filters.mother,'mother_id','mother_external'],[filters.father,'father_id','father_external']] as const){
+    if(value?.trim()){where.push(`(a.${externalColumn} LIKE ? OR EXISTS(SELECT 1 FROM animals parent WHERE parent.id=a.${parentColumn} AND (parent.code LIKE ? OR parent.alias LIKE ?)))`);const like=`%${value.trim()}%`;params.push(like,like,like);}
   }
   if (filters.barnId !== null && filters.barnId !== undefined) {
     assertBarnAllowed(barnIds, Number(filters.barnId));

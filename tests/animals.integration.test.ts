@@ -1029,6 +1029,14 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect((await summaryResponse.json() as {animal:{reproductiveSummary:unknown}}).animal.reproductiveSummary).toMatchObject({serviceCount:2,farrowingCount:2,totalBorn:19,maleBorn:16,femaleBorn:3,weighedBirths:9,averageBirthWeightKg:1.47,firstFarrowingDate:'2026-09-16',lastFarrowingDate:'2026-10-20'});
   }, 25000);
 
+  it('filtra padrón por progenitores, aptitud, raza, procedencia y etapa de ingreso', async () => {
+    const created=await create({code:'FILTRO-EXCEL',breed:'Duroc',aptitude:'engorde',motherExternal:'MADRE-EXTERNA',fatherExternal:'PADRE-EXTERNO',originType:'inicial',entryStageCode:'preinicio',operationKey:'filter-excel'});expect(created.status,await created.clone().text()).toBe(201);
+    for(const filter of ['mother=MADRE-EXTERNA','father=PADRE-EXTERNO','breed=Duroc','aptitude=engorde','originType=inicial','entryStage=preinicio']){const result=await list(`?q=FILTRO-EXCEL&${filter}`);expect(result.animals.map(animal=>animal.code)).toContain('FILTRO-EXCEL');}
+    expect((await list('?q=FILTRO-EXCEL&mother=OTRA')).animals).toHaveLength(0);
+    expect((await list('?q=FILTRO-EXCEL&father=OTRO')).animals).toHaveLength(0);
+    expect((await list('?q=FILTRO-EXCEL&entryStage=inicio')).animals).toHaveLength(0);
+  },25000);
+
   it('registra descarte físico sin venta ni muerte y conserva la causa', async () => {
     expect((await create({code:'DESCARTE-01',entryDate:'2026-11-01',entryStageCode:'preinicio',originType:'nacimiento',operationKey:'discard-create'})).status).toBe(201);
     const before=(await inventoryTotals('2026-11-08')).summary.total;

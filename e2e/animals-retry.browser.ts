@@ -54,6 +54,23 @@ const listOptions = {
   locations: [], lots: [], aptitudes: [], types: [], sexes: [], statuses: [], origins: [], deathCauses: [], saleCauses: [],
 };
 
+test('el padrón envía los filtros adicionales combinados', async ({ page }) => {
+  await mockAnimalApi(page, initialAnimal());
+  const requests: string[] = [];
+  await page.route('**/api/animals?**', async route => {
+    requests.push(route.request().url());
+    await route.fulfill({ status:200,json:{ok:true,animals:[],total:0,options:{...listOptions,aptitudes:[{code:'engorde',name:'Engorde'}]}} });
+  });
+  await page.goto('/animales');
+  await page.getByLabel('Madre', {exact:true}).fill('MADRE-01');
+  await page.getByLabel('Padre', {exact:true}).fill('PADRE-02');
+  await page.getByLabel('Raza', {exact:true}).fill('Duroc');
+  await page.getByLabel('Aptitud', {exact:true}).selectOption('engorde');
+  await page.getByLabel('Procedencia', {exact:true}).selectOption('inicial');
+  await page.getByLabel('Etapa de ingreso', {exact:true}).selectOption('crecimiento');
+  await expect.poll(()=>requests.some(value=>{const q=new URL(value).searchParams;return q.get('mother')==='MADRE-01'&&q.get('father')==='PADRE-02'&&q.get('breed')==='Duroc'&&q.get('aptitude')==='engorde'&&q.get('originType')==='inicial'&&q.get('entryStage')==='crecimiento';})).toBe(true);
+});
+
 async function mockAnimalApi(page: Page, initial: ReturnType<typeof initialAnimal>) {
   await page.route('**/api/**', route => route.fulfill({ status: 200, json: { ok: true } }));
   await page.route('**/api/auth/me', route => route.fulfill({ status: 200, json: { ok: true, user: { role: 'administrador', username: 'admin@prueba.pe' } } }));

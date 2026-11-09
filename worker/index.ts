@@ -784,6 +784,12 @@ const worker = {
             lot: url.searchParams.get('lot'),
             barnId: barnIdParam !== null ? parseInt(barnIdParam, 10) : undefined,
             active: url.searchParams.get('active'),
+            mother: url.searchParams.get('mother'),
+            father: url.searchParams.get('father'),
+            breed: url.searchParams.get('breed'),
+            aptitude: url.searchParams.get('aptitude'),
+            originType: url.searchParams.get('originType'),
+            entryStage: url.searchParams.get('entryStage'),
             includeExited: url.searchParams.get('includeExited') === '1',
             limit: url.searchParams.get('limit') !== null
               ? parseInt(url.searchParams.get('limit') as string, 10)
