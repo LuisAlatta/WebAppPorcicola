@@ -846,15 +846,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   return (
     <div>
       <div className="module-heading mb-4">
-        <div>
-          <h1 className="title-module">
-            <IconPig size={22} className="text-primary" />
-            <span>Padrón de Animales</span>
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Identificación oficial permanente, genealogía, pesajes periódicos y trazabilidad de cada animal.
-          </p>
-        </div>
+        <p className="text-xs text-muted">
+          Identificación oficial permanente, genealogía, pesajes periódicos y trazabilidad de cada animal.
+        </p>
         <div className="inline-flex items-center gap-2 flex-wrap">
           <button
             type="button"

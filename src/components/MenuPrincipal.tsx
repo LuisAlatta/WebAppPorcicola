@@ -101,7 +101,6 @@ export function MenuPrincipal({ perfil, onNavigate }: MenuPrincipalProps) {
   return (
     <div className="menu-app-container">
       <header className="menu-app-header">
-        <h1 className="menu-app-title">Menú Principal</h1>
         <p className="menu-app-subtitle">Selecciona una opción para comenzar</p>
       </header>
 

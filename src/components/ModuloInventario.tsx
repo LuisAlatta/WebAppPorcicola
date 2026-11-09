@@ -488,15 +488,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
   return (
     <div>
       <div className="module-heading mb-4">
-        <div>
-          <h1 className="title-module">
-            <IconBox size={22} className="text-primary" />
-            <span>Inventario de Animales</span>
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Existencias por fecha de corte, entradas, salidas, bajas y saldos por galpón.
-          </p>
-        </div>
+        <p className="text-xs text-muted">
+          Existencias por fecha de corte, entradas, salidas, bajas y saldos por galpón.
+        </p>
         <div className="inline-flex items-center gap-2 flex-wrap">
           <label className="text-xs text-muted inline-flex items-center gap-1">
             <IconCalendar size={14} />

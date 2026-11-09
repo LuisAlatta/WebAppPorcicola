@@ -103,7 +103,7 @@ body {
   padding: 0.65rem 1rem;
   max-width: 1040px;
   margin: 0 auto;
-  gap: 0.5rem;
+  gap: 0.75rem;
   flex-wrap: nowrap;
 }
 
@@ -112,6 +112,7 @@ body {
   align-items: center;
   gap: 0.6rem;
   min-width: 0;
+  flex-shrink: 1;
 }
 
 .brand-link-btn {
@@ -123,14 +124,19 @@ body {
   align-items: center;
   font-family: inherit;
   color: inherit;
+  min-width: 0;
+  text-align: left;
 }
 
 .brand-text {
-  font-weight: 800;
-  font-size: 1.15rem;
+  font-weight: 700;
+  font-size: 1.1rem;
   color: var(--color-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
 }
 
 .badge-env {
@@ -140,12 +146,14 @@ body {
   padding: 0.2rem 0.5rem;
   border-radius: var(--radius-sm);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .navbar-controls {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 /* Status Strips */
@@ -1582,6 +1590,11 @@ body {
   padding-bottom: 0.25rem;
 }
 
+.module-heading p {
+  margin: 0;
+  max-width: 650px;
+}
+
 .module-heading h1,
 .section-header h1,
 .module-heading .title-module {
@@ -2016,6 +2029,13 @@ fieldset legend {
 @media (max-width: 640px) {
   .user-badge-navbar {
     display: none;
+  }
+  .brand-text {
+    font-size: 0.95rem;
+  }
+  .navbar-top {
+    padding: 0.5rem 0.75rem;
+    gap: 0.4rem;
   }
   .banner-kpis {
     width: 100%;

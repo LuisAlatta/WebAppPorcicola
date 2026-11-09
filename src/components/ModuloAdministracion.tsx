@@ -553,16 +553,9 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
     <div className="admin-container">
       {/* Encabezado */}
       <div className="module-heading mb-4">
-        <div>
-          <div className="eyebrow">Gestión de acceso</div>
-          <h1 className="title-module">
-            <IconShield size={22} className="text-primary" />
-            <span>Administración</span>
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Cuentas de usuario, asignación de galpones y equipo operativo.
-          </p>
-        </div>
+        <p className="text-xs text-muted">
+          Cuentas de usuario, asignación de galpones y equipo operativo.
+        </p>
         <div className="inline-flex items-center justify-center gap-2 leading-none">
           <button
             type="button"

@@ -400,16 +400,10 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
   return (
     <main className="module-container">
       {/* Encabezado del Módulo */}
-      <div className="module-heading">
-        <div>
-          <h1 className="title-module">
-            <IconWheat size={22} className="text-primary" />
-            <span>Alimentación y Nutrición Porcina</span>
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Existencias de insumos por almacén, proyección de raciones balanceadas, turnos diarios y conversión alimenticia (FCR).
-          </p>
-        </div>
+      <div className="module-heading mb-4">
+        <p className="text-xs text-muted">
+          Existencias de insumos por almacén, proyección de raciones balanceadas, turnos diarios y conversión alimenticia (FCR).
+        </p>
         <div className="inline-flex items-center gap-2 flex-wrap">
           <label className="text-xs text-muted inline-flex items-center gap-1" htmlFor="feed-date-corte">
             <IconCalendar size={14} />

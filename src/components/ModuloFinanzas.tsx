@@ -402,16 +402,10 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
         <option value="Otros egresos de granja" />
       </datalist>
 
-      <div className="module-heading">
-        <div>
-          <h1 className="title-module">
-            <IconCoins size={22} className="text-primary" />
-            <span>Finanzas de la Granja</span>
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Libro de ingresos, egresos y flujo de caja con distribución por galpón en soles peruanos (PEN S/).
-          </p>
-        </div>
+      <div className="module-heading mb-4">
+        <p className="text-xs text-muted">
+          Libro de ingresos, egresos y flujo de caja con distribución por galpón en soles peruanos (PEN S/).
+        </p>
         <button
           type="button"
           className="btn btn-outline btn-sm"

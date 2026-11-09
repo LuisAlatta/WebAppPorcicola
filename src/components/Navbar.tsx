@@ -1,6 +1,21 @@
 import { useEffect, useState } from 'react';
 import type { Perfil, Vista } from '../types';
-import { IconLogOut, IconWifiOff } from './icons';
+import {
+  IconActivity,
+  IconBarChart,
+  IconBell,
+  IconBox,
+  IconCoins,
+  IconGrid,
+  IconHeart,
+  IconLock,
+  IconLogOut,
+  IconPig,
+  IconSettings,
+  IconShield,
+  IconWheat,
+  IconWifiOff,
+} from './icons';
 
 interface NavbarProps {
   vistaActual: Vista;
@@ -10,6 +25,11 @@ interface NavbarProps {
   onLogout: () => void;
 }
 
+interface ViewMeta {
+  title: string;
+  icon: React.ReactNode;
+}
+
 const profileNames: Record<Perfil, string> = {
   administrador: 'Administrador',
   responsable: 'Responsable',
@@ -17,7 +37,70 @@ const profileNames: Record<Perfil, string> = {
   veterinario: 'Veterinario',
 };
 
-export function Navbar({ perfilActual, usuario, onNavigate, onLogout }: NavbarProps) {
+const viewMeta: Record<Vista, ViewMeta> = {
+  inicio: {
+    title: 'Menú Principal',
+    icon: <IconGrid size={20} className="text-primary" />,
+  },
+  animales: {
+    title: 'Padrón de Animales',
+    icon: <IconPig size={20} className="text-primary" />,
+  },
+  listado: {
+    title: 'Padrón de Animales',
+    icon: <IconPig size={20} className="text-primary" />,
+  },
+  formulario: {
+    title: 'Padrón de Animales',
+    icon: <IconPig size={20} className="text-primary" />,
+  },
+  detalle: {
+    title: 'Padrón de Animales',
+    icon: <IconPig size={20} className="text-primary" />,
+  },
+  reproduccion: {
+    title: 'Manejo Reproductivo',
+    icon: <IconHeart size={20} className="text-primary" />,
+  },
+  inventario: {
+    title: 'Inventario de Animales',
+    icon: <IconBox size={20} className="text-primary" />,
+  },
+  alimentacion: {
+    title: 'Alimentación y Nutrición',
+    icon: <IconWheat size={20} className="text-primary" />,
+  },
+  sanidad: {
+    title: 'Sanidad y Fármacos',
+    icon: <IconActivity size={20} className="text-primary" />,
+  },
+  alertas: {
+    title: 'Alertas y Pendientes',
+    icon: <IconBell size={20} className="text-primary" />,
+  },
+  finanzas: {
+    title: 'Finanzas de la Granja',
+    icon: <IconCoins size={20} className="text-primary" />,
+  },
+  reportes: {
+    title: 'Reportes y Estadísticas',
+    icon: <IconBarChart size={20} className="text-primary" />,
+  },
+  configuracion: {
+    title: 'Configuración',
+    icon: <IconSettings size={20} className="text-primary" />,
+  },
+  administracion: {
+    title: 'Administración',
+    icon: <IconShield size={20} className="text-primary" />,
+  },
+  login: {
+    title: 'Acceso al Sistema',
+    icon: <IconLock size={20} className="text-primary" />,
+  },
+};
+
+export function Navbar({ vistaActual, perfilActual, usuario, onNavigate, onLogout }: NavbarProps) {
   const [online, setOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
 
   useEffect(() => {
@@ -31,6 +114,11 @@ export function Navbar({ perfilActual, usuario, onNavigate, onLogout }: NavbarPr
     };
   }, []);
 
+  const currentMeta = viewMeta[vistaActual] ?? {
+    title: 'Menú Principal',
+    icon: <IconGrid size={20} className="text-primary" />,
+  };
+
   return (
     <header className="navbar-wrapper">
       <div className="navbar-top">
@@ -40,14 +128,17 @@ export function Navbar({ perfilActual, usuario, onNavigate, onLogout }: NavbarPr
             className="brand-link-btn"
             onClick={() => onNavigate('inicio')}
             title="Ir al Menú Principal"
-            aria-label="Ir al Menú Principal"
+            aria-label={`Módulo actual: ${currentMeta.title}. Clic para ir al Menú Principal`}
           >
-            <span className="brand-text">Mi Granja Pro</span>
+            <span className="inline-flex items-center justify-start gap-2 leading-none brand-text text-left">
+              {currentMeta.icon}
+              <span>{currentMeta.title}</span>
+            </span>
           </button>
-          <span className="badge-env">{profileNames[perfilActual]}</span>
-          {usuario && <span className="text-xs text-muted user-badge-navbar">{usuario}</span>}
         </div>
         <div className="navbar-controls">
+          <span className="badge-env">{profileNames[perfilActual]}</span>
+          {usuario && <span className="text-xs text-muted user-badge-navbar">{usuario}</span>}
           <button
             type="button"
             className="btn btn-ghost btn-sm btn-logout"

@@ -572,16 +572,9 @@ export function ModuloConfiguracion() {
   return (
     <div>
       <div className="module-heading mb-4">
-        <div>
-          <div className="eyebrow">Parámetros del sistema</div>
-          <h1 className="title-module">
-            <IconSettings size={22} className="text-primary" />
-            <span>Configuración</span>
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Catálogos, etapas productivas, parámetros operativos y ubicaciones.
-          </p>
-        </div>
+        <p className="text-xs text-muted">
+          Catálogos, etapas productivas, parámetros operativos y ubicaciones.
+        </p>
         <div className="inline-flex items-center gap-2 flex-wrap">
           <label className="text-xs text-muted inline-flex items-center gap-1">
             <IconCalendar size={14} />

@@ -398,16 +398,10 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
 
   return (
     <main className="module-container">
-      <div className="module-heading">
-        <div>
-          <h1 className="title-module">
-            <IconBarChart size={22} className="text-primary" />
-            <span>Reportes y Estadísticas</span>
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Indicadores de producción porcina, balance económico y reportes exportables en soles (PEN S/).
-          </p>
-        </div>
+      <div className="module-heading mb-4">
+        <p className="text-xs text-muted">
+          Indicadores de producción porcina, balance económico y reportes exportables en soles (PEN S/).
+        </p>
         <button
           className="btn btn-outline btn-sm"
           aria-label="Actualizar datos y catálogos de reportes"

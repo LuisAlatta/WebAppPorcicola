@@ -669,16 +669,10 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
 
   return (
     <section className="reproduction-page">
-      <div className="module-heading">
-        <div>
-          <h1 className="title-module">
-            <IconHeart size={22} className="text-primary" />
-            <span>Manejo Reproductivo</span>
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Ciclos reproductivos de marranas, servicios de monta o inseminación, confirmación de gestación y seguimiento de camadas.
-          </p>
-        </div>
+      <div className="module-heading mb-4">
+        <p className="text-xs text-muted">
+          Ciclos reproductivos de marranas, servicios de monta o inseminación, confirmación de gestación y seguimiento de camadas.
+        </p>
         <button
           type="button"
           className="btn btn-outline btn-sm"

@@ -223,16 +223,10 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
 
   return (
     <main className="module-container">
-      <div className="module-heading">
-        <div>
-          <h1 className="title-module">
-            <IconBell size={22} className="text-primary" />
-            <span>Alertas y Pendientes</span>
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Agenda operativa de tareas sanitarias, partos programados y avisos de bioseguridad en granja.
-          </p>
-        </div>
+      <div className="module-heading mb-4">
+        <p className="text-xs text-muted">
+          Agenda operativa de tareas sanitarias, partos programados y avisos de bioseguridad en granja.
+        </p>
         <button
           className="btn btn-outline btn-sm"
           type="button"

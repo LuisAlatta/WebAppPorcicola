@@ -227,16 +227,10 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
   return (
     <main className="module-container">
       {/* Encabezado del Módulo */}
-      <div className="module-heading">
-        <div>
-          <h1 className="title-module">
-            <IconActivity size={22} className="text-primary" />
-            <span>Sanidad y Control Fármaco</span>
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Historial clínico, registro de tratamientos, dosificación de fármacos y control de retiros sanitarios.
-          </p>
-        </div>
+      <div className="module-heading mb-4">
+        <p className="text-xs text-muted">
+          Historial clínico, registro de tratamientos, dosificación de fármacos y control de retiros sanitarios.
+        </p>
         <button
           type="button"
           className="btn btn-outline btn-sm"
