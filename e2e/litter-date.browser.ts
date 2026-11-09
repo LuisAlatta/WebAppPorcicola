@@ -14,6 +14,13 @@ async function setup(page:Page,role='veterinario'){
   return{setDate:(date:string)=>{currentDate=date;}};
 }
 
+test('muestra el plan postdestete aunque el ciclo aún no tenga camada',async({page})=>{
+  await setup(page);
+  await page.route('**/api/reproduction/cycles**',route=>route.fulfill({status:200,json:{cycles:[{id:'cycle-post',femaleCode:'CERDA-POST',femaleAlias:null,cycleNumber:2,cycleStatus:'open',reproductiveStatus:'gestation',serviceAnchorDate:'2026-10-25',gestationDays:114,probableFarrowingDate:'2027-02-16',dueDateSource:'calculated',dueDateReason:null,daysRemaining:90,dueLabel:'Previsto',barnId:1,barnName:'Galpón A',locationCode:null,lotCode:null,femaleBreed:null,aptitude:null,lastFarrowingDate:'2026-10-01',previousWeaningDate:'2026-10-20',previousWeaningPending:false,observations:null,antecedent:false,services:[],events:[],litter:null,weaningPlan:{referenceWeaningDate:'2026-10-19',heatIntervalDays:5,firstRepeatIntervalDays:10,secondRepeatIntervalDays:20,expectedHeatDate:'2026-10-24',expectedFirstRepeatDate:'2026-11-03',expectedSecondRepeatDate:'2026-11-23',actualHeatDate:null,actualFirstRepeatDate:null,actualSecondRepeatDate:null}}]}}));
+  await page.goto('/reproduccion');await expect(page.getByText('Destete anterior 2026-10-19',{exact:false})).toBeVisible();await expect(page.getByText('El destete real cambió a 2026-10-20',{exact:false})).toBeVisible();
+  await page.getByRole('button',{name:'Editar plan postdestete'}).click();await expect(page.locator('input[name="referenceWeaningDate"]')).toHaveValue('2026-10-20');
+});
+
 test('conflicto de fecha preserva formulario y reintento usa la misma operación',async({page})=>{
   const fixture=await setup(page);const bodies:Record<string,unknown>[]=[];
   await page.route('**/api/reproduction/litters/litter-date-1/date-correction',async route=>{

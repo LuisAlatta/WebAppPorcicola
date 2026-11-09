@@ -102,11 +102,12 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
     .bind(...params).all<Row>();
   const today = currentFarmDate();
   const cycles = await Promise.all((result.results ?? []).map(async (row) => {
-    const [serviceRows, eventRows, planRow, litterRow] = await Promise.all([
+    const [serviceRows, eventRows, planRow, litterRow, previousLitter] = await Promise.all([
       db.prepare('SELECT * FROM reproduction_services WHERE cycle_id = ? ORDER BY service_date, service_number').bind(row.id).all<Row>(),
       db.prepare('SELECT * FROM reproduction_events WHERE cycle_id = ? ORDER BY event_date, id').bind(row.id).all<Row>(),
       db.prepare('SELECT * FROM reproduction_weaning_plans WHERE cycle_id=?').bind(row.id).first<Row>(),
       db.prepare('SELECT * FROM litters WHERE cycle_id=?').bind(row.id).first<Row>(),
+      db.prepare(`SELECT id,actual_weaning_date,barn_id,historical_only FROM litters WHERE female_animal_id=? AND cycle_id<>? AND farrowing_date<=? ORDER BY farrowing_date DESC,id DESC LIMIT 1`).bind(row.female_animal_id,row.id,row.service_anchor_date??row.cycle_opened_on).first<Row>(),
     ]);
     const remainingDays = diffDays(String(row.probable_farrowing_date), today);
     const reproductiveStatus = String(row.reproductive_status);
@@ -133,6 +134,8 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
       barnId: Number(row.barn_id), barnName: String(row.barn_name), locationCode: row.location_code === null ? null : String(row.location_code), lotCode: row.lot_code === null ? null : String(row.lot_code),
       femaleBreed: row.female_breed_snapshot === null ? null : String(row.female_breed_snapshot), aptitude: row.aptitude === null ? null : String(row.aptitude),
       lastFarrowingDate: row.last_farrowing_date === null ? null : String(row.last_farrowing_date), observations: row.observations === null ? null : String(row.observations), antecedent: Number(row.antecedent) === 1,
+      previousWeaningDate:previousLitter?.actual_weaning_date && (ids===null || ids.includes(Number(previousLitter.barn_id))) ? String(previousLitter.actual_weaning_date) : null,
+      previousWeaningPending:!!previousLitter && !previousLitter.actual_weaning_date && Number(previousLitter.historical_only)!==1 && (ids===null || ids.includes(Number(previousLitter.barn_id))),
       weaningPlan: planRow ? { referenceWeaningDate:String(planRow.reference_weaning_date), heatIntervalDays:Number(planRow.heat_interval_days),
         firstRepeatIntervalDays:Number(planRow.first_repeat_interval_days), secondRepeatIntervalDays:Number(planRow.second_repeat_interval_days),
         expectedHeatDate:String(planRow.expected_heat_date), expectedFirstRepeatDate:String(planRow.expected_first_repeat_date), expectedSecondRepeatDate:String(planRow.expected_second_repeat_date),
@@ -371,6 +374,8 @@ export async function saveWeaningPlan(db:D1Database,actorUserId:number,cycleId:s
   const referenceWeaningDate=date(input.referenceWeaningDate,'Fecha real del destete anterior');
   const serviceDate=String(cycle.service_anchor_date??cycle.cycle_opened_on);
   if(referenceWeaningDate>serviceDate) throw new ApiError(400,'El destete de referencia debe ser anterior o igual al servicio');
+  const previousLitter=await db.prepare('SELECT id,actual_weaning_date,barn_id,historical_only FROM litters WHERE female_animal_id=? AND cycle_id<>? AND farrowing_date<=? ORDER BY farrowing_date DESC,id DESC LIMIT 1').bind(cycle.female_animal_id,cycleId,serviceDate).first<Row>();
+  const allowed=await barnIds(db,scope);if(previousLitter&&allowed!==null&&!allowed.includes(Number(previousLitter.barn_id)))throw new ApiError(403,'No tiene acceso a la camada anterior');
   const interval=(raw:unknown,label:string)=>{const n=Number(raw);if(!Number.isInteger(n)||n<1||n>120)throw new ApiError(400,`${label} debe ser un entero entre 1 y 120 días`);return n;};
   const heatIntervalDays=interval(input.heatIntervalDays,'Intervalo a celo');
   const firstRepeatIntervalDays=interval(input.firstRepeatIntervalDays,'Intervalo a primera repetición');
@@ -387,17 +392,19 @@ export async function saveWeaningPlan(db:D1Database,actorUserId:number,cycleId:s
   const payload={cycleId,referenceWeaningDate,heatIntervalDays,firstRepeatIntervalDays,secondRepeatIntervalDays,expectedHeatDate,expectedFirstRepeatDate,expectedSecondRepeatDate,actualHeatDate,actualFirstRepeatDate,actualSecondRepeatDate,reason};
   const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);
   if(replay) return {replayed:true,cycles:await listReproductionCycles(db,{},scope)};
+  if(previousLitter&&!previousLitter.actual_weaning_date&&Number(previousLitter.historical_only)!==1)throw new ApiError(409,'La camada anterior todavía no tiene un destete completo registrado');
+  if(previousLitter?.actual_weaning_date&&referenceWeaningDate!==String(previousLitter.actual_weaning_date))throw new ApiError(409,'La fecha no coincide con el destete real registrado de la camada anterior');
   const previous=await db.prepare('SELECT * FROM reproduction_weaning_plans WHERE cycle_id=?').bind(cycleId).first<Row>();
   const claim=await createOperationClaim({operationKey:input.operationKey,operationType:'reproduction.weaning_plan.save',authorUserId:actorUserId,entityType:'reproduction_cycle',entityId:Number(cycle.female_animal_id),barnId:Number(cycle.barn_id),effectiveDate:referenceWeaningDate,payload,result:payload});
-  await commitOperation(db,claim,[db.prepare(`INSERT INTO reproduction_weaning_plans
+  const committed=await commitOperation(db,claim,[db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN (SELECT id FROM litters WHERE female_animal_id=? AND cycle_id<>? AND farrowing_date<=? ORDER BY farrowing_date DESC,id DESC LIMIT 1) IS ? AND (SELECT actual_weaning_date FROM litters WHERE id=?) IS ? THEN 0 ELSE -1 END`).bind(cycle.female_animal_id,cycleId,serviceDate,previousLitter?.id??null,previousLitter?.id??null,previousLitter?.actual_weaning_date??null),db.prepare(`INSERT INTO reproduction_weaning_plans
     (cycle_id,reference_weaning_date,heat_interval_days,first_repeat_interval_days,second_repeat_interval_days,expected_heat_date,expected_first_repeat_date,expected_second_repeat_date,actual_heat_date,actual_first_repeat_date,actual_second_repeat_date,created_by_user_id,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(cycle_id) DO UPDATE SET reference_weaning_date=excluded.reference_weaning_date,heat_interval_days=excluded.heat_interval_days,
     first_repeat_interval_days=excluded.first_repeat_interval_days,second_repeat_interval_days=excluded.second_repeat_interval_days,expected_heat_date=excluded.expected_heat_date,
     expected_first_repeat_date=excluded.expected_first_repeat_date,expected_second_repeat_date=excluded.expected_second_repeat_date,actual_heat_date=excluded.actual_heat_date,
     actual_first_repeat_date=excluded.actual_first_repeat_date,actual_second_repeat_date=excluded.actual_second_repeat_date,updated_at=excluded.updated_at`)
-      .bind(cycleId,referenceWeaningDate,heatIntervalDays,firstRepeatIntervalDays,secondRepeatIntervalDays,expectedHeatDate,expectedFirstRepeatDate,expectedSecondRepeatDate,actualHeatDate,actualFirstRepeatDate,actualSecondRepeatDate,actorUserId,claim.recordedAt)],
+      .bind(cycleId,referenceWeaningDate,heatIntervalDays,firstRepeatIntervalDays,secondRepeatIntervalDays,expectedHeatDate,expectedFirstRepeatDate,expectedSecondRepeatDate,actualHeatDate,actualFirstRepeatDate,actualSecondRepeatDate,actorUserId,claim.recordedAt),db.prepare('DELETE FROM inventory_write_guard')],
     [{entityType:'reproduction_cycle',entityId:Number(cycle.female_animal_id),action:previous?'update':'create',actorUserId,barnId:Number(cycle.barn_id),reason,
       previousData:previous?{referenceWeaningDate:previous.reference_weaning_date,heatIntervalDays:previous.heat_interval_days,firstRepeatIntervalDays:previous.first_repeat_interval_days,secondRepeatIntervalDays:previous.second_repeat_interval_days}:null,
-      newData:payload,effectiveDate:referenceWeaningDate,recordedAt:claim.recordedAt}]);
-  return {replayed:false,cycles:await listReproductionCycles(db,{},scope)};
+      newData:payload,effectiveDate:referenceWeaningDate,recordedAt:claim.recordedAt}]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'Cambió el destete anterior; actualice el plan');throw error;});
+  return {replayed:committed.replayed,cycles:await listReproductionCycles(db,{},scope)};
 }
