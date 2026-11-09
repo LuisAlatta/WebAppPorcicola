@@ -333,7 +333,7 @@ function animalRowBase(row: Row, maps: ConfigMaps, asOf: string): AnimalListItem
       : maps.lots.get(String(row.lot_code)) ?? String(row.lot_code),
     entryDate: String(row.entry_date),
     exitDate: row.exit_date === null || row.exit_date === undefined ? null : String(row.exit_date),
-    exitType: row.exit_type === null || row.exit_type === undefined ? null : String(row.exit_type),
+    exitType: row.exit_type === null || row.exit_type === undefined ? (row.status === 'descartado' && row.exit_date ? 'discard' : null) : String(row.exit_type),
   };
 }
 
@@ -469,7 +469,7 @@ export async function listAnimals(
   const where: string[] = ['1 = 1'];
   const params: unknown[] = [];
 
-  const searchingPhysicalExits = filters.status === 'vendido' || filters.status === 'muerto';
+  const searchingPhysicalExits = filters.status === 'vendido' || filters.status === 'muerto' || filters.status === 'descartado';
   if (!filters.includeExited && !searchingPhysicalExits) where.push('a.exit_date IS NULL');
 
   const q = optionalCode(filters.q);
@@ -638,8 +638,8 @@ export async function getAnimal(
       FROM animal_weights WHERE animal_id = ? ORDER BY weighed_on ASC, weighed_time ASC, id ASC
     `).bind(id).all<Row>(),
     db.prepare(`
-      SELECT id, movement_type, effective_date, quantity, cause_code FROM inventory_movements
-      WHERE animal_id = ? ORDER BY effective_date ASC, id ASC
+      SELECT m.id, m.movement_type, m.effective_date, m.quantity, m.cause_code, o.operation_type FROM inventory_movements m LEFT JOIN operation_log o ON o.id=m.operation_log_id
+      WHERE m.animal_id = ? ORDER BY m.effective_date ASC, m.id ASC
     `).bind(id).all<Row>(),
     db.prepare(`
       SELECT s.id, s.service_date, s.service_type, s.service_number, s.sire_code_snapshot
@@ -763,7 +763,7 @@ export async function getAnimal(
     chronology.push({
       date: String(movement.effective_date),
       kind: 'inventario',
-      title: `Inventario: ${type}`,
+      title: `Inventario: ${movement.operation_type === 'animal.discard' ? 'descarte' : type}`,
       detail: `${Number(movement.quantity) > 0 ? '+' : '−'}${Math.abs(Number(movement.quantity))} cabezas`,
       id: Number(movement.id),
     });
@@ -806,7 +806,7 @@ export async function getAnimal(
   const litters = litterRows.results ?? [];
   const weighedLitters = litters.filter((litter) => litter.average_weight_kg !== null && litter.average_weight_kg !== undefined && Number(litter.live_count) > 0);
   const weighedBirths = weighedLitters.reduce((sum, litter) => sum + Number(litter.live_count), 0);
-  const exitMovement = (movementRows.results ?? []).filter((movement) => base.exitDate && movement.effective_date === base.exitDate && movement.movement_type === base.exitType).at(-1);
+  const exitMovement = (movementRows.results ?? []).filter((movement) => base.exitDate && movement.effective_date === base.exitDate && (base.exitType === 'discard' ? movement.operation_type === 'animal.discard' : movement.movement_type === base.exitType)).at(-1);
   const exitCauseCode = exitMovement?.cause_code == null ? null : String(exitMovement.cause_code);
   const exitCauses = catalogItems(config, base.exitType === 'death' ? 'causa_muerte' : 'causa_descarte');
 
@@ -1852,8 +1852,8 @@ export async function registerAnimalExit(
   const row = await fetchAnimalRow(db, key, barnIds);
   if (!row) throw new ApiError(404, 'Animal no encontrado');
   const purchaseReturn=input.purchaseReturn===true;
-  const exitType = String(input.exitType ?? '') as 'sale' | 'death';
-  if (exitType !== 'sale' && exitType !== 'death') throw new ApiError(400, 'La salida debe ser venta o muerte');
+  const exitType = String(input.exitType ?? '') as 'sale' | 'death' | 'discard';
+  if (exitType !== 'sale' && exitType !== 'death' && exitType !== 'discard') throw new ApiError(400, 'La salida debe ser venta, descarte o muerte');
   const effectiveDate = input.effectiveDate ? parseDate(input.effectiveDate, 'Fecha de salida') : today();
   if (effectiveDate > today() || effectiveDate < String(row.entry_date)) throw new ApiError(400, 'La fecha de salida debe estar entre el ingreso y hoy');
   const causeCode = requireText(input.causeCode, exitType === 'death' ? 'Causa de muerte' : 'Causa de venta o descarte', 60);
@@ -1890,7 +1890,12 @@ export async function registerAnimalExit(
   if (replay) return { animal: await getAnimal(db, key, scope), replayed: true };
   if(purchaseReturn&&originalPurchase?.reversed_at!==null)throw new ApiError(409,'La compra ya tiene una devolución registrada');
   if (!exitedCheck(row)) throw new ApiError(409, 'La ficha ya tiene una salida física');
-  const reason = normalizeReason(input.reason, { required: true, fallback: exitType === 'death' ? 'Muerte de animal' : 'Venta de animal' });
+  const laterHistory=await db.prepare(`SELECT 1 AS found WHERE EXISTS(SELECT 1 FROM animal_location_history WHERE animal_id=? AND valid_from>?) OR EXISTS(SELECT 1 FROM animal_weights WHERE animal_id=? AND weighed_on>?) OR EXISTS(SELECT 1 FROM health_event_animals ha JOIN health_events h ON h.id=ha.health_event_id WHERE ha.animal_id=? AND h.effective_date>?) OR EXISTS(SELECT 1 FROM inventory_movements WHERE animal_id=? AND effective_date>?)`).bind(animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate).first();
+  if(laterHistory)throw new ApiError(409,'El animal tiene eventos posteriores a la salida; reconcilie primero su historial');
+  const pendingLitter = row.litter_id && stageCode==='preinicio' ? await db.prepare(`SELECT l.id,l.farrowing_date,l.barn_id FROM litters l WHERE l.id=? AND l.historical_only=0 AND NOT EXISTS(SELECT 1 FROM inventory_movements m JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=? AND m.litter_id=l.id AND m.quantity<0 AND o.operation_type='litter.weaning')`).bind(row.litter_id,animalId).first<{id:string;farrowing_date:string;barn_id:number}>() : null;
+  if(pendingLitter&&barnIds!==null&&!barnIds.includes(Number(pendingLitter.barn_id)))throw new ApiError(403,'No tiene acceso a la camada de origen');
+  if(pendingLitter&&effectiveDate<pendingLitter.farrowing_date)throw new ApiError(409,'La salida no puede ser anterior al parto de la camada');
+  const reason = normalizeReason(input.reason, { required: true, fallback: exitType === 'death' ? 'Muerte de animal' : exitType === 'discard' ? 'Descarte de animal' : 'Venta de animal' });
   const financeRow=saleAmountMinor===null?null:await db.prepare('SELECT COALESCE(MAX(id),0)+1 AS id FROM financial_entries').first<{id:number}>();const financialEntryId=financeRow?Number(financeRow.id):null;
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: purchaseReturn?'animal.purchase.return':`animal.${exitType}`,
     authorUserId: actorUserId, entityType: 'animal', entityId: animalId, barnId, effectiveDate,
@@ -1898,33 +1903,36 @@ export async function registerAnimalExit(
   const createdAt = claim.recordedAt;
   const movementId = Date.now() * 1000 + Math.floor(Math.random() * 1000);
   const healthEventId = exitType === 'death' ? Date.now() * 1000 + Math.floor(Math.random() * 1000) : null;
-  const status = exitType === 'sale' ? 'vendido' : 'muerto';
+  const status = exitType === 'sale' ? 'vendido' : exitType === 'discard' ? 'descartado' : 'muerto';
   const statements: D1PreparedStatement[] = [
     db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
+    db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM animals WHERE id=? AND exit_date IS NULL AND status='activo' AND is_active=1 AND updated_at=?) THEN 0 ELSE -1 END`).bind(animalId,row.updated_at),
+    db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM animal_location_history WHERE animal_id=? AND valid_from>?) AND NOT EXISTS(SELECT 1 FROM animal_weights WHERE animal_id=? AND weighed_on>?) AND NOT EXISTS(SELECT 1 FROM health_event_animals ha JOIN health_events h ON h.id=ha.health_event_id WHERE ha.animal_id=? AND h.effective_date>?) AND NOT EXISTS(SELECT 1 FROM inventory_movements WHERE animal_id=? AND effective_date>?) THEN 0 ELSE -1 END`).bind(animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate),
+    ...(pendingLitter ? [db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM litters l WHERE l.id=? AND l.farrowing_date<=? AND (CASE ? WHEN 'macho' THEN l.male_alive WHEN 'hembra' THEN l.female_alive ELSE l.unsexed_alive END)+COALESCE((SELECT SUM(CASE WHEN event_type IN ('adoption_in','sale_return') THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=l.id AND sex=?),0)>0) AND NOT EXISTS(SELECT 1 FROM litter_events WHERE litter_id=? AND sex=? AND effective_date>?) THEN 0 ELSE -1 END`).bind(pendingLitter.id,effectiveDate,sex,sex,pendingLitter.id,sex,effectiveDate),db.prepare(`INSERT INTO litter_events(operation_log_id,litter_id,event_type,effective_date,sex,quantity,cause,reason,created_by_user_id,created_at) VALUES(?,?,?,?,?,1,?,?,?,?)`).bind(claim.id,pendingLitter.id,exitType,effectiveDate,sex,causeCode,reason,actorUserId,createdAt)] : []),
     db.prepare(`UPDATE animals SET status = ?, exit_date = ?, exit_type = ?, is_active = 0,
       deactivated_at = ?, deactivation_reason = ?, updated_at = ? WHERE id = ? AND exit_date IS NULL`)
-      .bind(status, effectiveDate, exitType, createdAt, reason, createdAt, animalId),
+      .bind(status, effectiveDate, exitType === 'discard' ? null : exitType, createdAt, reason, createdAt, animalId),
     ...(healthEventId === null ? [] : [db.prepare(`INSERT INTO health_events(id,operation_log_id,event_type,effective_date,cause_code,observations,created_by_user_id,created_at)
       VALUES(?,?,'death',?,?,?, ?,?)`).bind(healthEventId,claim.id,effectiveDate,causeCode,reason,actorUserId,createdAt)]),
     db.prepare(`INSERT INTO inventory_movements
       (id, operation_log_id, movement_type, effective_date, barn_id, location_code, lot_code, stage_code, sex,
-       quantity, cause_code, notes, animal_id, created_by_user_id, created_at, health_event_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`)
-      .bind(movementId, claim.id, exitType, effectiveDate, barnId, locationCode, lotCode, stageCode, sex,
-        causeCode, reason, animalId, actorUserId, createdAt,healthEventId),
+       quantity, cause_code, notes, animal_id, created_by_user_id, created_at, health_event_id, litter_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(movementId, claim.id, exitType === 'discard' ? 'adjustment' : exitType, effectiveDate, barnId, locationCode, lotCode, stageCode, sex, exitType === 'discard' ? -1 : 1,
+        causeCode, reason, animalId, actorUserId, createdAt,healthEventId,pendingLitter?.id??null),
     ...(healthEventId === null ? [] : [db.prepare(`INSERT INTO health_event_animals(health_event_id,animal_id,animal_code_snapshot,barn_id,barn_name_snapshot,location_code_snapshot,lot_code_snapshot,stage_code_snapshot,withdrawal_until)
       VALUES(?,?,?,?,?,?,?,?,NULL)`).bind(healthEventId,animalId,String(row.code),barnId,String(row.barn_name),locationCode,lotCode,stageCode)]),
     stockGuardStatement(db, barnId, locationCode, lotCode, stageCode, sex),
     db.prepare('DELETE FROM inventory_write_guard'),
     ...(financialEntryId===null?[]:[...(originalPurchase?[db.prepare('UPDATE financial_entries SET reversed_at=? WHERE id=? AND reversed_at IS NULL').bind(createdAt,Number(originalPurchase.id))]:[]),db.prepare(`INSERT INTO financial_entries(id,operation_log_id,direction,category,concept,operation_date,amount_minor,currency_code,counterparty,reference,notes,created_by_user_id,created_at,source_type,source_id,reversal_of_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(financialEntryId,claim.id,'income',originalPurchase?'Devolución de compra de animal':'Venta de animal',originalPurchase?`Devolución de compra del animal ${String(row.code)}`:`Venta de animal ${String(row.code)}`,effectiveDate,saleAmountMinor,saleCurrency,buyer,documentReference,reason,actorUserId,createdAt,originalPurchase?'reversal':'animal_sale',String(originalPurchase?.id??animalId),originalPurchase?Number(originalPurchase.id):null),db.prepare(`INSERT INTO financial_allocations(entry_id,barn_id,barn_name_snapshot,amount_minor,animal_id,animal_code_snapshot,lot_code,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(financialEntryId,barnId,String(row.barn_name),saleAmountMinor,animalId,String(row.code),lotCode,createdAt)]),
   ];
-  await commitOperation(db, claim, statements, [{ entityType: 'animal', entityId: animalId, action: 'update', actorUserId, barnId, reason,
+  const committed = await commitOperation(db, claim, statements, [{ entityType: 'animal', entityId: animalId, action: 'update', actorUserId, barnId, reason,
     previousData: { status: String(row.status), exitDate: null },
     newData: { status, exitType, exitDate: effectiveDate, causeCode, inventoryMovementId: movementId,healthEventId }, effectiveDate, recordedAt: createdAt },
     ...(healthEventId===null?[]:[{entityType:'health_event',entityId:healthEventId,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{eventType:'death',causeCode,animalCode:String(row.code),inventoryMovementId:movementId},effectiveDate,recordedAt:createdAt}]),
     ...(originalPurchase?[{entityType:'financial_entry',entityId:Number(originalPurchase.id),action:'update' as const,actorUserId,barnId,reason,previousData:{reversedAt:null},newData:{reversedAt:createdAt,reversalEntryId:financialEntryId},effectiveDate,recordedAt:createdAt}]:[]),
-    ...(financialEntryId===null?[]:[{entityType:'financial_entry',entityId:financialEntryId,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{direction:'income',category:originalPurchase?'Devolución de compra de animal':'Venta de animal',animalCode:String(row.code),amountMinor:saleAmountMinor,currencyCode:saleCurrency,counterparty:buyer,reference:documentReference,inventoryMovementId:movementId,reversalOfId:originalPurchase?.id??null},effectiveDate,recordedAt:createdAt}])]);
-  return { animal: await getAnimal(db, key, scope), replayed: false };
+    ...(financialEntryId===null?[]:[{entityType:'financial_entry',entityId:financialEntryId,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{direction:'income',category:originalPurchase?'Devolución de compra de animal':'Venta de animal',animalCode:String(row.code),amountMinor:saleAmountMinor,currencyCode:saleCurrency,counterparty:buyer,reference:documentReference,inventoryMovementId:movementId,reversalOfId:originalPurchase?.id??null},effectiveDate,recordedAt:createdAt}])]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La ficha o el inventario cambió; actualice antes de registrar la salida');throw error;});
+  return { animal: await getAnimal(db, key, scope), replayed: committed.replayed };
 }
 
 /** Revierte una venta al devolver físicamente el animal, restaurando stock y caja en un lote. */
@@ -1941,12 +1949,15 @@ export async function registerAnimalSaleReturn(db:D1Database,actorUserId:number,
   if(!sourceLocation)throw new ApiError(409,'No se encontró la ubicación histórica de la venta');const barnId=Number(sourceLocation.barn_id);const barn=await db.prepare("SELECT name FROM barns WHERE id=? AND status<>'inactivo'").bind(barnId).first<{name:string}>();if(!barn)throw new ApiError(409,'El galpón de la venta está inactivo');if(scope.allowedBarnNames&&!scope.allowedBarnNames.includes(barn.name))throw new ApiError(403,'Sin acceso al galpón de la venta');
   const operationLogId=String(await db.prepare('SELECT operation_log_id FROM financial_entries WHERE id=?').bind(Number(original.id)).first<{operation_log_id:string}>().then(row=>row?.operation_log_id??''));
   const originalMovement=await db.prepare("SELECT * FROM inventory_movements WHERE operation_log_id=? AND animal_id=? AND movement_type='sale' LIMIT 1").bind(operationLogId,animalId).first<Row>();if(!originalMovement)throw new ApiError(409,'No se encontró la salida de inventario de la venta');
+  if(originalMovement.litter_id&&barnIds!==null){const litterBarn=await db.prepare('SELECT barn_id FROM litters WHERE id=?').bind(originalMovement.litter_id).first<{barn_id:number}>();if(!litterBarn||!barnIds.includes(Number(litterBarn.barn_id)))throw new ApiError(403,'No tiene acceso a la camada de origen');}
   const allocations=await db.prepare('SELECT * FROM financial_allocations WHERE entry_id=? ORDER BY id').bind(Number(original.id)).all<Row>();if(allocations.results?.length!==1)throw new ApiError(409,'La venta no tiene una distribución individual válida para devolver');
   const financeId=Number((await db.prepare('SELECT COALESCE(MAX(id),0)+1 AS id FROM financial_entries').first<{id:number}>())?.id??1);const movementId=Date.now()*1000+Math.floor(Math.random()*1000);
   const claim=await createOperationClaim({operationKey:input.operationKey,operationType:'animal.sale.return',authorUserId:actorUserId,entityType:'animal',entityId:animalId,barnId,effectiveDate,payload,result:{animalId,originalEntryId:Number(original.id),financeId,movementId}});const now=claim.recordedAt;
   const allocation=allocations.results![0];const location=sourceLocation.location_code===null?null:String(sourceLocation.location_code);const lot=sourceLocation.lot_code===null?null:String(sourceLocation.lot_code);const stage=String(sourceLocation.stage_code);const sex=String(animal.sex) as Sex;
-  await commitOperation(db,claim,[
+  const committed=await commitOperation(db,claim,[
     db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'),
+    db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM financial_entries WHERE id=? AND reversed_at IS NULL) AND EXISTS(SELECT 1 FROM animals WHERE id=? AND status='vendido' AND exit_date=?) THEN 0 ELSE -1 END`).bind(Number(original.id),animalId,original.operation_date),
+    ...(originalMovement.litter_id?[db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM litter_events WHERE litter_id=? AND sex=? AND effective_date>?) THEN 0 ELSE -1 END`).bind(originalMovement.litter_id,sex,effectiveDate),db.prepare(`INSERT INTO litter_events(operation_log_id,litter_id,event_type,effective_date,sex,quantity,reason,created_by_user_id,created_at) VALUES(?,?,'sale_return',?,?,1,?,?,?)`).bind(claim.id,originalMovement.litter_id,effectiveDate,sex,reason,actorUserId,now),db.prepare('UPDATE litters SET actual_weaning_date=NULL WHERE id=?').bind(originalMovement.litter_id)]:[]),
     db.prepare('UPDATE financial_entries SET reversed_at=? WHERE id=? AND reversed_at IS NULL').bind(now,Number(original.id)),
     db.prepare(`UPDATE animal_location_history SET valid_until=? WHERE animal_id=? AND valid_until IS NULL`).bind(effectiveDate,animalId),
     db.prepare(`INSERT INTO animal_location_history(animal_id,barn_id,location_code,lot_code,stage_code,valid_from,valid_until,operation_log_id,created_by_user_id,created_at) VALUES(?,?,?,?,?,?,NULL,?,?,?)`).bind(animalId,barnId,location,lot,stage,effectiveDate,claim.id,actorUserId,now),
@@ -1959,8 +1970,8 @@ export async function registerAnimalSaleReturn(db:D1Database,actorUserId:number,
     {entityType:'animal',entityId:animalId,action:'update',actorUserId,barnId,reason,previousData:{status:'vendido',exitDate:animal.exit_date},newData:{status:'activo',returnedFromSale:Number(original.id),inventoryMovementId:movementId},effectiveDate,recordedAt:now},
     {entityType:'financial_entry',entityId:Number(original.id),action:'update',actorUserId,barnId,reason,previousData:{reversedAt:null},newData:{reversedAt:now,reversalEntryId:financeId},effectiveDate,recordedAt:now},
     {entityType:'financial_entry',entityId:financeId,action:'create',actorUserId,barnId,reason,previousData:null,newData:{direction:'expense',reversalOfId:Number(original.id),amountMinor:Number(original.amount_minor),currencyCode:String(original.currency_code)},effectiveDate,recordedAt:now},
-  ]);
-  return{animal:await getAnimal(db,key,scope),replayed:false};
+  ]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La venta o la camada cambió; actualice antes de devolver');throw error;});
+  return{animal:await getAnimal(db,key,scope),replayed:committed.replayed};
 }
 
 export interface ToggleAvailabilityInput {

@@ -119,7 +119,7 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
             JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=a.id AND m.litter_id=a.litter_id AND m.quantity<0 AND o.operation_type='litter.weaning') ORDER BY a.code`).bind(litterRow.id,litterRow.barn_id,litterRow.location_code,litterRow.lot_code).all<{code:string;sex:string}>(),
       ]);
       const counts = { macho:Number(litterRow.male_alive), hembra:Number(litterRow.female_alive), pendiente:Number(litterRow.unsexed_alive) };
-      for (const item of litterEvents.results ?? []) counts[item.sex as keyof typeof counts] += item.event_type === 'adoption_in' ? Number(item.quantity) : -Number(item.quantity);
+      for (const item of litterEvents.results ?? []) counts[item.sex as keyof typeof counts] += ['adoption_in','sale_return'].includes(item.event_type) ? Number(item.quantity) : -Number(item.quantity);
       litter = { id:String(litterRow.id), farrowingDate:String(litterRow.farrowing_date), liveCount:Number(litterRow.live_count), maleAlive:counts.macho, femaleAlive:counts.hembra, unsexedAlive:counts.pendiente,
         stillbornCount:Number(litterRow.stillborn_count), averageWeightKg:litterRow.average_weight_kg===null?null:Number(litterRow.average_weight_kg), expectedWeaningDate:litterRow.expected_weaning_date===null?null:String(litterRow.expected_weaning_date),
         actualWeaningDate:litterRow.actual_weaning_date===null?null:String(litterRow.actual_weaning_date), identifiedAnimals:identifiedAnimals.results ?? [], historicalOnly:Number(litterRow.historical_only)===1,

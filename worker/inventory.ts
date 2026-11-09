@@ -189,7 +189,7 @@ function mapMovement(row: Row): InventoryMovement {
   return {
     id: Number(row.id),
     movementType: type,
-    movementLabel: TYPE_LABEL[type] ?? type,
+    movementLabel: row.operation_type === 'animal.discard' ? 'Descarte' : TYPE_LABEL[type] ?? type,
     effectiveDate: String(row.effective_date),
     barnId: Number(row.barn_id),
     barnCode: String(row.barn_code ?? ''),
@@ -288,10 +288,11 @@ async function listMovementsQuery(
 
   const res = await db.prepare(`
     SELECT
-      m.*, b.code AS barn_code, b.name AS barn_name, u.name AS created_by_name
+      m.*, b.code AS barn_code, b.name AS barn_name, u.name AS created_by_name, o.operation_type
     FROM inventory_movements m
     INNER JOIN barns b ON b.id = m.barn_id
     INNER JOIN users u ON u.id = m.created_by_user_id
+    LEFT JOIN operation_log o ON o.id = m.operation_log_id
     WHERE ${where.join(' AND ')}${scope.sql}
     ORDER BY m.effective_date DESC, m.id DESC
     LIMIT ?

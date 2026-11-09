@@ -148,6 +148,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
       '0022_alerts_critical_notifications.sql',
       '0023_report_definitions.sql',
       '0023_report_definitions.sql',
+      '0024_litter_discard.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -1027,6 +1028,40 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const summaryResponse=await api('/api/animals/T13-MADRE');
     expect((await summaryResponse.json() as {animal:{reproductiveSummary:unknown}}).animal.reproductiveSummary).toMatchObject({serviceCount:2,farrowingCount:2,totalBorn:19,maleBorn:16,femaleBorn:3,weighedBirths:9,averageBirthWeightKg:1.47,firstFarrowingDate:'2026-09-16',lastFarrowingDate:'2026-10-20'});
   }, 25000);
+
+  it('registra descarte físico sin venta ni muerte y conserva la causa', async () => {
+    expect((await create({code:'DESCARTE-01',entryDate:'2026-11-01',entryStageCode:'preinicio',originType:'nacimiento',operationKey:'discard-create'})).status).toBe(201);
+    const before=(await inventoryTotals('2026-11-08')).summary.total;
+    const payload={exitType:'discard',causeCode:'edad',effectiveDate:'2026-11-07',reason:'Salida por edad',operationKey:'discard-exit'};
+    const discarded=await api('/api/animals/DESCARTE-01/exit',{method:'POST',body:JSON.stringify(payload)});
+    expect(discarded.status,await discarded.clone().text()).toBe(201);
+    expect((await discarded.json() as {animal:unknown}).animal).toMatchObject({status:'descartado',exitType:'discard',exitCauseCode:'edad'});
+    expect((await api('/api/animals/DESCARTE-01/exit',{method:'POST',body:JSON.stringify(payload)})).status).toBe(200);
+    const after=(await inventoryTotals('2026-11-08')).summary.total;expect(after.available).toBe(before.available-1);expect(after.mortalityPct).toBe(before.mortalityPct);expect(after.exits).toBe(before.exits+1);
+    const discardedList=await api('/api/animals?status=descartado');expect((await discardedList.json() as {animals:{code:string}[]}).animals.some(animal=>animal.code==='DESCARTE-01')).toBe(true);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM financial_entries WHERE operation_log_id=(SELECT id FROM operation_log WHERE operation_key='discard-exit')").first()).toMatchObject({n:0});
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM health_events WHERE operation_log_id=(SELECT id FROM operation_log WHERE operation_key='discard-exit')").first()).toMatchObject({n:0});
+  },25000);
+
+  it('descuenta de la camada el descarte de un lechón identificado', async () => {
+    expect((await create({code:'MADRE-DESCARTE',animalType:'cerda',sex:'hembra',birthDate:'2024-01-01',entryDate:'2026-01-01',entryStageCode:'gestacion',originType:'compra',operationKey:'discard-sow'})).status).toBe(201);
+    const cycleResponse=await api('/api/reproduction/cycles',{method:'POST',body:JSON.stringify({femaleCode:'MADRE-DESCARTE',serviceDate:'2026-06-01',serviceType:'inseminacion_artificial',materialSource:'external',externalSource:'Prueba',operationKey:'discard-cycle'})});
+    const cycleId=(await cycleResponse.json() as {createdCycleId:string}).createdCycleId;
+    const farrow=await api(`/api/reproduction/cycles/${cycleId}/farrowing`,{method:'POST',body:JSON.stringify({farrowingDate:'2026-10-20',maleAlive:2,reason:'Parto de prueba',operationKey:'discard-birth'})});
+    const litterId=(await farrow.json() as {litterId:string}).litterId;
+    const child=await create({code:'LECHON-DESCARTE',animalType:'lechon',sex:'macho',birthDate:'2026-10-20',entryDate:'2026-10-20',entryStageCode:'preinicio',originType:'interna',litterId,locationCode:'galpon_a',operationKey:'discard-child'});expect(child.status,await child.clone().text()).toBe(201);
+    const soldChild=await create({code:'LECHON-DEVUELTO',animalType:'lechon',sex:'macho',birthDate:'2026-10-20',entryDate:'2026-10-20',entryStageCode:'preinicio',originType:'interna',litterId,locationCode:'galpon_a',operationKey:'discard-return-child'});expect(soldChild.status,await soldChild.clone().text()).toBe(201);
+    const moved=await api('/api/animals/LECHON-DESCARTE/transfer',{method:'POST',body:JSON.stringify({destinationBarnId:2,effectiveDate:'2026-10-21',reason:'Cambio de galpón',operationKey:'discard-child-move'})});expect(moved.status,await moved.clone().text()).toBe(201);
+    expect((await api('/api/animals/LECHON-DESCARTE/exit',{method:'POST',body:JSON.stringify({exitType:'discard',causeCode:'edad',effectiveDate:'2026-10-20',reason:'Descarte retroactivo incompatible',operationKey:'discard-child-stale'})})).status).toBe(409);
+    const discarded=await api('/api/animals/LECHON-DESCARTE/exit',{method:'POST',body:JSON.stringify({exitType:'discard',causeCode:'edad',effectiveDate:'2026-10-22',reason:'Descarte de lechón identificado',operationKey:'discard-child-exit'})});expect(discarded.status,await discarded.clone().text()).toBe(201);
+    expect(await db.prepare("SELECT event_type,quantity FROM litter_events WHERE litter_id=? AND operation_log_id=(SELECT id FROM operation_log WHERE operation_key='discard-child-exit')").bind(litterId).first()).toMatchObject({event_type:'discard',quantity:1});
+    const list=await api('/api/reproduction/cycles?from=2026-06-01&to=2026-06-01&status=all');
+    expect((await list.json() as {cycles:{id:string;litter:{maleAlive:number;identifiedAnimals:{code:string}[]}}[]}).cycles.find(item=>item.id===cycleId)?.litter).toMatchObject({maleAlive:1,identifiedAnimals:[{code:'LECHON-DEVUELTO'}]});
+    const sale=await api('/api/animals/LECHON-DEVUELTO/exit',{method:'POST',body:JSON.stringify({exitType:'sale',causeCode:'edad',effectiveDate:'2026-10-22',saleAmount:'100',reason:'Venta de prueba',operationKey:'discard-child-sale'})});expect(sale.status,await sale.clone().text()).toBe(201);
+    const returned=await api('/api/animals/LECHON-DEVUELTO/sale-return',{method:'POST',body:JSON.stringify({effectiveDate:'2026-10-23',reason:'Devolución de prueba',operationKey:'discard-child-return'})});expect(returned.status,await returned.clone().text()).toBe(201);
+    expect((await (await api('/api/reproduction/cycles?from=2026-06-01&to=2026-06-01&status=all')).json() as {cycles:{id:string;litter:{maleAlive:number}}[]}).cycles.find(item=>item.id===cycleId)?.litter.maleAlive).toBe(1);
+    const alerts=await api('/api/alerts?type=weaning');expect((await alerts.json() as {alerts:{animalCode:string;details:{remaining:number}}[]}).alerts).toEqual(expect.arrayContaining([expect.objectContaining({animalCode:'MADRE-DESCARTE',details:expect.objectContaining({remaining:1})})]));
+  },25000);
 
   it('registra bajas y destete parcial por sexo y conserva los intervalos de celo del ciclo', async () => {
     const sow = await create({ code:'T14-MADRE',animalType:'cerda',sex:'hembra',birthDate:'2024-01-01',entryDate:'2026-01-01',entryStageCode:'gestacion',originType:'compra',operationKey:'ani-t14-sow' });

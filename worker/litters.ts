@@ -40,7 +40,7 @@ async function litterBalance(db: D1Database, litter: Row, sex: string) {
     .bind(litter.id, sex).all<{event_type:string;quantity:number}>();
   let balance = Number(litter[initialField]);
   for (const event of events.results ?? []) {
-    if (event.event_type === 'adoption_in') balance += Number(event.quantity);
+    if (event.event_type === 'adoption_in' || event.event_type === 'sale_return') balance += Number(event.quantity);
     else balance -= Number(event.quantity);
   }
   return balance;
@@ -130,13 +130,13 @@ export async function recordLitterEvent(db: D1Database, actorUserId: number, lit
   const now = claim.recordedAt;
   const initialCountColumn = sex==='macho'?'male_alive':sex==='hembra'?'female_alive':'unsexed_alive';
   const statements: D1PreparedStatement[] = [db.prepare(`INSERT INTO litter_event_guard (guard_id)
-    SELECT CASE WHEN (SELECT ${initialCountColumn} FROM litters WHERE id=?) + COALESCE((SELECT SUM(CASE WHEN event_type='adoption_in' THEN quantity ELSE -quantity END)
+    SELECT CASE WHEN (SELECT ${initialCountColumn} FROM litters WHERE id=?) + COALESCE((SELECT SUM(CASE WHEN event_type IN ('adoption_in','sale_return') THEN quantity ELSE -quantity END)
       FROM litter_events WHERE litter_id=? AND sex=?),0) >= ? THEN 0 ELSE -1 END`).bind(litterId,litterId,sex,quantity),db.prepare(`INSERT INTO litter_events
     (operation_log_id,litter_id,event_type,effective_date,sex,quantity,destination_litter_id,destination_stage_code,destination_barn_id,destination_location_code,destination_lot_code,weight_kg,cause,reason,observations,created_by_user_id,created_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(claim.id,litterId,eventType==='adoption'?'adoption_out':eventType,effectiveDate,sex,quantity,target?.id??null,destinationStage,targetBarnId,destinationLocation,destinationLot,weightKg,payload.cause,reason,observations,actorUserId,now)];
   statements.unshift(db.prepare(`INSERT INTO litter_event_guard (guard_id)
     SELECT CASE WHEN (SELECT ${initialCountColumn} FROM litters WHERE id=?)
-      + COALESCE((SELECT SUM(CASE WHEN event_type='adoption_in' THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=? AND sex=?),0)
+      + COALESCE((SELECT SUM(CASE WHEN event_type IN ('adoption_in','sale_return') THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=? AND sex=?),0)
       - (SELECT COUNT(*) FROM animals a JOIN animal_location_history h ON h.animal_id=a.id AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?)
         WHERE a.litter_id=? AND a.sex=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>?) AND h.stage_code='preinicio'
           AND NOT EXISTS (SELECT 1 FROM inventory_movements m JOIN operation_log o ON o.id=m.operation_log_id WHERE m.animal_id=a.id AND m.litter_id=a.litter_id AND m.quantity<0 AND m.effective_date<=? AND o.operation_type='litter.weaning'))
@@ -176,9 +176,9 @@ export async function recordLitterEvent(db: D1Database, actorUserId: number, lit
       (operation_log_id,movement_type,effective_date,barn_id,location_code,lot_code,stage_code,sex,quantity,notes,created_by_user_id,created_at,litter_id)
       VALUES (?,'adjustment',?,?,?,?,?,?,?, ?,?,?,?)`).bind(claim.id,effectiveDate,targetBarnId,destinationLocation,destinationLot,destinationStage,sex,groupedQuantity,`Destino de destete ${litterId}: ${reason}`,actorUserId,now,litterId));
     statements.push(db.prepare(`UPDATE litters SET actual_weaning_date=? WHERE id=? AND actual_weaning_date IS NULL
-      AND male_alive+COALESCE((SELECT SUM(CASE WHEN event_type='adoption_in' THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=litters.id AND sex='macho'),0)=0
-      AND female_alive+COALESCE((SELECT SUM(CASE WHEN event_type='adoption_in' THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=litters.id AND sex='hembra'),0)=0
-      AND unsexed_alive+COALESCE((SELECT SUM(CASE WHEN event_type='adoption_in' THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=litters.id AND sex='pendiente'),0)=0`).bind(effectiveDate,litterId));
+      AND male_alive+COALESCE((SELECT SUM(CASE WHEN event_type IN ('adoption_in','sale_return') THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=litters.id AND sex='macho'),0)=0
+      AND female_alive+COALESCE((SELECT SUM(CASE WHEN event_type IN ('adoption_in','sale_return') THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=litters.id AND sex='hembra'),0)=0
+      AND unsexed_alive+COALESCE((SELECT SUM(CASE WHEN event_type IN ('adoption_in','sale_return') THEN quantity ELSE -quantity END) FROM litter_events WHERE litter_id=litters.id AND sex='pendiente'),0)=0`).bind(effectiveDate,litterId));
   }
   if (eventType === 'death' || eventType === 'weaning') {
     statements.unshift(db.prepare('INSERT INTO inventory_write_guard (guard_id) VALUES (1)'));
@@ -297,7 +297,7 @@ export async function correctLitter(db: D1Database, actorUserId: number, litterI
   }
   const eventRows=await db.prepare('SELECT id,sex,event_type,quantity FROM litter_events WHERE litter_id=? ORDER BY effective_date,id').bind(litterId).all<{id:number;sex:string;event_type:string;quantity:number}>();
   const remaining:Record<string,number>={macho:maleAlive,hembra:femaleAlive,pendiente:unsexedAlive};
-  for(const event of eventRows.results??[]){remaining[event.sex]+=(event.event_type==='adoption_in'?1:-1)*Number(event.quantity);if(remaining[event.sex]<0)throw new ApiError(409,`La corrección de ${event.sex} contradice bajas, adopciones o destetes anteriores; concilie primero la camada`);}
+  for(const event of eventRows.results??[]){remaining[event.sex]+=(['adoption_in','sale_return'].includes(event.event_type)?1:-1)*Number(event.quantity);if(remaining[event.sex]<0)throw new ApiError(409,`La corrección de ${event.sex} contradice bajas, adopciones o destetes anteriores; concilie primero la camada`);}
   const lastEventId=(eventRows.results??[]).reduce((max,event)=>Math.max(max,Number(event.id)),0);
   const births=(await db.prepare("SELECT b.id,b.sex,b.quantity,(SELECT MIN(root.id) FROM inventory_movements root WHERE root.litter_id=b.litter_id AND root.sex=b.sex AND root.movement_type='birth') AS root_id FROM inventory_movements b WHERE b.litter_id=? AND b.movement_type='birth' AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=b.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%')").bind(litterId).all<{id:number;sex:string;quantity:number;root_id:number}>()).results??[];
   const legacyAdjustments=(await db.prepare("SELECT m.id,m.sex,m.quantity,m.effective_date FROM inventory_movements m JOIN operation_log o ON o.id=m.operation_log_id WHERE m.litter_id=? AND m.movement_type='adjustment' AND m.reverses_movement_id IS NULL AND o.operation_type='reproduction.litter.correction' AND NOT EXISTS(SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=m.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%')").bind(litterId).all<{id:number;sex:string;quantity:number;effective_date:string}>()).results??[];
