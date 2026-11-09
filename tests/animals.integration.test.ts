@@ -113,7 +113,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(res.status).toBe(200);
     const data = await res.json() as {
       balances: { heads: number; identified: number; unidentified: number; stageCode: string; sex: string; barnName: string }[];
-      summary: { total: { available: number } };
+      summary: { total: { available: number; entries: number; exits: number; mortalityPct: number | null } };
     };
     return data;
   };
@@ -1005,6 +1005,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(death.status,await death.clone().text()).toBe(201);
     const deathReplay=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'death',effectiveDate:'2026-10-24',sex:'macho',quantity:1,cause:'Debilidad neonatal',reason:'Baja observada en lactancia',operationKey:'rep-t14-death'})});
     expect(deathReplay.status).toBe(200);
+    const beforeWeaning=(await inventoryTotals('2026-11-08')).summary.total;
     const femaleWean=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'weaning',effectiveDate:'2026-10-30',sex:'hembra',quantity:2,weightKg:6.2,destinationStageCode:'inicio',destinationBarnId:1,reason:'Destete parcial hembras',operationKey:'rep-t14-wean-f'})});
     expect(femaleWean.status,await femaleWean.clone().text()).toBe(201);
     const maleWean=await api(`/api/reproduction/litters/${litterId}/events`,{method:'POST',body:JSON.stringify({eventType:'weaning',effectiveDate:'2026-10-30',sex:'macho',quantity:4,weightKg:6.4,destinationStageCode:'inicio',destinationBarnId:1,reason:'Destete parcial machos',operationKey:'rep-t14-wean-m'})});
@@ -1013,6 +1014,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     const litter=(await remaining.json() as {cycles:{id:string;litter:{femaleAlive:number;maleAlive:number;unsexedAlive:number}|null}[]}).cycles.find((item)=>item.id===cycleId)?.litter;
     expect(litter).toMatchObject({femaleAlive:1,maleAlive:0,unsexedAlive:0});
     const finalInventory=await inventoryTotals('2026-11-08');
+    expect(finalInventory.summary.total).toMatchObject({entries:beforeWeaning.entries,exits:beforeWeaning.exits,mortalityPct:beforeWeaning.mortalityPct});
     expect(finalInventory.summary.total.available).toBe(before+7);
     expect(finalInventory.balances.filter((row)=>row.stageCode==='inicio').reduce((sum,row)=>sum+row.heads,0)).toBeGreaterThanOrEqual(6);
     const adoptSow=await create({code:'T14-ADOPT-MADRE',animalType:'cerda',sex:'hembra',birthDate:'2024-01-01',entryDate:'2026-01-01',entryStageCode:'gestacion',originType:'compra',operationKey:'ani-t14-adopt-sow'});

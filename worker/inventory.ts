@@ -433,6 +433,8 @@ export async function getInventorySnapshot(
       SUM(m.quantity) AS total
     FROM inventory_movements m
     WHERE m.effective_date >= ? AND m.effective_date <= ?${summaryScope.sql}
+      AND NOT (m.movement_type = 'adjustment' AND EXISTS (SELECT 1 FROM operation_log o
+        WHERE o.id = m.operation_log_id AND o.operation_type = 'litter.weaning'))
       AND NOT (m.movement_type = 'adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
       AND NOT EXISTS (SELECT 1 FROM inventory_movements correction
         WHERE correction.reverses_movement_id = m.id AND correction.movement_type = 'adjustment'
