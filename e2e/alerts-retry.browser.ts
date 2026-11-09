@@ -14,7 +14,7 @@ test('crear aviso conserva la clave cuando el servidor guardó y se perdió la r
  });
 
  await page.goto('/alertas');
- await expect(page.getByRole('heading',{name:'Alertas y Pendientes'})).toBeVisible();
+ await expect(page.getByRole('banner').getByRole('button',{name:/Módulo actual: Alertas y Pendientes/})).toBeVisible();
  await page.getByRole('button',{name:'Crear aviso manual'}).click();
  await expect(page.getByRole('heading',{name:'Crear aviso manual de granja'})).toBeVisible();
  await page.getByLabel('Título o tarea').fill('Revisar bebedero');

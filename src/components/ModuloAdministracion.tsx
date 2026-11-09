@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Perfil } from '../types';
 import {
-  IconShield,
   IconUser,
   IconClipboard,
   IconStethoscope,

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   IconAlertCircle,
   IconArrowRight,
-  IconBox,
   IconBuilding,
   IconCalendar,
   IconCheck,
