@@ -13,7 +13,7 @@ test('recordar credenciales precarga el formulario y permite olvidarlas',async({
  await page.goto('/login');
  await page.getByLabel('Usuario',{exact:true}).fill('admin@prueba.pe');
  await page.getByLabel('Contraseña',{exact:true}).fill('ClaveSoloPrueba2026!');
- await page.getByLabel('Recordar usuario y contraseña en esta PWA').check();
+ await page.getByLabel('Recordar usuario y contraseña').check();
  await page.getByRole('button',{name:'Entrar',exact:true}).click();
  await expect(page.getByRole('button',{name:'Cerrar sesión'})).toBeVisible();
  const key='porcicola_saved_credentials';
@@ -21,7 +21,7 @@ test('recordar credenciales precarga el formulario y permite olvidarlas',async({
  await page.goto('/login');
  await expect(page.getByLabel('Usuario',{exact:true})).toHaveValue('admin@prueba.pe');
  await expect(page.getByLabel('Contraseña',{exact:true})).toHaveValue('ClaveSoloPrueba2026!');
- await expect(page.getByLabel('Recordar usuario y contraseña en esta PWA')).toBeChecked();
+ await expect(page.getByLabel('Recordar usuario y contraseña')).toBeChecked();
  await page.getByRole('button',{name:'Olvidar'}).click();
  await expect(page.getByLabel('Usuario',{exact:true})).toHaveValue('');
  await expect(page.getByLabel('Contraseña',{exact:true})).toHaveValue('');
