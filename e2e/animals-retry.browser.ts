@@ -307,6 +307,49 @@ test('edita y elimina desde las acciones del padrón con confirmación', async (
   expect(deletions).toBe(1);
 });
 
+for (const action of ['Ver ficha de', 'Editar animal']) {
+  test(`${action} muestra carga inmediata y no repite volver al padrón`, async ({ page }) => {
+    await mockAnimalApi(page, initialAnimal());
+    let release: () => void = () => {};
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/animals/RETRY-001', async route => {
+      await gate;
+      await route.fulfill({ json: { animal: initialAnimal() } });
+    });
+    await page.goto('/animales');
+    await page.getByRole('button', { name: `${action} RETRY-001`, exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText('Cargando ficha del animal');
+    await expect(page.locator('.animal-loading-skeleton')).toBeVisible();
+    release();
+    const dialog = page.getByRole('dialog');
+    if (action === 'Editar animal') await expect(dialog.getByRole('button', { name: 'Guardar cambios de la ficha', exact: true })).toBeVisible();
+    else await expect(dialog.getByRole('tab', { name: 'Datos técnicos', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /Volver al padrón/ })).toHaveCount(0);
+    await expect(page.locator('.animal-loading-skeleton')).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Cerrar ficha del animal', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+  });
+}
+
+test('confirmar eliminación muestra progreso hasta recibir la respuesta', async ({ page }) => {
+  await mockAnimalApi(page, initialAnimal());
+  let release: () => void = () => {};
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/animals/RETRY-001/deactivate', async route => {
+    await gate;
+    await route.fulfill({ json: { animal: { ...initialAnimal(), isActive: false } } });
+  });
+  await page.goto('/animales');
+  await page.getByRole('button', { name: 'Eliminar animal RETRY-001', exact: true }).click();
+  await page.getByLabel('Motivo de eliminación', { exact: true }).fill('Ficha de prueba');
+  await page.getByRole('button', { name: 'Confirmar eliminación', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Eliminando animal');
+  await expect(page.getByRole('dialog').locator('button[type="submit"]')).toBeDisabled();
+  release();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
 test('ficha muestra el resumen reproductivo y la causa de salida', async ({ page }) => {
   const animal = { ...initialAnimal(), sex: 'hembra', sexLabel: 'Hembra', exitDate: '2026-11-07', exitType: 'death', status: 'muerto', statusLabel: 'Muerto', exitCauseCode: 'enfermedad', exitCauseLabel: 'Enfermedad', reproductiveSummary: {serviceCount: 3, farrowingCount: 2, firstFarrowingDate: '2026-01-10', lastFarrowingDate: '2026-09-10', totalBorn: 19, maleBorn: 10, femaleBorn: 9, unsexedBorn: 0, averageBirthWeightKg: 1.45, weighedBirths: 17} };
   await mockAnimalApi(page, animal);

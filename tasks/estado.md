@@ -10,6 +10,8 @@ Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; i
 
 ## Observaciones del cliente — 11/11/2026
 
+- Modales de animales: se ocultan los botones redundantes Volver al padrón cuando la ficha/editor está en un modal, conservándolos en enlaces directos sin modal. Ver/Editar abren el modal inmediatamente con mensaje y skeleton mientras se descarga la ficha; cerrar durante la carga cancela la petición para impedir que una respuesta tardía reabra el modal o muestre otro animal. La eliminación confirma su progreso con spinner/mensaje y mantiene deshabilitados los controles durante el envío.
+
 - Experiencia de aplicación: barra superior con producto, módulo y cuenta agrupados; control de desbordamiento horizontal en el documento y ancho mínimo cero en sus contenedores. Las tablas, pestañas y tiras de galpones conservan desplazamiento horizontal propio.
 - Ver/Editar del padrón se abren en un modal amplio con la tabla, filtros y página conservados debajo. Los enlaces directos a fichas siguen funcionando. El modal compartido usa portal fuera de la aplicación, bloquea scroll/interacción del fondo y gestiona foco/Escape para modales anidados. Se distinguen los IDs de filtros y formulario para no cruzar etiquetas cuando ambos existen.
 - La paginación es ahora hermana de la tabla deslizable, con controles de igual ancho a ambos lados del indicador central. TypeScript, lint y 22 pruebas dirigidas correctos; se añadieron comprobaciones de navegador para modal, desbordamiento y paginación, pendientes de ejecución.

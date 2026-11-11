@@ -292,6 +292,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   const [detail, setDetail] = useState<AnimalDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
+  const [requestedAnimalCode, setRequestedAnimalCode] = useState('');
+  const detailRequest = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>({
@@ -461,11 +463,20 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   };
 
   const openDetail = useCallback(async (key: string) => {
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
+    setRequestedAnimalCode(key);
     setLoadingDetail(true);
+    setDetail(null);
+    setSection('ficha');
+    setAnimalModalOpen(true);
     setError(null);
+    setSuccess(null);
     try {
-      const res = await fetch(`/api/animals/${encodeURIComponent(key)}`);
+      const res = await fetch(`/api/animals/${encodeURIComponent(key)}`, { signal: controller.signal });
       const body = await res.json() as { ok?: boolean; error?: string; animal?: AnimalDetail };
+      if (controller.signal.aborted) return;
       if (!res.ok || !body.animal) {
         setError(body.error ?? 'No se pudo cargar la ficha del animal');
         return;
@@ -480,10 +491,15 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       setAnimalModalOpen(true);
       return body.animal;
     } catch {
-      setError('No se pudo conectar con el servidor.');
+      if (!controller.signal.aborted) setError('No se pudo conectar con el servidor.');
     } finally {
-      setLoadingDetail(false);
+      if (!controller.signal.aborted) setLoadingDetail(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const request = detailRequest;
+    return () => request.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -876,6 +892,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   const total = data?.total ?? 0;
   const closeAnimalWorkspace = () => {
     if (saving || busy) return;
+    detailRequest.current?.abort();
+    setLoadingDetail(false);
+    setError(null);
     setAnimalModalOpen(false);
     setEditingCode(null);
     setSection('padron');
@@ -884,12 +903,13 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   return (
     <div>
       {deleteTarget && <ModalDialog labelledBy="animal-delete-title" onDismiss={() => setDeleteTarget(null)} dismissDisabled={busy}>
-        <form onSubmit={event => void handleDelete(event)}>
+        <form onSubmit={event => void handleDelete(event)} aria-busy={busy}>
           <h2 id="animal-delete-title">Eliminar animal {deleteTarget.code}</h2>
           <p>La ficha se retirará del padrón activo. Se conservará su historial y podrá reactivarse desde el filtro de fichas inactivas. Esto no registra una venta ni una muerte y no descuenta cabezas del inventario.</p>
           <label className="form-label" htmlFor="animal-delete-reason">Motivo de eliminación</label>
           <input id="animal-delete-reason" className="form-input" value={deleteReason} required disabled={busy} onChange={event => setDeleteReason(event.target.value)} />
           {deleteError && <p role="alert" className="text-danger">{deleteError}</p>}
+          {busy && <p className="animal-action-loading inline-flex items-center gap-2" role="status"><IconRefreshCw size={18} className="spinner-icon" /><span>Eliminando animal… Espera un momento.</span></p>}
           <div className="animal-row-actions mt-3">
             <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setDeleteTarget(null)}>Cancelar</button>
             <button type="submit" className="btn btn-danger inline-flex items-center justify-center gap-2" disabled={busy || !deleteReason.trim()}><IconTrash size={16} /><span>{busy ? 'Eliminando…' : 'Confirmar eliminación'}</span></button>
@@ -1288,7 +1308,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         </div>
       )}
 
-      <AnimalWorkspace modal={animalModalOpen} title={section === 'alta' ? `Editar animal ${editingCode ?? ''}` : `Ficha del animal ${detail?.code ?? ''}`} onClose={closeAnimalWorkspace} busy={saving || busy}>
+      <AnimalWorkspace modal={animalModalOpen} loading={loadingDetail} title={loadingDetail ? `Cargando animal ${requestedAnimalCode}` : section === 'alta' ? `Editar animal ${editingCode ?? ''}` : `Ficha del animal ${detail?.code ?? requestedAnimalCode}`} onClose={closeAnimalWorkspace} busy={saving || busy}>
       {animalModalOpen && error && <p className="alert alert-error" role="alert">{error}</p>}
       {animalModalOpen && success && <p className="alert alert-success" role="status">{success}</p>}
       {section === 'alta' && !soloLectura && (
@@ -1305,7 +1325,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   : 'El código es permanente y conserva sus ceros iniciales'}
               </p>
             </div>
-            <button
+            {!animalModalOpen && <button
               type="button"
               className="btn btn-outline btn-sm"
               onClick={() => {
@@ -1321,7 +1341,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 <IconArrowLeft size={14} />
                 <span>Volver al padrón</span>
               </span>
-            </button>
+            </button>}
           </div>
 
           <form onSubmit={handleSubmit} className="form-stack">
@@ -1804,7 +1824,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   {detail.isActive ? 'Disponible' : 'Inactiva'}
                 </span>
               </div>
-              <button
+              {!animalModalOpen && <button
                 type="button"
                 className="btn btn-outline btn-sm"
                 onClick={closeAnimalWorkspace}
@@ -1814,7 +1834,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   <IconArrowLeft size={14} />
                   <span>Volver al padrón</span>
                 </span>
-              </button>
+              </button>}
             </div>
 
             <div className="grid-3">
