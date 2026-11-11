@@ -1,4 +1,4 @@
-import {expect, test} from '@playwright/test';
+import {expect, test} from './module-fixture';
 
 test('registra el importe de una venta grupal y permite anularla con reintento seguro', async ({page}) => {
   let sale: Record<string, unknown> | undefined;

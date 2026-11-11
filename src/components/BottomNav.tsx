@@ -13,6 +13,7 @@ interface BottomNavProps {
   vistaActual: Vista;
   perfilActual: Perfil;
   onNavigate: (vista: Vista) => void;
+  hasSelection?: boolean;
 }
 
 interface BottomNavItem {
@@ -23,7 +24,7 @@ interface BottomNavItem {
   isActive: (current: Vista) => boolean;
 }
 
-export function BottomNav({ vistaActual, onNavigate }: BottomNavProps) {
+export function BottomNav({ vistaActual, onNavigate, hasSelection = true }: BottomNavProps) {
   const navItems: BottomNavItem[] = [
     {
       id: 'menu',
@@ -72,7 +73,7 @@ export function BottomNav({ vistaActual, onNavigate }: BottomNavProps) {
   return (
     <nav className="bottom-nav-container" aria-label="Navegación principal">
       <div className="bottom-nav-wrapper">
-        {navItems.map((item) => {
+        {(hasSelection ? navItems : [{ id: 'galpones', view: 'galpones' as Vista, label: 'Galpones', icon: <IconBox size={22} />, isActive: (current: Vista) => current === 'galpones' }]).map((item) => {
           const active = item.isActive(vistaActual);
           return (
             <button

@@ -1,4 +1,4 @@
-import {expect,test} from '@playwright/test';
+import {expect,test} from './module-fixture';
 
 test('muestra coberturas separadas y demanda compartida para el operario',async({page})=>{
   let adminRequested=false;

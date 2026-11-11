@@ -18,6 +18,7 @@ import {
   IconRefreshCw,
   IconScale,
   IconSearch,
+  IconTrash,
   IconX,
 } from './icons';
 import { ModalDialog } from './ModalDialog';
@@ -297,7 +298,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     barnId: '',
     location: '',
     lot: '',
-    active: '',
+    active: '1',
     mother: '', father: '', breed: '', aptitude: '', originType: '', entryStage: '',
   });
   const [form, setForm] = useState<AnimalForm>(emptyForm);
@@ -311,6 +312,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const [toggleReason, setToggleReason] = useState<string>('');
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
+  const [deleteTarget, setDeleteTarget] = useState<Animal | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   const [transferForm, setTransferForm] = useState({ destinationBarnId: '', destinationStageCode: '', locationCode: '', lotCode: '', effectiveDate: farmToday(), reason: '' });
   const [exitForm, setExitForm] = useState({ exitType: 'sale' as 'sale' | 'death' | 'discard', purchaseReturn:false, causeCode: '', effectiveDate: farmToday(), reason: '', saleAmount: '', currencyCode: 'PEN', counterparty: '', documentReference: '' });
   const [physicalActionError, setPhysicalActionError] = useState<string | null>(null);
@@ -457,6 +461,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
       setToggleReason('');
       setToggleError(null);
       setSection('ficha');
+      return body.animal;
     } catch {
       setError('No se pudo conectar con el servidor.');
     } finally {
@@ -502,7 +507,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     setSection('alta');
   };
 
-  const startEdit = () => {
+  const startEdit = (animal = detail) => {
+    const detail = animal;
     if (!detail) return;
     setEditingCode(detail.code);
     setForm({
@@ -538,6 +544,24 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     setFormError(null);
     setFieldErrors({});
     setSection('alta');
+  };
+
+  const handleDelete = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!deleteTarget || !deleteReason.trim() || soloLectura || busy) return;
+    setBusy(true);
+    setDeleteError('');
+    try {
+      const response = await fetchOperation(`/api/animals/${encodeURIComponent(deleteTarget.code)}/deactivate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: deleteReason.trim() }),
+      });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? 'No se pudo eliminar la ficha');
+      setDeleteTarget(null);
+      setSuccess(`Ficha ${deleteTarget.code} eliminada del padrón activo. Su historial se conserva y puede reactivarse.`);
+      await loadList();
+    } catch (err) { setDeleteError(err instanceof Error ? err.message : 'No se pudo eliminar la ficha'); }
+    finally { setBusy(false); }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -838,6 +862,19 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
   return (
     <div>
+      {deleteTarget && <ModalDialog labelledBy="animal-delete-title" onDismiss={() => setDeleteTarget(null)} dismissDisabled={busy}>
+        <form onSubmit={event => void handleDelete(event)}>
+          <h2 id="animal-delete-title">Eliminar animal {deleteTarget.code}</h2>
+          <p>La ficha se retirará del padrón activo. Se conservará su historial y podrá reactivarse desde el filtro de fichas inactivas. Esto no registra una venta ni una muerte y no descuenta cabezas del inventario.</p>
+          <label className="form-label" htmlFor="animal-delete-reason">Motivo de eliminación</label>
+          <input id="animal-delete-reason" className="form-input" value={deleteReason} required disabled={busy} onChange={event => setDeleteReason(event.target.value)} />
+          {deleteError && <p role="alert" className="text-danger">{deleteError}</p>}
+          <div className="animal-row-actions mt-3">
+            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setDeleteTarget(null)}>Cancelar</button>
+            <button type="submit" className="btn btn-danger inline-flex items-center justify-center gap-2" disabled={busy || !deleteReason.trim()}><IconTrash size={16} /><span>{busy ? 'Eliminando…' : 'Confirmar eliminación'}</span></button>
+          </div>
+        </form>
+      </ModalDialog>}
       <div className="module-heading mb-4">
         <p className="text-xs text-muted">
           Identificación oficial permanente, genealogía, pesajes periódicos y trazabilidad de cada animal.
@@ -1279,6 +1316,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                           </span>
                         </td>
                         <td className="text-center">
+                          <div className="animal-row-actions">
                           <button
                             type="button"
                             className="btn btn-outline btn-sm"
@@ -1291,6 +1329,13 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                               <span>Ver ficha</span>
                             </span>
                           </button>
+                          {!soloLectura && <>
+                            <button type="button" className="btn btn-outline btn-sm inline-flex items-center justify-center gap-2" disabled={loadingDetail || busy}
+                              aria-label={`Editar animal ${animal.code}`} onClick={async () => { const record = await openDetail(animal.code); if (record) startEdit(record); }}><IconEdit size={14} /><span>Editar</span></button>
+                            <button type="button" className="btn btn-outline btn-sm text-danger inline-flex items-center justify-center gap-2" disabled={!animal.isActive || busy}
+                              aria-label={`Eliminar animal ${animal.code}`} onClick={() => { setDeleteTarget(animal); setDeleteReason(''); setDeleteError(''); }}><IconTrash size={14} /><span>Eliminar</span></button>
+                          </>}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2026,7 +2071,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
-                    onClick={startEdit}
+                    onClick={() => startEdit()}
                     aria-label={`Editar ficha del animal ${detail.code}`}
                   >
                     <span className="inline-flex items-center justify-center gap-2 leading-none">

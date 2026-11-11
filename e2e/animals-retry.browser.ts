@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './module-fixture';
 
 const initialAnimal = () => ({
   id: 1,
@@ -204,6 +204,30 @@ async function mockAnimalApi(page: Page, initial: ReturnType<typeof initialAnima
   });
   await page.route('**/api/animals/RETRY-001', route => route.fulfill({ status: 200, json: { ok: true, animal: initial } }));
 }
+
+test('edita y elimina desde las acciones del padrón con confirmación', async ({ page }) => {
+  await mockAnimalApi(page, initialAnimal());
+  let deletions = 0;
+  await page.route('**/api/animals/RETRY-001/deactivate', async route => {
+    deletions++;
+    expect(route.request().headers()['x-barn-ids']).toBe('1,2');
+    expect(route.request().postDataJSON()).toMatchObject({ reason: 'Ficha duplicada' });
+    await route.fulfill({ json: { animal: { ...initialAnimal(), isActive: false } } });
+  });
+  await page.goto('/animales');
+  await page.getByRole('button', { name: 'Editar animal RETRY-001', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Guardar cambios de la ficha', exact: true })).toBeVisible();
+  await page.goto('/animales');
+  await page.getByRole('button', { name: 'Eliminar animal RETRY-001', exact: true }).click();
+  await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  expect(deletions).toBe(0);
+  await page.getByRole('button', { name: 'Eliminar animal RETRY-001', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Confirmar eliminación', exact: true })).toBeDisabled();
+  await page.getByLabel('Motivo de eliminación', { exact: true }).fill('Ficha duplicada');
+  await page.getByRole('button', { name: 'Confirmar eliminación', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(deletions).toBe(1);
+});
 
 test('ficha muestra el resumen reproductivo y la causa de salida', async ({ page }) => {
   const animal = { ...initialAnimal(), sex: 'hembra', sexLabel: 'Hembra', exitDate: '2026-11-07', exitType: 'death', status: 'muerto', statusLabel: 'Muerto', exitCauseCode: 'enfermedad', exitCauseLabel: 'Enfermedad', reproductiveSummary: {serviceCount: 3, farrowingCount: 2, firstFarrowingDate: '2026-01-10', lastFarrowingDate: '2026-09-10', totalBorn: 19, maleBorn: 10, femaleBorn: 9, unsexedBorn: 0, averageBirthWeightKg: 1.45, weighedBirths: 17} };

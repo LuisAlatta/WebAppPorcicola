@@ -277,6 +277,16 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(data.options.barns.map((barn) => barn.name)).toEqual(['Galpón A', 'Galpón B']);
   });
 
+  it('la selección múltiple no amplía los galpones asignados al usuario', async () => {
+    const headers = { 'X-Barn-Ids': '1,2' };
+    expect((await api('/api/animals', { headers }, operarioToken)).status).toBe(403);
+    expect((await api('/api/animals', { headers: { 'X-Barn-Ids': '1' } }, operarioSinGalponToken)).status).toBe(403);
+    expect((await api('/api/animals', { headers: { 'X-Barn-Ids': '1' } }, operarioGalponBToken)).status).toBe(403);
+    const barns = await api('/api/barns', {}, operarioGalponBToken);
+    expect(barns.status).toBe(200);
+    expect((await barns.json() as { barns: { id: number }[] }).barns.map(barn => barn.id)).toEqual([2]);
+  });
+
   it('crea el código 002 con ceros, reintenta sin duplicar y rechaza duplicados', async () => {
     const payload = baseAnimal({
       code: '002',

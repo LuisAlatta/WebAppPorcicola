@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './module-fixture';
 
 test('programa un turno sin entrega y permite cancelarlo con motivo', async ({ page }) => {
   let supplyWrites = 0;

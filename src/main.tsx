@@ -7,6 +7,9 @@ import { clearOperationAttempts } from './utils/operations';
 import { BocetoLogin, migrateRememberedUsername } from './components/BocetoLogin';
 import { MenuPrincipal } from './components/MenuPrincipal';
 import { BottomNav } from './components/BottomNav';
+import { SelectorGalpones } from './components/SelectorGalpones';
+import { IconBox } from './components/icons';
+import { installBarnScopeFetch, setSelectedBarnIds } from './utils/barn-scope';
 import { ModuloAdministracion } from './components/ModuloAdministracion';
 import { ModuloConfiguracion } from './components/ModuloConfiguracion';
 import { ModuloInventario } from './components/ModuloInventario';
@@ -23,6 +26,7 @@ import './pwa.css';
 function getInitialView(): Vista {
   if (typeof window !== 'undefined') {
     const path = window.location.pathname;
+    if (path === '/galpones') return 'galpones';
     if (path === '/listado') return 'listado';
     if (path === '/animales') return 'animales';
     if (path === '/reproduccion') return 'reproduccion';
@@ -58,6 +62,8 @@ function App() {
   const [estadoSesion,setEstadoSesion]=useState<'cargando'|'lista'|'error'>('cargando');
   const [usuarioActual, setUsuarioActual] = useState<string>('');
   const [logoutError,setLogoutError]=useState('');
+  const [barnSelection, setBarnSelection] = useState<{ ids: number[]; names: string[] }>({ ids: [], names: [] });
+  const [choosingBarns, setChoosingBarns] = useState(false);
 
   useEffect(() => {
     migrateRememberedUsername();
@@ -97,6 +103,7 @@ function App() {
     setVistaActual(vista);
     if (typeof window !== 'undefined' && window.history) {
       let targetPath = '/';
+      if (vista === 'galpones') targetPath = '/galpones';
       if (vista === 'listado') targetPath = '/listado';
       else if (vista === 'animales') targetPath = '/animales';
       else if (vista === 'reproduccion') targetPath = '/reproduccion';
@@ -117,6 +124,8 @@ function App() {
   };
 
   const handleLogin = (perfil: Perfil, username?: string) => {
+    setSelectedBarnIds([]);
+    setBarnSelection({ ids: [], names: [] });
     clearOperationAttempts();
     setPerfilActual(perfil);
     if (username) setUsuarioActual(username);
@@ -135,6 +144,8 @@ function App() {
     }
     clearOperationAttempts();
     setEstaAutenticado(false);
+    setSelectedBarnIds([]);
+    setBarnSelection({ ids: [], names: [] });
     handleNavigate('login');
   };
 
@@ -150,6 +161,13 @@ function App() {
     }
 
     if((vistaActual==='configuracion'||vistaActual==='administracion')&&perfilActual!=='administrador')return <div className="session-check" role="alert"><h1>Acceso restringido</h1><p>Este módulo solo está disponible para el administrador.</p></div>;
+    if (vistaActual === 'galpones' || choosingBarns || (!barnSelection.ids.length && vistaActual !== 'inicio')) return <SelectorGalpones selected={barnSelection.ids} onContinue={(ids, names) => {
+      setSelectedBarnIds(ids);
+      setBarnSelection({ ids, names });
+      setChoosingBarns(false);
+      handleNavigate(vistaActual === 'galpones' ? 'inicio' : vistaActual);
+    }} />;
+    if (vistaActual === 'inicio' && !barnSelection.ids.length) return <div className="menu-app-container"><div className="menu-app-grid"><button className="menu-app-tile menu-tile-inventario" type="button" onClick={() => handleNavigate('galpones')}><div className="menu-tile-icon-box"><IconBox size={30} /></div><span className="menu-tile-title">Galpones</span></button></div></div>;
     switch (vistaActual) {
       case 'inicio':
         return (
@@ -207,11 +225,13 @@ function App() {
       {logoutError && <div className="alert alert-danger" role="alert">{logoutError}</div>}
 
       <main className="main-content">
+        {estaAutenticado && vistaActual !== 'login' && barnSelection.ids.length > 0 && <div className="barn-scope-bar"><span>Galpones: {barnSelection.names.join(', ')}</span><button className="btn btn-outline btn-sm" type="button" onClick={() => setChoosingBarns(true)}>Cambiar galpones</button></div>}
         {renderVista()}
       </main>
 
-      {estaAutenticado && vistaActual !== 'login' && (
+      {estaAutenticado && vistaActual !== 'login' && !choosingBarns && vistaActual !== 'galpones' && (
         <BottomNav
+          hasSelection={barnSelection.ids.length > 0}
           vistaActual={vistaActual}
           perfilActual={perfilActual}
           onNavigate={handleNavigate}
@@ -223,6 +243,7 @@ function App() {
 
 const rootElement = document.getElementById('root');
 if (rootElement) {
+  installBarnScopeFetch();
   createRoot(rootElement).render(
     <React.StrictMode>
       <App />

@@ -38,6 +38,7 @@ const profileNames: Record<Perfil, string> = {
 };
 
 const viewMeta: Record<Vista, ViewMeta> = {
+  galpones: { title: 'Galpones', icon: <IconBox size={20} className="text-primary" /> },
   inicio: {
     title: 'Menú Principal',
     icon: <IconGrid size={20} className="text-primary" />,

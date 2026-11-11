@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './module-fixture';
 
 test('busca animales para sanidad y conserva selecciones entre búsquedas', async ({ page }) => {
   await page.route('**/api/**', route => route.fulfill({ status: 200, json: { ok: true } }));

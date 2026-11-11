@@ -8,6 +8,15 @@ Verificación local anterior del 8/11: Vitest **103/103** en 26 archivos; Playwr
 
 Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; integración **118/118** en 22 archivos; Playwright **41/41**; typecheck, lint y build correctos. GitHub Actions run `42674620313` terminó `success` en commit `2b838f8`; todos los pasos pasaron. Los dos runs anteriores terminaron sin jobs; el último completó la validación remota.
 
+## Observaciones del cliente — 11/11/2026
+
+- Inicio muestra Galpones antes de los módulos. El selector admite varios galpones y exige al menos uno para continuar. La barra superior muestra la selección y permite cambiarla; al cambiar se desmonta el módulo anterior para descartar formularios y respuestas pendientes.
+- Las peticiones operativas y las exportaciones envían `X-Barn-Ids`. El servidor valida los identificadores y los permisos antes de aplicar el alcance existente de cada módulo, también para administradores. Administración y Configuración conservan su alcance general de granja.
+- La selección es temporal en la pestaña: al recargar o cerrar sesión debe realizarse nuevamente. Los enlaces directos conservan su destino al completar la selección.
+- El padrón incorpora Editar y Eliminar en cada fila para los perfiles con permiso. Eliminar exige confirmación y motivo: usa la desactivación auditada y reversible, conserva la historia y no altera inventario ni registra salida física. El filtro inicial muestra solo fichas activas; las inactivas pueden consultarse y reactivarse desde su ficha.
+- Se añadieron pruebas de selección, validación de permisos, alcance en consultas y exportaciones, y casos de navegador para selección múltiple y acciones del padrón. Las pruebas de módulos existentes completan ahora la selección inicial mediante una fixture compartida.
+- Despliegue pendiente de cambiar la sesión global de Cloudflare: la cuenta detectada corresponde a otro proyecto. No se han modificado credenciales ni recursos remotos.
+
 ## Orden de lectura
 
 1. Este archivo, para conocer el estado y los próximos pasos.

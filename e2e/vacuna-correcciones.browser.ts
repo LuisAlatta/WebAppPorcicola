@@ -1,4 +1,4 @@
-import {expect,test} from '@playwright/test';
+import {expect,test} from './module-fixture';
 
 test.use({serviceWorkers:'block'});
 

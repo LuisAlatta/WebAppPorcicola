@@ -1,4 +1,4 @@
-import {expect,test} from '@playwright/test';
+import {expect,test} from './module-fixture';
 
 test('sanidad dirige a los flujos válidos y permite unidad y retiro en vacunación',async({page})=>{
   let applied:Record<string,unknown>|undefined;

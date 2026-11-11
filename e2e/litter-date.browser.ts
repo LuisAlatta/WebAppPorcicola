@@ -1,4 +1,4 @@
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Page} from './module-fixture';
 
 async function setup(page:Page,role='veterinario'){
   let currentDate='2026-06-20';

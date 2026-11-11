@@ -76,5 +76,33 @@ describe('Payload de auditoría en cambios de animal', () => {
 
     expect(await db.prepare("SELECT COUNT(*) AS count FROM operation_log WHERE operation_key IN ('reason-tag-change-1','reason-animal-deactivate-1')").first()).toMatchObject({ count: 2 });
     expect(await db.prepare('SELECT COUNT(*) AS count FROM animal_tags WHERE animal_id=(SELECT id FROM animals WHERE code=?)').bind('REASON-TEST-01').first()).toMatchObject({ count: 2 });
+
+    const secondAnimal = await api('/api/animals', {
+      code: 'SCOPE-B-01', animalType: 'lechon', sex: 'hembra', entryDate: today,
+      entryStageCode: 'preinicio', barnId: 2, locationCode: 'galpon_b',
+      originType: 'inicial', reason: 'Animal de otro galpón', operationKey: 'scope-second-animal',
+    });
+    expect(secondAnimal.status, await secondAnimal.clone().text()).toBe(201);
+    const scoped = (path: string, ids: string) => worker.fetch(new Request(`http://localhost${path}`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Barn-Ids': ids },
+    }), { DB: db });
+    const selectedOne = await scoped('/api/animals', '1');
+    expect(selectedOne.status).toBe(200);
+    const selectedOneBody = await selectedOne.json() as { animals: { barnId: number }[]; options: { barns: { id: number }[] } };
+    expect(selectedOneBody.animals.map(animal => animal.barnId)).toEqual([1]);
+    expect(selectedOneBody.options.barns.map(barn => barn.id)).toEqual([1]);
+    const selectedBoth = await scoped('/api/animals', '1,2');
+    expect((await selectedBoth.json() as { total: number }).total).toBe(2);
+    expect((await scoped('/api/animals/SCOPE-B-01', '1')).status).toBe(404);
+    expect((await scoped('/api/animals', '999')).status).toBe(403);
+    expect((await scoped('/api/animals', '1,invalid')).status).toBe(400);
+    const barns = await worker.fetch(new Request('http://localhost/api/barns', { headers: { Authorization: `Bearer ${token}` } }), { DB: db });
+    expect((await barns.json() as { barns: { id: number }[] }).barns.map(barn => barn.id)).toEqual([1, 2]);
+    for (const path of ['/api/inventory', '/api/finance/barns']) {
+      const response = await scoped(path, '1');
+      expect(response.status, await response.clone().text()).toBe(200);
+      const data = await response.json() as { barns?: { id: number }[]; options?: { barns: { id: number }[] } };
+      expect((data.barns ?? data.options?.barns)?.map(barn => barn.id)).toEqual([1]);
+    }
   }, 90000);
 });

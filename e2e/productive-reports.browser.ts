@@ -1,4 +1,4 @@
-import {expect,test} from '@playwright/test';
+import {expect,test} from './module-fixture';
 
 test('informes productivos aplican filtros y muestran tabla, indicadores y gráfico',async({page})=>{
   const urls:string[]=[];

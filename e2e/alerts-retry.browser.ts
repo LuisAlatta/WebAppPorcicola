@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './module-fixture';
 
 test('crear aviso conserva la clave cuando el servidor guardó y se perdió la respuesta',async({page})=>{
  const bodies:Record<string,unknown>[]=[];

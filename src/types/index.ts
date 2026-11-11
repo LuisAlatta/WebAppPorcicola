@@ -3,6 +3,7 @@ export type Perfil = 'administrador' | 'responsable' | 'operario' | 'veterinario
 export type Vista =
   | 'login'
   | 'inicio'
+  | 'galpones'
   | 'listado'
   | 'formulario'
   | 'detalle'

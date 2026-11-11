@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './module-fixture';
 
 test('guardar informe conserva la clave si se pierde la respuesta tras guardar', async ({ page }) => {
   const requests: Record<string, unknown>[] = [];

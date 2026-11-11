@@ -1,4 +1,5 @@
 import { listFeedPlans, registerFeedPlan } from './feed-plans';
+import { selectedBarnScope } from './barn-scope';
 import {
   hashPassword,
   verifyPassword,
@@ -125,6 +126,26 @@ const worker = {
     // Validación CSRF
     if (!checkCsrf(request)) {
       return Response.json({ error: 'Origen no autorizado (CSRF)' }, { status: 403 });
+    }
+
+    let selectedBarnNames: string[] | null = null;
+    if (request.headers.has('X-Barn-Ids') && !/^\/api\/(auth|admin|config|barns)(\/|$)/.test(path)) {
+      const token = getSessionToken(request);
+      const session = token ? await validateSession(env.DB, token) : null;
+      if (!session) return Response.json({ error: 'Sesión inválida' }, { status: 401 });
+      try {
+        selectedBarnNames = await selectedBarnScope(env.DB, request.headers.get('X-Barn-Ids')!, session.user.role, session.barns);
+      } catch (error) {
+        return Response.json({ error: (error as Error).message }, { status: error instanceof ApiError ? error.status : 500 });
+      }
+    }
+    if (path === '/api/barns' && request.method === 'GET') {
+      const token = getSessionToken(request);
+      const session = token ? await validateSession(env.DB, token) : null;
+      if (!session) return Response.json({ error: 'Sesión inválida' }, { status: 401 });
+      const names = session.user.role === 'administrador' ? await getAllBarnNames(env.DB) : session.barns;
+      const barns = await env.DB.prepare(`SELECT id,name FROM barns WHERE status<>'inactivo' AND name IN (${names.map(() => '?').join(',') || 'NULL'}) ORDER BY name`).bind(...names).all();
+      return Response.json({ ok: true, barns: barns.results ?? [] });
     }
 
     // 1. Bootstrap: Inicialización de un solo uso del primer administrador
@@ -448,7 +469,7 @@ const worker = {
 
     // 7.5 Reportes · T24. Catálogo permitido y consultas agregadas.
     if(path==='/api/reports/catalog'||path==='/api/reports/weights'||path==='/api/reports/births'||path.startsWith('/api/reports/definitions')||path==='/api/reports/preview'||path==='/api/reports/export'||path==='/api/reports/dashboard'){
-      const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
+      const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});const scope={allowedBarnNames:selectedBarnNames ?? (session.user.role==='administrador'?null:session.barns)};
       try{
         const role=session.user.role as Parameters<typeof listReportCatalog>[0];
         if(path==='/api/reports/catalog'&&request.method==='GET')return Response.json({ok:true,...listReportCatalog(role)});
@@ -487,8 +508,8 @@ const worker = {
       }
 
       const scope = session.user.role === 'administrador'
-        ? { allowedBarnNames: null }
-        : { allowedBarnNames: session.barns };
+        ? { allowedBarnNames: selectedBarnNames }
+        : { allowedBarnNames: selectedBarnNames ?? session.barns };
 
       try {
         if (path === '/api/inventory' && request.method === 'GET') {
@@ -559,13 +580,13 @@ const worker = {
     // 8. CICLOS REPRODUCTIVOS (T12 · REP-01..REP-06, REP-09)
     if(path==='/api/finance/entries'||path.startsWith('/api/finance/entries/')||path==='/api/finance/barns'||path==='/api/finance/cashflow'||path==='/api/finance/cash/opening'){
       const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});
-      const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
+      const scope={allowedBarnNames:selectedBarnNames ?? (session.user.role==='administrador'?null:session.barns)};
       if(request.method!=='GET'&&!['administrador','responsable'].includes(session.user.role))return Response.json({error:'Solo el Administrador o Usuario responsable puede registrar operaciones financieras'},{status:403});
       try{if(path==='/api/finance/barns'&&request.method==='GET'){const where=scope.allowedBarnNames===null?'status<>\'inactivo\'':`status<>'inactivo' AND name IN (${scope.allowedBarnNames?.map(()=>'?').join(',')||'NULL'})`;const barns=await env.DB.prepare(`SELECT id,name FROM barns WHERE ${where} ORDER BY name`).bind(...(scope.allowedBarnNames??[])).all<{id:number;name:string}>();return Response.json({ok:true,barns:barns.results??[]});}if(path==='/api/finance/entries'&&request.method==='GET')return Response.json({ok:true,...await listFinancialEntries(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),direction:url.searchParams.get('direction'),currencyCode:url.searchParams.get('currencyCode'),category:url.searchParams.get('category'),barnId:url.searchParams.get('barnId')},scope)});if(path==='/api/finance/cashflow'&&request.method==='GET')return Response.json({ok:true,...await listFinancialCashflow(env.DB,{from:url.searchParams.get('from'),to:url.searchParams.get('to'),currencyCode:url.searchParams.get('currencyCode'),barnId:url.searchParams.get('barnId'),direction:url.searchParams.get('direction'),category:url.searchParams.get('category')},scope)});if(path==='/api/finance/cash/opening'&&request.method==='POST'){if(session.user.role!=='administrador')return Response.json({error:'Solo el Administrador puede fijar saldos iniciales de caja'},{status:403});const body=await request.json() as Parameters<typeof createFinancialOpeningBalance>[2];const result=await createFinancialOpeningBalance(env.DB,session.user.id,body);return Response.json({ok:true,...result},{status:result.replayed?200:201});}if(path==='/api/finance/entries'&&request.method==='POST'){const body=await request.json() as Parameters<typeof createFinancialEntry>[2];const result=await createFinancialEntry(env.DB,session.user.id,body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});}const settlement=path.match(/^\/api\/finance\/entries\/(\d+)\/settlements$/);if(settlement&&request.method==='POST'){const body=await request.json() as Parameters<typeof createFinancialSettlement>[3];const result=await createFinancialSettlement(env.DB,session.user.id,Number(settlement[1]),body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});}const reversal=path.match(/^\/api\/finance\/entries\/(\d+)\/reverse$/);if(reversal&&request.method==='POST'){const body=await request.json() as Parameters<typeof reverseFinancialEntry>[3];const result=await reverseFinancialEntry(env.DB,session.user.id,Number(reversal[1]),body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});}return Response.json({error:'Ruta financiera no encontrada'},{status:404});}catch(err){const message=(err as Error).message||String(err);const status=err instanceof ApiError?err.status:/UNIQUE constraint|financial_entries|financial settlement/.test(message)?409:400;return Response.json({error:message},{status});}
     }
 
     if(path==='/api/alerts'||path==='/api/alerts/manual'||path==='/api/alerts/rules'||path==='/api/notifications'||/^\/api\/alerts\/\d+\/(?:attend|notifications)$/.test(path)||/^\/api\/notifications\/\d+\/read$/.test(path)){
-      const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
+      const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});const scope={allowedBarnNames:selectedBarnNames ?? (session.user.role==='administrador'?null:session.barns)};
       try{if(path==='/api/alerts'&&request.method==='GET')return Response.json({ok:true,...await listAlerts(env.DB,{status:url.searchParams.get('status'),type:url.searchParams.get('type'),bucket:url.searchParams.get('bucket'),from:url.searchParams.get('from'),to:url.searchParams.get('to'),asOf:url.searchParams.get('asOf')},scope)});if(path==='/api/alerts/manual'&&request.method==='POST'){const body=await request.json() as Parameters<typeof createManualAlert>[2];const result=await createManualAlert(env.DB,session.user.id,body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:201});}if(path==='/api/alerts/rules'&&request.method==='GET'){if(session.user.role!=='administrador')return Response.json({error:'Solo el Administrador puede configurar reglas críticas'},{status:403});return Response.json({ok:true,rules:await listEscalationRules(env.DB)});}if(path==='/api/alerts/rules'&&request.method==='PUT'){if(session.user.role!=='administrador')return Response.json({error:'Solo el Administrador puede configurar reglas críticas'},{status:403});const body=await request.json() as Parameters<typeof saveEscalationRule>[2];const result=await saveEscalationRule(env.DB,session.user.id,body);await reconcileAlerts(env.DB);return Response.json({ok:true,...result});}if(path==='/api/notifications'&&request.method==='GET'){const items=await listNotifications(env.DB,session.user.id,url.searchParams.get('unread')==='1',scope);return Response.json({ok:true,notifications:items,unreadCount:items.filter(item=>!item.readAt).length});}const notificationAudit=path.match(/^\/api\/alerts\/(\d+)\/notifications$/);if(notificationAudit&&request.method==='GET')return Response.json({ok:true,notifications:await listAlertNotificationHistory(env.DB,Number(notificationAudit[1]),scope)});const readMatch=path.match(/^\/api\/notifications\/(\d+)\/read$/);if(readMatch&&request.method==='POST')return Response.json({ok:true,...await markNotificationRead(env.DB,session.user.id,Number(readMatch[1]))});const match=path.match(/^\/api\/alerts\/(\d+)\/attend$/);if(match&&request.method==='POST'){const body=await request.json() as Parameters<typeof attendAlert>[3];const result=await attendAlert(env.DB,session.user.id,Number(match[1]),body,scope);return Response.json({ok:true,...result},{status:result.replayed?200:200});}return Response.json({error:'Ruta de alertas no encontrada'},{status:404});}catch(err){const message=(err as Error).message||String(err);const status=err instanceof ApiError?err.status:/UNIQUE constraint/.test(message)?409:400;return Response.json({error:message},{status});}
     }
 
@@ -573,7 +594,7 @@ const worker = {
     if(path==='/api/vaccines/rules'||path.startsWith('/api/vaccines/')){
       const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});
       const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});
-      const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};const parts=path.split('/').filter(Boolean);
+      const scope={allowedBarnNames:selectedBarnNames ?? (session.user.role==='administrador'?null:session.barns)};const parts=path.split('/').filter(Boolean);
       try{
         if(path==='/api/vaccines/rules'&&request.method==='GET')return Response.json({ok:true,rules:await listVaccineRules(env.DB)});
         if(path==='/api/vaccines/rules'&&request.method==='POST'){
@@ -623,7 +644,7 @@ const worker = {
     if(path==='/api/health/events'||path==='/api/health/withdrawals'||path==='/api/health/upcoming'||healthCorrection){
       const token=getSessionToken(request);if(!token)return Response.json({error:'No autenticado: falta sesión'},{status:401});
       const session=await validateSession(env.DB,token);if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});
-      const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
+      const scope={allowedBarnNames:selectedBarnNames ?? (session.user.role==='administrador'?null:session.barns)};
       try{
         if(healthCorrection&&request.method==='POST'){
           if(!['administrador','veterinario'].includes(session.user.role))return Response.json({error:'Solo el veterinario o administrador puede corregir actuaciones sanitarias'},{status:403});
@@ -648,7 +669,7 @@ const worker = {
       if(!session)return Response.json({error:'Sesión inválida, expirada o revocada'},{status:401});
       const isWrite=request.method!=='GET';
       if(isWrite&&!['administrador','responsable','operario'].includes(session.user.role))return Response.json({error:'El perfil veterinario solo puede consultar almacenes y movimientos de alimento'},{status:403});
-      const scope=session.user.role==='administrador'?{allowedBarnNames:null}:{allowedBarnNames:session.barns};
+      const scope={allowedBarnNames:selectedBarnNames ?? (session.user.role==='administrador'?null:session.barns)};
       try{
         if(path==='/api/feed/plans'&&request.method==='GET')return Response.json({ok:true,plans:await listFeedPlans(env.DB,{from:url.searchParams.get('from')??undefined,to:url.searchParams.get('to')??undefined},scope)});
         if(path==='/api/feed/plans'&&request.method==='POST'){
@@ -694,7 +715,7 @@ const worker = {
       if (isWrite && !['administrador', 'responsable', 'veterinario'].includes(session.user.role)) {
         return Response.json({ error: 'Acceso denegado: el Operario solo puede consultar reproducción' }, { status: 403 });
       }
-      const scope = session.user.role === 'administrador' ? { allowedBarnNames: null } : { allowedBarnNames: session.barns };
+      const scope = { allowedBarnNames: selectedBarnNames ?? (session.user.role === 'administrador' ? null : session.barns) };
       try {
         if (path === '/api/reproduction/litters/targets' && request.method === 'GET') {
           const result = await listLitterTargets(env.DB, scope);
@@ -802,8 +823,8 @@ const worker = {
       }
 
       const scope = session.user.role === 'administrador'
-        ? { allowedBarnNames: null }
-        : { allowedBarnNames: session.barns };
+        ? { allowedBarnNames: selectedBarnNames }
+        : { allowedBarnNames: selectedBarnNames ?? session.barns };
 
       try {
         if (path === '/api/animals' && request.method === 'GET') {
