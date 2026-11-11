@@ -26,4 +26,12 @@ describe('Acceso a gestión desde Galpones', () => {
     expect(html).toContain('Acceso denegado');
     expect(html).not.toContain('Nuevo Galpón');
   });
+  it('presenta la carga con tarjetas provisionales y una acción de continuación clara', () => {
+    const html = renderToStaticMarkup(createElement(SelectorGalpones, { perfil: 'responsable', selected: [], onContinue: () => {} }));
+    expect(html).toContain('barn-selector-header');
+    expect(html.match(/class="barn-option-skeleton"/g)).toHaveLength(4);
+    expect(html).toContain('barn-selection-footer');
+    expect(html).toContain('Preparando la selección');
+    expect(html).toContain('disabled=""');
+  });
 });

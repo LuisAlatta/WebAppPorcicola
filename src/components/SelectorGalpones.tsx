@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { IconBox, IconArrowRight } from './icons';
+import { IconBuilding, IconSettings, IconArrowRight, IconCheck } from './icons';
 import type { Perfil } from '../types';
 import { ModuloAdministracion } from './ModuloAdministracion';
 
@@ -24,25 +24,35 @@ export function SelectorGalpones({ perfil, selected, onContinue }: { perfil: Per
     return () => { cancelled = true; };
   }, [managing]);
   const closeManagement = () => { setLoading(true); setError(''); setManaging(false); };
-  return <section className="module-container">
-    <div className="barn-scope-bar"><h1>Galpones</h1>
-      {perfil === 'administrador' && <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" onClick={() => managing ? closeManagement() : setManaging(true)}><IconBox size={16} /><span>{managing ? 'Volver a seleccionar galpones' : 'Administrar galpones'}</span></button>}
+  return <section className="module-container barn-selector">
+    <div className="barn-selector-header">
+      <div><h1>Galpones</h1><p>{managing ? 'Organiza tus instalaciones y su equipo.' : 'Elige dónde quieres trabajar. Puedes seleccionar varios.'}</p></div>
+      {perfil === 'administrador' && <button type="button" className="btn btn-outline barn-manage-button" onClick={() => managing ? closeManagement() : setManaging(true)}><IconSettings size={18} /><span>{managing ? 'Volver a seleccionar galpones' : 'Administrar galpones'}</span></button>}
     </div>
     {managing && perfil === 'administrador' ? <ModuloAdministracion perfil={perfil} barnsOnly onNavigate={closeManagement} /> : <>
-    <p>Selecciona uno o varios galpones para revisar sus módulos.</p>
-    {loading && <p role="status">Cargando galpones…</p>}
-    {error && <div className="alert alert-danger" role="alert">{error}<button type="button" className="btn btn-outline" onClick={() => window.location.reload()}>Volver a intentar</button></div>}
-    {!loading && !error && !barns.length && <p role="status">{perfil === 'administrador' ? 'No hay galpones disponibles. Usa Administrar galpones para crear o activar uno.' : 'No tienes galpones disponibles. Consulta con el administrador.'}</p>}
-    <div className="barn-selection-grid">
-      {barns.map(barn => <label key={barn.id} className="card barn-selection-option">
-        <input type="checkbox" checked={ids.includes(barn.id)} onChange={event => setIds(current => event.target.checked ? [...current, barn.id] : current.filter(id => id !== barn.id))} />
-        <IconBox size={24} /><span>{barn.name}</span>
-      </label>)}
-    </div>
-    <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" disabled={loading || !!error || !ids.length}
+    {loading && <div role="status" className="barn-selector-loading"><p>Cargando galpones…</p><div className="barn-selection-grid" aria-hidden="true">{[0, 1, 2, 3].map(index => <div className="barn-option-skeleton" key={index} />)}</div></div>}
+    {error && <div className="barn-selector-message" role="alert"><p>{error}</p><button type="button" className="btn btn-outline" onClick={() => window.location.reload()}>Volver a intentar</button></div>}
+    {!loading && !error && !barns.length && <div className="barn-selector-message" role="status"><IconBuilding size={28} /><p>{perfil === 'administrador' ? 'No hay galpones disponibles. Usa Administrar galpones para crear o activar uno.' : 'No tienes galpones disponibles. Consulta con el administrador.'}</p></div>}
+    {!loading && !error && barns.length > 0 && <>
+      <div className="barn-selection-summary"><span>Galpones disponibles</span><span>{barns.length}</span></div>
+      <div className="barn-selection-grid">
+        {barns.map(barn => {
+          const checked = ids.includes(barn.id);
+          return <label key={barn.id} className="barn-selection-option" data-selected={checked}>
+            <span className="barn-option-heading"><IconBuilding size={24} /><input type="checkbox" aria-label={barn.name} checked={checked} onChange={event => setIds(current => event.target.checked ? [...current, barn.id] : current.filter(id => id !== barn.id))} /></span>
+            <span className="barn-option-name">{barn.name}</span>
+            <span className="barn-option-state" aria-hidden="true">{checked ? <><IconCheck size={14} />Seleccionado</> : 'Seleccionar'}</span>
+          </label>;
+        })}
+      </div>
+    </>}
+    <div className="barn-selection-footer">
+    <p role="status" aria-live="polite">{loading ? 'Preparando la selección' : !ids.length ? 'Selecciona al menos un galpón para continuar' : `${ids.length} ${ids.length === 1 ? 'galpón seleccionado' : 'galpones seleccionados'}`}</p>
+    <button type="button" className="btn btn-primary barn-continue-button" disabled={loading || !!error || !ids.length}
       onClick={() => onContinue(ids, barns.filter(barn => ids.includes(barn.id)).map(barn => barn.name))}>
       <span>Siguiente</span><IconArrowRight size={16} />
     </button>
+    </div>
     </>}
   </section>;
 }

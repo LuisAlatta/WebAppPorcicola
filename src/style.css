@@ -2525,9 +2525,38 @@ fieldset legend {
 }
 
 /* Contexto común de trabajo por galpones. */
-.barn-selection-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 1rem; margin: 1.5rem 0; }
-.barn-selection-option { display: flex; align-items: center; gap: 1rem; padding: 1.5rem; cursor: pointer; }
-.barn-selection-option input { width: 1.25rem; height: 1.25rem; }
+.barn-selector { gap: 1rem; }
+.barn-selector-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1rem; padding: 0.25rem 0 0.5rem; }
+.barn-selector-header h1 { font-size: 1.5rem; line-height: 1.25; font-weight: 650; margin-bottom: 0.375rem; }
+.barn-selector-header p { color: var(--color-text-muted); font-size: 0.875rem; line-height: 1.5; max-width: 28rem; }
+.barn-manage-button, .barn-continue-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.875rem; }
+.barn-selection-summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; font-size: 0.8125rem; color: var(--color-text-muted); }
+.barn-selection-summary span:last-child { font-variant-numeric: tabular-nums; }
+.barn-selection-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 0.75rem; }
+.barn-selection-option { display: flex; flex-direction: column; align-items: stretch; gap: 0.75rem; min-width: 0; min-height: 9rem; padding: 1rem; cursor: pointer; border: 2px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-surface); transition: background var(--transition-fast), border-color var(--transition-fast); }
+.barn-selection-option[data-selected="true"] { border-color: var(--color-primary); background: var(--color-primary-light); }
+.barn-selection-option:focus-within { outline: 3px solid var(--color-primary-ring); outline-offset: 2px; }
+.barn-option-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; color: var(--color-primary); }
+.barn-option-heading input { width: 1.25rem; height: 1.25rem; flex-shrink: 0; margin: 0; accent-color: var(--color-primary); cursor: pointer; }
+.barn-option-name { font-size: 0.9375rem; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
+.barn-option-state { display: inline-flex; align-items: center; gap: 0.375rem; min-height: 1.25rem; margin-top: auto; color: var(--color-text-muted); font-size: 0.75rem; }
+.barn-selection-option[data-selected="true"] .barn-option-state { color: var(--color-primary); font-weight: 600; }
+.barn-selection-footer { display: grid; gap: 0.75rem; margin-top: 0.25rem; padding: 1rem; background: var(--color-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); }
+.barn-selection-footer p { text-align: center; font-size: 0.8125rem; color: var(--color-text-muted); }
+.barn-continue-button { width: 100%; }
+.barn-selector-message { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 1.5rem; text-align: center; background: var(--color-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); color: var(--color-text-muted); }
+.barn-selector-loading > p { margin-bottom: 1rem; color: var(--color-text-muted); font-size: 0.875rem; }
+.barn-option-skeleton { min-height: 9rem; background: var(--color-border-subtle); border-radius: var(--radius-md); }
+@media (max-width: 640px) {
+  .barn-selector-header { grid-template-columns: minmax(0, 1fr); gap: 0.875rem; }
+  .barn-manage-button { width: 100%; }
+  .barn-selection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .barn-selection-option:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .barn-selector .admin-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .barn-selector .admin-tabs .btn { min-width: 0; min-height: 3rem; padding-inline: 0.25rem; font-size: 0.75rem; }
+  .barn-selector .admin-tabs .btn > span { min-width: 0; white-space: normal; line-height: 1.25; }
+  .barn-selector .admin-tabs .btn svg { display: none; }
+}
 .barn-management-actions { display: grid; grid-template-columns: repeat(2, minmax(6.5rem, 1fr)); gap: 0.5rem; }
 .barn-management-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.5rem; }
 .barn-scope-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding: 1rem; }

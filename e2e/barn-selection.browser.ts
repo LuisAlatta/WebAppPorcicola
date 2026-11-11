@@ -10,6 +10,12 @@ test('selecciona varios galpones antes de mostrar módulos y cambia el alcance',
   await expect(page.getByRole('button', { name: 'Siguiente', exact: true })).toBeDisabled();
   await page.getByRole('checkbox', { name: 'Galpón 1', exact: true }).check();
   await page.getByRole('checkbox', { name: 'Galpón 3', exact: true }).check();
+  await expect(page.getByText('2 galpones seleccionados', { exact: true })).toBeVisible();
+  const firstCard = await page.locator('.barn-selection-option').nth(0).boundingBox();
+  const secondCard = await page.locator('.barn-selection-option').nth(1).boundingBox();
+  expect(firstCard?.width).toBe(secondCard?.width);
+  expect(firstCard?.height).toBe(secondCard?.height);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.getByRole('button', { name: 'Siguiente', exact: true }).click();
   await expect(page.getByText('Galpones: Galpón 1, Galpón 3', { exact: true })).toBeVisible();
   await expect(page.getByRole('main').getByRole('button', { name: 'Animales', exact: true })).toBeVisible();
