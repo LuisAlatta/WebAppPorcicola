@@ -7,11 +7,13 @@ import {
   IconCalendar,
   IconCheck,
   IconEdit,
+  IconFilter,
   IconPlus,
   IconRefreshCw,
   IconShield,
   IconX,
 } from './icons';
+import { DataState } from './DataState';
 import type { Perfil } from '../types';
 
 interface Rule {
@@ -75,10 +77,16 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
     [filter]
   );
 
+  const filterCount = useMemo(
+    () => [filter.from, filter.to, filter.animalType, filter.status !== 'pending' ? filter.status : ''].filter(Boolean).length,
+    [filter]
+  );
+
   const clearFilters = () => {
     setFilter({ from: '', to: '', status: 'pending', animalType: '' });
   };
   const [editKey, setEditKey] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [form, setForm] = useState({
     vaccineName: '',
     targetCategory: 'reemplazo',
@@ -369,12 +377,26 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
       </div>
 
       {/* Filtros de la Agenda */}
-      <div className="card-header-clean mb-2">
-        <span className="section-title text-sm">Filtros de la agenda</span>
+      <div className="card-header-clean mb-2 flex-wrap gap-2">
+        <div className="inline-flex items-center gap-2">
+          <button
+            type="button"
+            className="btn btn-outline btn-sm inline-flex items-center justify-center gap-2"
+            aria-label="Filtros"
+            aria-expanded={filtersOpen}
+            aria-controls="vaccine-filters-panel"
+            onClick={() => setFiltersOpen((open) => !open)}
+          >
+            <IconFilter size={14} />
+            <span>Filtros</span>
+            {hasActiveFilters && <span className="badge-status badge-primary tabular-nums font-numeric">{filterCount}</span>}
+          </button>
+          <span className="text-xs text-muted">{rows.length} dosis en la agenda</span>
+        </div>
         {hasActiveFilters && (
           <button
             type="button"
-            className="btn btn-outline btn-xs"
+            className="btn btn-ghost btn-sm"
             onClick={clearFilters}
             aria-label="Limpiar filtros de la agenda"
           >
@@ -385,10 +407,19 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
           </button>
         )}
       </div>
-      <div className="grid-4 mb-4">
+      {hasActiveFilters && (
+        <div className="filter-chip-row mb-3" aria-label="Filtros aplicados">
+          {filter.from && <button type="button" className="filter-chip" onClick={() => setFilter({ ...filter, from: '' })} aria-label="Quitar filtro desde"><span>Desde {filter.from}</span><IconX size={12} /></button>}
+          {filter.to && <button type="button" className="filter-chip" onClick={() => setFilter({ ...filter, to: '' })} aria-label="Quitar filtro hasta"><span>Hasta {filter.to}</span><IconX size={12} /></button>}
+          {filter.animalType && <button type="button" className="filter-chip" onClick={() => setFilter({ ...filter, animalType: '' })} aria-label="Quitar filtro tipo de animal"><span>Tipo: {filter.animalType}</span><IconX size={12} /></button>}
+          {filter.status !== 'pending' && <button type="button" className="filter-chip" onClick={() => setFilter({ ...filter, status: 'pending' })} aria-label="Quitar filtro estado"><span>Estado: {filter.status === 'applied' ? 'Aplicadas' : filter.status === 'cancelled' ? 'Canceladas' : 'Todos'}</span><IconX size={12} /></button>}
+        </div>
+      )}
+      {filtersOpen && <div id="vaccine-filters-panel" className="grid-4 mb-4">
         <div className="form-group">
-          <label className="form-label text-xs">Programada desde</label>
+          <label className="form-label text-xs" htmlFor="vac-filter-from">Programada desde</label>
           <input
+            id="vac-filter-from"
             type="date"
             className="form-input"
             value={filter.from}
@@ -396,8 +427,9 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
           />
         </div>
         <div className="form-group">
-          <label className="form-label text-xs">Programada hasta</label>
+          <label className="form-label text-xs" htmlFor="vac-filter-to">Programada hasta</label>
           <input
+            id="vac-filter-to"
             type="date"
             className="form-input"
             value={filter.to}
@@ -405,8 +437,9 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
           />
         </div>
         <div className="form-group">
-          <label className="form-label text-xs">Tipo de animal</label>
+          <label className="form-label text-xs" htmlFor="vac-filter-type">Tipo de animal</label>
           <select
+            id="vac-filter-type"
             className="form-select"
             value={filter.animalType}
             onChange={(e) => setFilter({ ...filter, animalType: e.target.value })}
@@ -419,8 +452,9 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
           </select>
         </div>
         <div className="form-group">
-          <label className="form-label text-xs">Estado</label>
+          <label className="form-label text-xs" htmlFor="vac-filter-status">Estado</label>
           <select
+            id="vac-filter-status"
             className="form-select"
             value={filter.status}
             onChange={(e) => setFilter({ ...filter, status: e.target.value })}
@@ -431,172 +465,118 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             <option value="">Todos</option>
           </select>
         </div>
-      </div>
+      </div>}
 
-      {/* Tabla de Agenda */}
-      <div className="table-responsive">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th className="text-left">Fecha programada</th>
-              <th className="text-left">Animal</th>
-              <th className="text-left">Categoría</th>
-              <th className="text-left">Vacuna</th>
-              <th className="text-left">Galpón</th>
-              <th className="text-left">Origen</th>
-              <th className="text-center">Estado</th>
-              <th className="text-center">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <td className="text-left tabular-nums font-mono">
-                  <span className="font-semibold">{row.scheduledDate}</span>
-                  {row.appliedDate ? (
-                    <span className="text-xs text-muted block tabular-nums">Aplicada: {row.appliedDate}</span>
-                  ) : null}
-                </td>
-                <td className="text-left">
-                  <span className="arete-badge">{row.animalCode}</span>
-                </td>
-                <td className="text-left">{categoryLabels[row.targetCategory] ?? row.targetCategory}</td>
-                <td className="text-left">
-                  <strong>{row.vaccineName}</strong>
-                </td>
-                <td className="text-left">{row.barnName}</td>
-                <td className="text-left">
-                  <span className="text-xs text-muted">{row.isManual ? 'Manual' : 'Regla automática'}</span>
-                </td>
-                <td className="text-center">
-                  <span
-                    className={`badge-status ${
-                      row.status === 'pending'
-                        ? 'badge-warning'
-                        : row.status === 'applied'
-                        ? 'badge-success'
-                        : 'badge-outline'
-                    }`}
-                  >
-                    <span className="status-dot"></span>
-                    <span>
-                      {row.status === 'pending' ? 'Pendiente' : row.status === 'applied' ? 'Aplicada' : 'Cancelada'}
-                    </span>
-                  </span>
-                </td>
-                <td className="text-center">
-                  {row.status === 'pending' && canWrite && (
-                    <div className="inline-flex items-center justify-center gap-1.5 flex-wrap">
-                      <button
-                        className="btn btn-primary btn-xs"
-                        type="button"
-                        disabled={busy}
-                        aria-label={`Aplicar vacuna ${row.vaccineName} al animal ${row.animalCode}`}
-                        onClick={() => {
-                          setApplyTarget(row);
-                          setCorrectingApplication(false);
-                          setApplyForm({
-                            dosage: '2',
-                            dosageUnit: 'ml',
-                            appliedDate: farmToday(),
-                            productLot: '',
-                            withdrawalUntil: '',
-                            observations: '',
-                            reason: '',
-                          });
-                          setApplyOperationKey(newOperationKey('vaccine-apply'));
-                        }}
-                      >
-                        <span className="inline-flex items-center justify-center gap-2 leading-none">
-                          <IconCheck size={12} />
-                          <span>Aplicar dosis</span>
-                        </span>
-                      </button>
-                      <button
-                        className="btn btn-outline btn-xs"
-                        type="button"
-                        disabled={busy}
-                        aria-label={`Reprogramar vacuna ${row.vaccineName} del animal ${row.animalCode}`}
-                        onClick={() => {
-                          setScheduleTarget({ row, cancel: false });
-                          setScheduleChangeForm({ date: row.scheduledDate, reason: '' });
-                          setScheduleOperationKey(newOperationKey('vaccine-reschedule'));
-                        }}
-                      >
-                        <span className="inline-flex items-center justify-center gap-2 leading-none">
-                          <IconCalendar size={12} />
-                          <span>Reprogramar</span>
-                        </span>
-                      </button>
-                      <button
-                        className="btn btn-outline btn-xs text-danger"
-                        type="button"
-                        disabled={busy}
-                        aria-label={`Cancelar vacuna ${row.vaccineName} del animal ${row.animalCode}`}
-                        onClick={() => {
-                          setScheduleTarget({ row, cancel: true });
-                          setScheduleChangeForm({ date: '', reason: '' });
-                          setScheduleOperationKey(newOperationKey('vaccine-cancel'));
-                        }}
-                      >
-                        <span className="inline-flex items-center justify-center gap-2 leading-none">
-                          <IconX size={12} />
-                          <span>Cancelar</span>
-                        </span>
-                      </button>
-                    </div>
-                  )}
-                  {row.status === 'applied' && canWrite && (
-                    <div className="inline-flex items-center justify-center gap-1.5 flex-wrap">
-                      <button type="button" className="btn btn-outline btn-xs" disabled={busy}
-                        aria-label={`Corregir aplicación de ${row.vaccineName} al animal ${row.animalCode}`}
-                        onClick={() => {
-                          setApplyTarget(row);setCorrectingApplication(true);
-                          setApplyForm({dosage:String(row.dosage ?? ''),dosageUnit:row.dosageUnit ?? '',appliedDate:row.appliedDate ?? '',productLot:row.productLot ?? '',withdrawalUntil:row.withdrawalUntil ?? '',observations:row.applicationObservations ?? '',reason:''});
-                          setApplyOperationKey(newOperationKey('vaccine-correction'));
-                        }}>
-                        <span className="inline-flex items-center justify-center gap-2 leading-none"><IconEdit size={12}/><span>Corregir aplicación</span></span>
-                      </button>
-                      <button type="button" className="btn btn-outline btn-xs text-danger" disabled={busy}
-                        aria-label={`Anular aplicación de ${row.vaccineName} al animal ${row.animalCode}`}
-                        onClick={() => {setAnnulTarget(row);setAnnulReason('');setAnnulOperationKey(newOperationKey('vaccine-annul'));}}>
-                        <span className="inline-flex items-center justify-center gap-2 leading-none"><IconX size={12}/><span>Anular aplicación</span></span>
-                      </button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {!rows.length && (
-              <tr>
-                <td colSpan={8} className="p-0">
-                  <div className="card empty-state-card m-4">
-                    <div className="empty-icon-wrap">
-                      <IconCalendar size={28} className="text-primary" />
-                    </div>
-                    <p className="font-semibold text-base">Agenda de inmunización al día</p>
-                    <p className="text-sm text-muted">
-                      No hay vacunas programadas ni pendientes para los filtros y fechas seleccionados.
-                    </p>
-                    {hasActiveFilters && (
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm mt-3"
-                        onClick={clearFilters}
-                      >
-                        <span className="inline-flex items-center justify-center gap-2 leading-none">
-                          <IconX size={14} />
-                          <span>Limpiar filtros</span>
-                        </span>
-                      </button>
-                    )}
+      {/* Agenda de vacunas */}
+      {rows.length === 0 ? (
+        <DataState
+          variant="empty"
+          title="Agenda de inmunización al día"
+          description="No hay vacunas programadas ni pendientes para los filtros y fechas seleccionados."
+          icon={<IconCalendar size={28} className="text-primary" />}
+          action={hasActiveFilters ? <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" onClick={clearFilters}><IconX size={16} /><span>Limpiar filtros</span></button> : undefined}
+        />
+      ) : (
+        <ul className="data-card-list data-card-grid" aria-label="Agenda de vacunas">
+          {rows.map((row) => (
+            <li key={row.id}>
+              <article className="data-card" data-state={row.status === 'pending' ? 'active' : row.status === 'applied' ? 'active' : 'inactive'}>
+                <header className="data-card-head">
+                  <div className="data-card-identity">
+                    <span className="data-card-title">{row.vaccineName}</span>
+                    <span className="data-card-subtitle font-mono">{row.animalCode} · {categoryLabels[row.targetCategory] ?? row.targetCategory}</span>
                   </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                  <span className={`badge-status ${row.status === 'pending' ? 'badge-warning' : row.status === 'applied' ? 'badge-success' : 'badge-outline'}`}>
+                    <span className="status-dot"></span>
+                    <span>{row.status === 'pending' ? 'Pendiente' : row.status === 'applied' ? 'Aplicada' : 'Cancelada'}</span>
+                  </span>
+                </header>
+                <dl className="data-card-meta">
+                  <div><dt>Fecha programada</dt><dd className="font-mono tabular-nums">{row.scheduledDate}</dd></div>
+                  <div><dt>Aplicada</dt><dd className="font-mono tabular-nums">{row.appliedDate ?? 'Sin aplicar'}</dd></div>
+                  <div><dt>Galpón</dt><dd>{row.barnName}</dd></div>
+                  <div><dt>Origen</dt><dd>{row.isManual ? 'Manual' : 'Regla automática'}</dd></div>
+                </dl>
+                {row.status === 'pending' && canWrite && (
+                  <div className="data-card-actions">
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      disabled={busy}
+                      aria-label={`Aplicar vacuna ${row.vaccineName} al animal ${row.animalCode}`}
+                      onClick={() => {
+                        setApplyTarget(row);
+                        setCorrectingApplication(false);
+                        setApplyForm({
+                          dosage: '2',
+                          dosageUnit: 'ml',
+                          appliedDate: farmToday(),
+                          productLot: '',
+                          withdrawalUntil: '',
+                          observations: '',
+                          reason: '',
+                        });
+                        setApplyOperationKey(newOperationKey('vaccine-apply'));
+                      }}
+                    >
+                      <IconCheck size={14} />
+                      <span>Aplicar dosis</span>
+                    </button>
+                    <button
+                      className="btn btn-outline"
+                      type="button"
+                      disabled={busy}
+                      aria-label={`Reprogramar vacuna ${row.vaccineName} del animal ${row.animalCode}`}
+                      onClick={() => {
+                        setScheduleTarget({ row, cancel: false });
+                        setScheduleChangeForm({ date: row.scheduledDate, reason: '' });
+                        setScheduleOperationKey(newOperationKey('vaccine-reschedule'));
+                      }}
+                    >
+                      <IconCalendar size={14} />
+                      <span>Reprogramar</span>
+                    </button>
+                    <button
+                      className="btn btn-outline text-danger"
+                      type="button"
+                      disabled={busy}
+                      aria-label={`Cancelar vacuna ${row.vaccineName} del animal ${row.animalCode}`}
+                      onClick={() => {
+                        setScheduleTarget({ row, cancel: true });
+                        setScheduleChangeForm({ date: '', reason: '' });
+                        setScheduleOperationKey(newOperationKey('vaccine-cancel'));
+                      }}
+                    >
+                      <IconX size={14} />
+                      <span>Cancelar</span>
+                    </button>
+                  </div>
+                )}
+                {row.status === 'applied' && canWrite && (
+                  <div className="data-card-actions">
+                    <button type="button" className="btn btn-outline" disabled={busy}
+                      aria-label={`Corregir aplicación de ${row.vaccineName} al animal ${row.animalCode}`}
+                      onClick={() => {
+                        setApplyTarget(row); setCorrectingApplication(true);
+                        setApplyForm({ dosage: String(row.dosage ?? ''), dosageUnit: row.dosageUnit ?? '', appliedDate: row.appliedDate ?? '', productLot: row.productLot ?? '', withdrawalUntil: row.withdrawalUntil ?? '', observations: row.applicationObservations ?? '', reason: '' });
+                        setApplyOperationKey(newOperationKey('vaccine-correction'));
+                      }}>
+                      <IconEdit size={14} />
+                      <span>Corregir aplicación</span>
+                    </button>
+                    <button type="button" className="btn btn-outline text-danger" disabled={busy}
+                      aria-label={`Anular aplicación de ${row.vaccineName} al animal ${row.animalCode}`}
+                      onClick={() => { setAnnulTarget(row); setAnnulReason(''); setAnnulOperationKey(newOperationKey('vaccine-annul')); }}>
+                      <IconX size={14} />
+                      <span>Anular aplicación</span>
+                    </button>
+                  </div>
+                )}
+              </article>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Programación Manual */}
       {canWrite && (
@@ -678,108 +658,78 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
               <span className="section-title text-sm">Reglas de vacunación automáticas</span>
             </div>
 
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Vacuna</th>
-                    <th className="text-left">Categoría</th>
-                    <th className="text-left">Base</th>
-                    <th className="text-right">Ajuste</th>
-                    <th className="text-center">Versión</th>
-                    <th className="text-center">Estado</th>
-                    <th className="text-center">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rules
-                    .filter((rule) => rule.isCurrent)
-                    .map((rule) => (
-                      <tr key={rule.id}>
-                        <td className="text-left">
-                          <strong>{rule.vaccineName}</strong>
-                        </td>
-                        <td className="text-left">{categoryLabels[rule.targetCategory] ?? rule.targetCategory}</td>
-                        <td className="text-left">{baseLabels[rule.baseEvent] ?? rule.baseEvent}</td>
-                        <td className="text-right tabular-nums font-mono font-medium">
-                          {rule.offsetDays > 0 ? `+${rule.offsetDays}` : rule.offsetDays} días
-                        </td>
-                        <td className="text-center tabular-nums font-mono">v{rule.version}</td>
-                        <td className="text-center">
-                          <span
-                            className={`badge-status ${
-                              rule.isActive ? 'badge-success' : 'badge-outline'
-                            }`}
-                          >
-                            <span className="status-dot"></span>
-                            <span>{rule.isActive ? 'Activa' : 'Inactiva'}</span>
-                          </span>
-                        </td>
-                        <td className="text-center">
-                          <div className="inline-flex items-center justify-center gap-1.5">
-                            <button
-                              type="button"
-                              className="btn btn-outline btn-xs"
-                              aria-label={`Editar regla para ${rule.vaccineName}`}
-                              onClick={() => {
-                                setEditKey(rule.ruleKey);
-                                setForm({
-                                  vaccineName: rule.vaccineName,
-                                  targetCategory: rule.targetCategory,
-                                  baseEvent: rule.baseEvent,
-                                  offsetDays: String(rule.offsetDays),
-                                  targetAgeDays: String(rule.targetAgeDays ?? 60),
-                                  recurrenceDays: String(rule.recurrenceDays ?? 180),
-                                  referenceDate: rule.referenceDate ?? '',
-                                  isActive: rule.isActive,
-                                  reason: 'Actualización de regla',
-                                });
-                              }}
-                            >
-                              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                <IconEdit size={12} />
-                                <span>Editar</span>
-                              </span>
-                            </button>
-                            {rule.isActive && (
-                              <button
-                                type="button"
-                                className="btn btn-outline btn-xs text-danger"
-                                aria-label={`Desactivar regla para ${rule.vaccineName}`}
-                                onClick={() => {
-                                  setDeactivateTarget(rule);
-                                  setDeactivateReason('');
-                                  setDeactivateOperationKey(newOperationKey('vaccine-rule-off'));
-                                }}
-                              >
-                                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                  <IconX size={12} />
-                                  <span>Desactivar</span>
-                                </span>
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  {!rules.some((rule) => rule.isCurrent) && (
-                    <tr>
-                      <td colSpan={7} className="p-0">
-                        <div className="card empty-state-card m-4">
-                          <div className="empty-icon-wrap">
-                            <IconShield size={28} className="text-muted" />
-                          </div>
-                          <p className="font-semibold text-base">Sin reglas de vacunación configuradas</p>
-                          <p className="text-sm text-muted">
-                            Define reglas preventivas automáticas por edad, etapa o eventos reproductivos para generar la agenda de la granja.
-                          </p>
+            {rules.some((rule) => rule.isCurrent) ? (
+              <ul className="data-card-list data-card-grid" aria-label="Reglas de vacunación automáticas">
+                {rules.filter((rule) => rule.isCurrent).map((rule) => (
+                  <li key={rule.id}>
+                    <article className="data-card" data-state={rule.isActive ? 'active' : 'inactive'}>
+                      <header className="data-card-head">
+                        <div className="data-card-identity">
+                          <span className="data-card-title">{rule.vaccineName}</span>
+                          <span className="data-card-subtitle">{categoryLabels[rule.targetCategory] ?? rule.targetCategory} · {baseLabels[rule.baseEvent] ?? rule.baseEvent}</span>
                         </div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                        <span className={`badge-status ${rule.isActive ? 'badge-success' : 'badge-outline'}`}>
+                          <span className="status-dot"></span>
+                          <span>{rule.isActive ? 'Activa' : 'Inactiva'}</span>
+                        </span>
+                      </header>
+                      <dl className="data-card-meta">
+                        <div><dt>Ajuste</dt><dd className="font-mono tabular-nums">{rule.offsetDays > 0 ? `+${rule.offsetDays}` : rule.offsetDays} días</dd></div>
+                        <div><dt>Versión</dt><dd className="font-mono tabular-nums">v{rule.version}</dd></div>
+                        <div><dt>Edad objetivo</dt><dd className="font-mono tabular-nums">{rule.targetAgeDays === null ? 'No aplica' : `${rule.targetAgeDays} días`}</dd></div>
+                        <div><dt>Referencia</dt><dd className="font-mono tabular-nums">{rule.referenceDate ?? 'No aplica'}</dd></div>
+                      </dl>
+                      <div className="data-card-actions">
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          aria-label={`Editar regla para ${rule.vaccineName}`}
+                          onClick={() => {
+                            setEditKey(rule.ruleKey);
+                            setForm({
+                              vaccineName: rule.vaccineName,
+                              targetCategory: rule.targetCategory,
+                              baseEvent: rule.baseEvent,
+                              offsetDays: String(rule.offsetDays),
+                              targetAgeDays: String(rule.targetAgeDays ?? 60),
+                              recurrenceDays: String(rule.recurrenceDays ?? 180),
+                              referenceDate: rule.referenceDate ?? '',
+                              isActive: rule.isActive,
+                              reason: 'Actualización de regla',
+                            });
+                          }}
+                        >
+                          <IconEdit size={14} />
+                          <span>Editar</span>
+                        </button>
+                        {rule.isActive && (
+                          <button
+                            type="button"
+                            className="btn btn-outline text-danger"
+                            aria-label={`Desactivar regla para ${rule.vaccineName}`}
+                            onClick={() => {
+                              setDeactivateTarget(rule);
+                              setDeactivateReason('');
+                              setDeactivateOperationKey(newOperationKey('vaccine-rule-off'));
+                            }}
+                          >
+                            <IconX size={14} />
+                            <span>Desactivar</span>
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <DataState
+                variant="empty"
+                title="Sin reglas de vacunación configuradas"
+                description="Define reglas preventivas automáticas por edad, etapa o eventos reproductivos para generar la agenda de la granja."
+                icon={<IconShield size={28} className="text-muted" />}
+              />
+            )}
           </div>
 
           <form

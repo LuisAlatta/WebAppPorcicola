@@ -27,5 +27,5 @@ test('corrige y anula aplicaciones con motivo, conserva los datos tras un confli
   expect(corrections).toHaveLength(2);expect(corrections[0]).toMatchObject({dosage:3,reason:'Error al transcribir dosis',withdrawalUntil:'2026-12-01'});expect(corrections[1].operationKey).toBe(corrections[0].operationKey);
   await page.getByRole('button',{name:'Anular aplicación de Vacuna aplicada al animal VAC-UI'}).click();
   await page.getByRole('dialog').getByLabel('Motivo de anulación:').fill('La dosis no se aplicó');await page.getByRole('dialog').getByRole('button',{name:'Confirmar anulación de aplicación'}).click();
-  await expect(page.getByRole('status')).toContainText('Aplicación anulada');expect(annulment).toMatchObject({reason:'La dosis no se aplicó'});await expect(page.getByRole('row').filter({hasText:'VAC-UI'}).getByRole('button',{name:/Aplicar vacuna/})).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Aplicación anulada');expect(annulment).toMatchObject({reason:'La dosis no se aplicó'});await expect(page.locator('.data-card').filter({hasText:'VAC-UI'}).getByRole('button',{name:/Aplicar vacuna/})).toBeVisible();
 });

@@ -16,6 +16,8 @@ import { farmToday, newOperationKey, fetchOperation } from '../utils/operations'
 import type { Perfil } from '../types';
 import { ModuloVacunas } from './ModuloVacunas';
 import { ModalDialog } from './ModalDialog';
+import { DataState } from './DataState';
+import { ModuleTabs } from './ModuleTabs';
 
 interface HealthEvent {
   id: number;
@@ -273,64 +275,20 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
       {error && <div className="alert alert-error" role="alert" aria-live="assertive">{error}</div>}
       {notice && <div className="alert alert-success" role="status" aria-live="polite">{notice}</div>}
 
-      <div className="admin-tabs mb-4" role="tablist" aria-label="Secciones del módulo de sanidad">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'retiros'}
-          className={`btn btn-sm ${section === 'retiros' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('retiros')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconShield size={14} />
-            <span>Retiros y Pendientes</span>
-            {alerts.length > 0 && (
-              <span className="badge-status badge-warning tabular-nums font-numeric ml-1">{alerts.length}</span>
-            )}
-          </span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'vacunacion'}
-          className={`btn btn-sm ${section === 'vacunacion' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('vacunacion')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconCalendar size={14} />
-            <span>Plan de Vacunación</span>
-          </span>
-        </button>
-        {canWrite && (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={section === 'registro'}
-            className={`btn btn-sm ${section === 'registro' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => setSection('registro')}
-          >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconPlus size={14} />
-              <span>{editing ? 'Editar actuación' : 'Registrar tratamiento'}</span>
-            </span>
-          </button>
-        )}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'historial'}
-          className={`btn btn-sm ${section === 'historial' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('historial')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconActivity size={14} />
-            <span>Historial clínico</span>
-            {events.length > 0 && (
-              <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{events.length}</span>
-            )}
-          </span>
-        </button>
-      </div>
+      <ModuleTabs
+        label="Secciones del módulo de sanidad"
+        active={section}
+        onChange={setSection}
+        columns={2}
+        tabs={[
+          { id: 'retiros', label: 'Retiros y Pendientes', icon: <IconShield size={14} />, count: alerts.length },
+          { id: 'vacunacion', label: 'Plan de Vacunación', icon: <IconCalendar size={14} /> },
+          ...(canWrite
+            ? [{ id: 'registro', label: editing ? 'Editar actuación' : 'Registrar tratamiento', icon: <IconPlus size={14} /> }]
+            : []),
+          { id: 'historial', label: 'Historial clínico', icon: <IconActivity size={14} />, count: events.length },
+        ]}
+      />
 
       {section === 'vacunacion' && (
         <ModuloVacunas perfil={perfil} />
@@ -348,52 +306,37 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
             </p>
           </div>
         </div>
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th className="text-left">Animal</th>
-                <th className="text-left">Fármaco / Producto</th>
-                <th className="text-left">Galpón</th>
-                <th className="text-left">Fecha aplicación</th>
-                <th className="text-right">Retiro hasta</th>
-              </tr>
-            </thead>
-            <tbody>
-              {alerts.map((row, index) => (
-                <tr key={`${row.animalCode}-${row.eventDate}-${index}`}>
-                  <td className="text-left">
-                    <span className="arete-badge">{row.animalCode}</span>
-                  </td>
-                  <td className="text-left font-medium">{row.product ?? '—'}</td>
-                  <td className="text-left">{row.barnName}</td>
-                  <td className="text-left tabular-nums font-mono">{row.eventDate}</td>
-                  <td className="text-right">
+        {alerts.length === 0 ? (
+          <DataState
+            variant="empty"
+            title="Inocuidad alimentaria garantizada"
+            description="No hay retiros vigentes a la fecha. Ningún lote o animal presenta restricciones sanitarias para faenado o venta."
+            icon={<IconShield size={28} className="text-success" />}
+          />
+        ) : (
+          <ul className="data-card-list data-card-grid" aria-label="Periodo de retiro vigente">
+            {alerts.map((row, index) => (
+              <li key={`${row.animalCode}-${row.eventDate}-${index}`}>
+                <article className="data-card" data-state="inactive">
+                  <header className="data-card-head">
+                    <div className="data-card-identity">
+                      <span className="data-card-title font-mono">{row.animalCode}</span>
+                      <span className="data-card-subtitle">{row.barnName}</span>
+                    </div>
                     <span className="badge-status badge-warning tabular-nums font-mono">
                       <IconCalendar size={12} />
                       <span>{row.withdrawalUntil}</span>
                     </span>
-                  </td>
-                </tr>
-              ))}
-              {!alerts.length && (
-                <tr>
-                  <td colSpan={5} className="p-0">
-                    <div className="card empty-state-card m-4">
-                      <div className="empty-icon-wrap">
-                        <IconShield size={28} className="text-success" />
-                      </div>
-                      <p className="font-semibold text-base">Inocuidad alimentaria garantizada</p>
-                      <p className="text-sm text-muted">
-                        No hay retiros vigentes a la fecha. Ningún lote o animal presenta restricciones sanitarias para faenado o venta.
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                  </header>
+                  <dl className="data-card-meta">
+                    <div><dt>Fármaco / Producto</dt><dd>{row.product ?? 'Sin producto'}</dd></div>
+                    <div><dt>Fecha aplicación</dt><dd className="font-mono tabular-nums">{row.eventDate}</dd></div>
+                  </dl>
+                </article>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {/* Próximas Actuaciones */}
@@ -406,62 +349,38 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
             </p>
           </div>
         </div>
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th className="text-left">Fecha próxima</th>
-                <th className="text-left">Animal</th>
-                <th className="text-left">Fármaco y lote</th>
-                <th className="text-left">Galpón / lote</th>
-                <th className="text-right">Dosis</th>
-                <th className="text-left">Responsable</th>
-              </tr>
-            </thead>
-            <tbody>
-              {upcoming.map((row, index) => (
-                <tr key={`${row.eventId}-${row.animalCode}-${index}`}>
-                  <td className="text-left">
+        {upcoming.length === 0 ? (
+          <DataState
+            variant="empty"
+            title="Actuaciones sanitarias al día"
+            description="No hay actuaciones programadas pendientes a la fecha en la granja."
+            icon={<IconCalendar size={28} className="text-primary" />}
+          />
+        ) : (
+          <ul className="data-card-list data-card-grid" aria-label="Próximas actuaciones sanitarias">
+            {upcoming.map((row, index) => (
+              <li key={`${row.eventId}-${row.animalCode}-${index}`}>
+                <article className="data-card">
+                  <header className="data-card-head">
+                    <div className="data-card-identity">
+                      <span className="data-card-title font-mono">{row.animalCode}</span>
+                      <span className="data-card-subtitle">{row.barnName}{row.lotCode ? ` · ${row.lotCode}` : ''}</span>
+                    </div>
                     <span className="badge-status badge-outline tabular-nums font-mono">
                       <IconCalendar size={12} />
                       <span>{row.nextDueDate}</span>
                     </span>
-                  </td>
-                  <td className="text-left">
-                    <span className="arete-badge">{row.animalCode}</span>
-                  </td>
-                  <td className="text-left">
-                    <strong>{row.product}</strong>
-                    {row.productLot ? <span className="text-xs text-muted tabular-nums font-mono">{` · Lote ${row.productLot}`}</span> : ''}
-                  </td>
-                  <td className="text-left">
-                    {row.barnName}
-                    {row.lotCode ? ` · ${row.lotCode}` : ''}
-                  </td>
-                  <td className="text-right tabular-nums font-mono font-medium">
-                    {row.dosage} {row.dosageUnit}
-                  </td>
-                  <td className="text-left">{row.responsibleName}</td>
-                </tr>
-              ))}
-              {!upcoming.length && (
-                <tr>
-                  <td colSpan={6} className="p-0">
-                    <div className="card empty-state-card m-4">
-                      <div className="empty-icon-wrap">
-                        <IconCalendar size={28} className="text-primary" />
-                      </div>
-                      <p className="font-semibold text-base">Actuaciones sanitarias al día</p>
-                      <p className="text-sm text-muted">
-                        No hay actuaciones programadas pendientes a la fecha en la granja.
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                  </header>
+                  <dl className="data-card-meta">
+                    <div><dt>Fármaco y lote</dt><dd>{row.product}{row.productLot ? ` · Lote ${row.productLot}` : ''}</dd></div>
+                    <div><dt>Dosis</dt><dd className="font-mono tabular-nums">{row.dosage} {row.dosageUnit}</dd></div>
+                    <div><dt>Responsable</dt><dd>{row.responsibleName}</dd></div>
+                  </dl>
+                </article>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </>
   )}
@@ -852,105 +771,54 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
           </div>
         </div>
 
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th className="text-left">Fecha</th>
-                <th className="text-left">Evento</th>
-                <th className="text-left">Animal</th>
-                <th className="text-left">Ubicación</th>
-                <th className="text-left">Producto y lote</th>
-                <th className="text-right">Dosis</th>
-                <th className="text-left">Próxima</th>
-                <th className="text-center">Retiro sanitario</th>
-                <th className="text-left">Responsable</th>
-                <th className="text-center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.map((row, index) => (
-                <tr key={`${row.id}-${row.animalCode}-${index}`}>
-                  <td className="text-left tabular-nums font-mono">{row.effectiveDate}</td>
-                  <td className="text-left">
-                    <span className="badge-status badge-outline text-xs">
-                      {types[row.eventType] ?? row.eventType}
-                    </span>
-                  </td>
-                  <td className="text-left">
-                    <span className="arete-badge">{row.animalCode}</span>
-                  </td>
-                  <td className="text-left text-xs text-muted">
-                    {row.barnName}
-                    {row.locationCode ? ` · ${row.locationCode}` : ''}
-                    {row.lotCode ? ` · ${row.lotCode}` : ''} · {row.stageCode}
-                  </td>
-                  <td className="text-left">
-                    <strong>{row.product ?? row.causeCode}</strong>
-                    {row.productLot ? <span className="text-xs text-muted tabular-nums font-mono">{` (${row.productLot})`}</span> : ''}
-                  </td>
-                  <td className="text-right tabular-nums font-mono font-medium">
-                    {row.dosage === null ? '—' : `${row.dosage} ${row.dosageUnit}`}
-                  </td>
-                  <td className="text-left tabular-nums font-mono">{row.nextDueDate ?? '—'}</td>
-                  <td className="text-center">
-                    {row.withdrawalUntil ? (
-                      <span className="badge-status badge-warning text-xs tabular-nums font-mono">{row.withdrawalUntil}</span>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="text-left text-xs">{row.responsibleName}</td>
-                  <td className="text-center">
-                    {canWrite && ['treatment', 'deworming', 'other'].includes(row.eventType) && (
+        {events.length === 0 ? (
+          <DataState
+            variant="empty"
+            title="Sin registros en el historial clínico"
+            description="No se encontraron eventos sanitarios para los filtros seleccionados o el periodo indicado."
+            icon={<IconActivity size={28} className="text-muted" />}
+            action={hasActiveFilters ? <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" onClick={clearFilters}><IconX size={16} /><span>Limpiar filtros</span></button> : undefined}
+          />
+        ) : (
+          <ul className="data-card-list" aria-label="Historial clínico">
+            {events.map((row, index) => (
+              <li key={`${row.id}-${row.animalCode}-${index}`}>
+                <article className="data-card" data-state={row.withdrawalUntil ? 'inactive' : 'active'}>
+                  <header className="data-card-head">
+                    <div className="data-card-identity">
+                      <span className="data-card-title font-mono">{row.animalCode}</span>
+                      <span className="data-card-subtitle">{row.effectiveDate} · {row.barnName}{row.lotCode ? ` · ${row.lotCode}` : ''} · {row.stageCode}</span>
+                    </div>
+                    <span className="badge-status badge-outline text-xs">{types[row.eventType] ?? row.eventType}</span>
+                  </header>
+                  <dl className="data-card-meta">
+                    <div><dt>Producto y lote</dt><dd>{row.product ?? row.causeCode}{row.productLot ? ` (${row.productLot})` : ''}</dd></div>
+                    <div><dt>Dosis</dt><dd className="font-mono tabular-nums">{row.dosage === null ? 'Sin dato' : `${row.dosage} ${row.dosageUnit}`}</dd></div>
+                    <div><dt>Próxima</dt><dd className="font-mono tabular-nums">{row.nextDueDate ?? 'Sin programar'}</dd></div>
+                    <div><dt>Retiro sanitario</dt><dd className="font-mono tabular-nums">{row.withdrawalUntil ? <span className="badge-status badge-warning text-xs">{row.withdrawalUntil}</span> : 'Sin retiro'}</dd></div>
+                    <div><dt>Responsable</dt><dd>{row.responsibleName}</dd></div>
+                  </dl>
+                  {canWrite && ['treatment', 'deworming', 'other'].includes(row.eventType) && (
+                    <div className="data-card-actions">
                       <button
                         type="button"
-                        className="btn btn-outline btn-xs"
+                        className="btn btn-outline"
                         aria-label={`Corregir actuación sanitaria del animal ${row.animalCode}`}
                         onClick={() => {
                           startCorrection(row);
                           document.getElementById('corregir-sanidad')?.scrollIntoView({ behavior: 'smooth' });
                         }}
                       >
-                        <span className="inline-flex items-center justify-center gap-2 leading-none">
-                          <IconEdit size={12} />
-                          <span>Corregir</span>
-                        </span>
+                        <IconEdit size={14} />
+                        <span>Corregir</span>
                       </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {!events.length && (
-                <tr>
-                  <td colSpan={10} className="p-0">
-                    <div className="card empty-state-card m-4">
-                      <div className="empty-icon-wrap">
-                        <IconActivity size={28} className="text-muted" />
-                      </div>
-                      <p className="font-semibold text-base">Sin registros en el historial clínico</p>
-                      <p className="text-sm text-muted">
-                        No se encontraron eventos sanitarios para los filtros seleccionados o el periodo indicado.
-                      </p>
-                      {hasActiveFilters && (
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm mt-3"
-                          onClick={clearFilters}
-                        >
-                          <span className="inline-flex items-center justify-center gap-2 leading-none">
-                            <IconX size={14} />
-                            <span>Limpiar filtros</span>
-                          </span>
-                        </button>
-                      )}
                     </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                  )}
+                </article>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     )}
   </main>

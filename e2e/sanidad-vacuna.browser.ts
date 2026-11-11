@@ -21,7 +21,7 @@ test('sanidad dirige a los flujos válidos y permite unidad y retiro en vacunaci
   await expect(healthForm.locator('select').first().locator('option')).toHaveText(['Tratamiento','Desparasitación','Otro evento']);
   await expect(page.getByText('Para registrar una muerte, solicite al responsable o administrador que registre la salida desde la ficha del animal.',{exact:false})).toBeVisible();
   await page.getByRole('tab', { name: /Plan de Vacunación/ }).click();
-  await page.getByRole('row').filter({hasText:'CERDO-01'}).getByRole('button',{name:'Aplicar'}).click();
+  await page.locator('.data-card').filter({hasText:'CERDO-01'}).getByRole('button',{name:'Aplicar'}).click();
   await page.getByRole('dialog').getByLabel('Unidad de dosis').fill('dosis');await page.getByLabel('Retiro hasta (opcional):').fill('2099-01-01');
   await page.getByRole('button',{name:'Confirmar Aplicación'}).click();
   await expect(page.getByRole('status')).toContainText('Vacuna aplicada');
@@ -41,7 +41,7 @@ test('corrige una actuación grupal y conserva los datos ante un conflicto',asyn
   await page.route('**/api/health/events/123/correction',route=>{requests.push(route.request().postDataJSON() as Record<string,unknown>);return route.fulfill(requests.length===1?{status:409,json:{error:'Conflicto de prueba'}}:{status:201,json:{ok:true}});});
   await page.goto('/sanidad');
   await page.getByRole('tab', { name: /Historial clínico/ }).click();
-  const eventRow=page.getByRole('row').filter({hasText:'Producto anterior'});
+  const eventRow=page.locator('.data-card').filter({hasText:'Producto anterior'});
   await eventRow.getByRole('button',{name:'Corregir'}).click();
   const section=page.locator('#corregir-sanidad');await expect(section).toContainText('todos los animales');
   await section.getByLabel('Producto / medicamento').fill('Producto corregido');await section.getByLabel('Motivo',{exact:true}).fill('Corrección de prueba');
