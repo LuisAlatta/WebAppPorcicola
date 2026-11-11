@@ -10,6 +10,8 @@ Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; i
 
 ## Observaciones del cliente — 11/11/2026
 
+- Gestión de galpones renovada para móvil: barra superior compacta con Actualizar como icono, pestañas simétricas en tres columnas y galpones en tarjetas en lugar de tabla. Cada tarjeta muestra código, nombre, estado con color, zona, capacidad y equipo (responsable, operario, veterinario) con "Sin asignar" resaltado; acciones Editar, Personal, Estado y Eliminar en una cuadrícula 2x2 uniforme. El alta queda como botón de ancho completo en móvil y el formulario de equipo usa tarjetas por rol con borde de color; el motivo ya no usa estilo en línea y ocupa una columna en pantallas angostas. Vacío y carga con estados consistentes.
+
 - Selector de galpones restilizado para móvil: encabezado compacto, gestión del administrador a ancho completo, tarjetas de selección en dos columnas con alturas uniformes y selección visible, nombres con ajuste de línea, resumen de selección y botón Siguiente de ancho completo. Las cantidades impares completan la última fila para mantener simetría. Incluye carga con skeletons, vacío y error con los mismos espaciados y colores del sistema.
 
 - Modales de animales: se ocultan los botones redundantes Volver al padrón cuando la ficha/editor está en un modal, conservándolos en enlaces directos sin modal. Ver/Editar abren el modal inmediatamente con mensaje y skeleton mientras se descarga la ficha; cerrar durante la carga cancela la petición para impedir que una respuesta tardía reabra el modal o muestre otro animal. La eliminación confirma su progreso con spinner/mensaje y mantiene deshabilitados los controles durante el envío.

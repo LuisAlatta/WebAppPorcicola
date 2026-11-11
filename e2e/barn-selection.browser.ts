@@ -62,6 +62,9 @@ test('administrador gestiona galpones desde la selección y actualiza la lista a
   await page.getByLabel('Nombre del Galpón:').fill('Galpón renovado');
   await page.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Editar galpón Galpón renovado', exact: true })).toBeVisible();
+  await expect(page.locator('.barn-admin-card')).toHaveCount(1);
+  await expect(page.locator('.barn-admin-card .barn-team-missing')).toHaveCount(3);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.getByRole('button', { name: 'Asignar personal a Galpón renovado', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Asignación y Activación del Equipo Operativo' })).toBeVisible();
   await page.getByRole('button', { name: 'Volver a seleccionar galpones', exact: true }).click();

@@ -15,6 +15,7 @@ import {
   IconEdit,
   IconCalendar,
   IconSettings,
+  IconActivity,
 } from './icons';
 import { farmToday, newOperationKey } from '../utils/operations';
 import { ModalDialog } from './ModalDialog';
@@ -91,6 +92,12 @@ const ROLE_LABEL: Record<HistoryItem['role'], string> = {
   responsable: 'Usuario Responsable',
   operario: 'Operario de Campo',
   veterinario: 'Médico Veterinario',
+};
+
+const STATUS_LABEL: Record<BarnItem['status'], string> = {
+  operativo: 'Operativo',
+  preparacion: 'En preparación',
+  inactivo: 'Inactivo',
 };
 
 const ACTION_LABEL: Record<AuditItem['action'], string> = {
@@ -579,23 +586,20 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
   return (
     <div className="admin-container">
       {/* Encabezado */}
-      <div className="module-heading mb-4">
-        <p className="text-xs text-muted">
+      <div className="admin-toolbar">
+        <p className="admin-toolbar-text">
           {barnsOnly ? 'Crea y edita galpones, asigna su personal y revisa los cambios.' : 'Cuentas de usuario, asignación de galpones y equipo operativo.'}
         </p>
-        <div className="inline-flex items-center justify-center gap-2 leading-none">
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={refreshData}
-            title="Actualizar datos"
-          >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconRefreshCw size={14} />
-              <span>Actualizar</span>
-            </span>
-          </button>
-        </div>
+        <button
+          type="button"
+          className="btn btn-outline btn-sm admin-refresh-button"
+          onClick={refreshData}
+          title="Actualizar datos"
+          aria-label="Actualizar datos de administración"
+        >
+          <IconRefreshCw size={16} />
+          <span>Actualizar</span>
+        </button>
       </div>
 
       {/* Alertas */}
@@ -619,7 +623,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
 
       {/* Pestañas de navegación interna */}
       {loading && <p role="status" className="text-muted">Cargando datos de administración…</p>}
-      <div className="admin-tabs mb-4">
+      <div className={`admin-tabs mb-4${barnsOnly ? ' admin-tabs-compact' : ''}`}>
         {!barnsOnly && <button
           type="button"
           className={`btn btn-sm ${activeTab === 'usuarios' ? 'btn-primary' : 'btn-outline'}`}
@@ -865,83 +869,77 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
 
       {/* 2. PESTAÑA: GALPONES */}
       {activeTab === 'galpones' && (
-        <div className="card p-4">
-          <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+        <div className="card p-4 admin-panel">
+          <div className="admin-panel-header">
             <div>
               <h3 className="font-bold text-lg">Galpones e Instalaciones</h3>
               <p className="text-xs text-muted">Gestión de ubicaciones, capacidad y estado operativo.</p>
             </div>
             <button
               type="button"
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm admin-primary-action"
               onClick={() => { setEditingBarn(null); setNewBarnCode(''); setNewBarnName(''); setNewBarnZone(''); setNewBarnCapacity(80); setBarnError(''); setShowBarnModal(true); }}
             >
-              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                <IconPlus size={16} />
-                <span>Nuevo Galpón</span>
-              </span>
+              <IconPlus size={16} />
+              <span>Nuevo Galpón</span>
             </button>
           </div>
 
-          {!loading && !barns.length && <p role="status" className="text-muted">No hay galpones registrados. Crea el primero con Nuevo Galpón.</p>}
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Código</th>
-                  <th>Nombre</th>
-                  <th>Ubicación / Zona</th>
-                  <th>Capacidad (Cabezas)</th>
-                  <th>Estado</th>
-                  <th>Equipo Asignado</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {barns.map((b) => (
-                  <tr key={b.id}>
-                    <td><strong className="font-mono">{b.code}</strong></td>
-                    <td>{b.name}</td>
-                    <td>{b.zone || 'No especificada'}</td>
-                    <td className="font-mono">{b.capacity}</td>
-                    <td>
-                      <span className={`badge ${
-                        b.status === 'operativo' ? 'badge-success' :
-                        b.status === 'preparacion' ? 'badge-warning' : 'badge-danger'
-                      }`}>
-                        {b.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="text-xs">
-                        <div><strong>Resp:</strong> {b.responsable?.name || <span className="text-danger">Sin asignar</span>}</div>
-                        <div><strong>Oper:</strong> {b.operario?.name || <span className="text-danger">Sin asignar</span>}</div>
-                        <div><strong>Vet:</strong> {b.veterinario?.name || <span className="text-danger">Sin asignar</span>}</div>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="barn-management-actions">
-                      <button type="button" className="btn btn-outline btn-sm inline-flex items-center justify-center gap-2" aria-label={`Editar galpón ${b.name}`} onClick={() => { setEditingBarn(b); setNewBarnCode(b.code); setNewBarnName(b.name); setNewBarnZone(b.zone); setNewBarnCapacity(b.capacity); setBarnError(''); setShowBarnModal(true); }}><IconEdit size={14} /><span>Editar</span></button>
-                      <button type="button" className="btn btn-outline btn-sm inline-flex items-center justify-center gap-2" aria-label={`Asignar personal a ${b.name}`} onClick={() => { setSelectedBarnId(b.id); setSelectedRespId(b.responsable?.id || ''); setSelectedOperId(b.operario?.id || ''); setSelectedVetId(b.veterinario?.id || ''); setAssignmentReason(''); setAssignmentOperationKey(newOperationKey('asig')); setActiveTab('equipo'); }}><IconUser size={14} /><span>Personal</span></button>
-                      <button type="button" className="btn btn-outline btn-sm inline-flex items-center justify-center gap-2" aria-label={`Cambiar estado de ${b.name}`} onClick={() => { setStatusBarn(b); setNextBarnStatus(b.status); setBarnError(''); }}><IconSettings size={14} /><span>Estado</span></button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm text-danger"
-                        onClick={() => setBarnToDelete({ id: b.id, name: b.name })}
-                        title="Eliminar galpón sin registros"
-                      >
-                        <span className="inline-flex items-center justify-center gap-2 leading-none">
-                          <IconTrash size={14} />
-                          <span>Eliminar</span>
-                        </span>
-                      </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {!loading && !barns.length && <div className="admin-empty-state" role="status">
+            <IconBuilding size={28} />
+            <p>No hay galpones registrados. Crea el primero con Nuevo Galpón.</p>
+          </div>}
+
+          {barns.length > 0 && <div className="barn-admin-grid">
+            {barns.map((b) => (
+              <article key={b.id} className="barn-admin-card" data-status={b.status}>
+                <header className="barn-admin-card-head">
+                  <div className="barn-admin-identity">
+                    <span className="barn-admin-code">{b.code}</span>
+                    <h4>{b.name}</h4>
+                  </div>
+                  <span className={`badge ${
+                    b.status === 'operativo' ? 'badge-success' :
+                    b.status === 'preparacion' ? 'badge-warning' : 'badge-danger'
+                  }`}>
+                    {STATUS_LABEL[b.status] ?? b.status}
+                  </span>
+                </header>
+
+                <dl className="barn-admin-meta">
+                  <div>
+                    <dt>Zona</dt>
+                    <dd>{b.zone || 'No especificada'}</dd>
+                  </div>
+                  <div>
+                    <dt>Capacidad</dt>
+                    <dd className="font-mono">{b.capacity} cabezas</dd>
+                  </div>
+                </dl>
+
+                <ul className="barn-admin-team">
+                  <li><IconUser size={14} /><span className="barn-team-role">Responsable</span><span className={b.responsable ? 'barn-team-name' : 'barn-team-missing'}>{b.responsable?.name || 'Sin asignar'}</span></li>
+                  <li><IconActivity size={14} /><span className="barn-team-role">Operario</span><span className={b.operario ? 'barn-team-name' : 'barn-team-missing'}>{b.operario?.name || 'Sin asignar'}</span></li>
+                  <li><IconStethoscope size={14} /><span className="barn-team-role">Veterinario</span><span className={b.veterinario ? 'barn-team-name' : 'barn-team-missing'}>{b.veterinario?.name || 'Sin asignar'}</span></li>
+                </ul>
+
+                <div className="barn-management-actions">
+                  <button type="button" className="btn btn-outline btn-sm" aria-label={`Editar galpón ${b.name}`} onClick={() => { setEditingBarn(b); setNewBarnCode(b.code); setNewBarnName(b.name); setNewBarnZone(b.zone); setNewBarnCapacity(b.capacity); setBarnError(''); setShowBarnModal(true); }}><IconEdit size={14} /><span>Editar</span></button>
+                  <button type="button" className="btn btn-outline btn-sm" aria-label={`Asignar personal a ${b.name}`} onClick={() => { setSelectedBarnId(b.id); setSelectedRespId(b.responsable?.id || ''); setSelectedOperId(b.operario?.id || ''); setSelectedVetId(b.veterinario?.id || ''); setAssignmentReason(''); setAssignmentOperationKey(newOperationKey('asig')); setActiveTab('equipo'); }}><IconUser size={14} /><span>Personal</span></button>
+                  <button type="button" className="btn btn-outline btn-sm" aria-label={`Cambiar estado de ${b.name}`} onClick={() => { setStatusBarn(b); setNextBarnStatus(b.status); setBarnError(''); }}><IconSettings size={14} /><span>Estado</span></button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm text-danger"
+                    onClick={() => setBarnToDelete({ id: b.id, name: b.name })}
+                    title="Eliminar galpón sin registros"
+                  >
+                    <IconTrash size={14} />
+                    <span>Eliminar</span>
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>}
 
           {/* Modal Nuevo Galpón */}
           {statusBarn && <ModalDialog labelledBy="barn-status-title" onDismiss={() => setStatusBarn(null)} dismissDisabled={barnSaving}>
@@ -1096,7 +1094,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
             </div>
 
             <div className="grid-3 gap-3 mb-4">
-              <div className="form-group card p-3">
+              <div className="form-group card p-3 team-role-card" data-role="responsable">
                 <label className="form-label font-bold text-primary">
                   1. Usuario Responsable:
                 </label>
@@ -1116,7 +1114,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                 <span className="text-xs text-muted mt-1">Supervisa galpones y finanzas</span>
               </div>
 
-              <div className="form-group card p-3">
+              <div className="form-group card p-3 team-role-card" data-role="operario">
                 <label className="form-label font-bold text-warning">
                   2. Operario de Campo:
                 </label>
@@ -1136,7 +1134,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                 <span className="text-xs text-muted mt-1">Registra movimientos y pesajes</span>
               </div>
 
-              <div className="form-group card p-3">
+              <div className="form-group card p-3 team-role-card" data-role="veterinario">
                 <label className="form-label font-bold text-success inline-flex items-center gap-1">
                   <IconStethoscope size={16} />
                   <span>3. Médico Veterinario:</span>
@@ -1174,7 +1172,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                 <span className="text-xs text-muted mt-1">Fecha local de la granja (America/Lima)</span>
               </div>
 
-              <div className="form-group card p-3" style={{ gridColumn: 'span 2' }}>
+              <div className="form-group card p-3 admin-form-span2">
                 <label className="form-label font-bold">Motivo del cambio (queda en auditoría):</label>
                 <input
                   type="text"

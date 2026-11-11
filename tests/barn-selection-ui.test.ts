@@ -26,6 +26,14 @@ describe('Acceso a gestión desde Galpones', () => {
     expect(html).toContain('Acceso denegado');
     expect(html).not.toContain('Nuevo Galpón');
   });
+  it('ordena la gestión de galpones con barra, pestañas simétricas y estado vacío claro', () => {
+    const html = renderToStaticMarkup(createElement(ModuloAdministracion, { perfil: 'administrador', barnsOnly: true, onNavigate: () => {} }));
+    expect(html).toContain('admin-toolbar');
+    expect(html).toContain('admin-tabs-compact');
+    expect(html).toContain('admin-panel-header');
+    expect(html).not.toContain('data-status=');
+    expect(html).not.toContain('style="grid-column:span 2"');
+  });
   it('presenta la carga con tarjetas provisionales y una acción de continuación clara', () => {
     const html = renderToStaticMarkup(createElement(SelectorGalpones, { perfil: 'responsable', selected: [], onContinue: () => {} }));
     expect(html).toContain('barn-selector-header');
