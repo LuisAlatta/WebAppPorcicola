@@ -25,6 +25,8 @@ self.addEventListener('activate', event => {
       const names = await caches.keys();
       await Promise.all(names.filter(name => name.startsWith('porcicola-static-') && name !== CACHE_NAME).map(name => caches.delete(name)));
     }
+    // Transfer control before the requesting page reloads, including other open tabs.
+    await self.clients.claim();
   })());
 });
 self.addEventListener('fetch', event => {

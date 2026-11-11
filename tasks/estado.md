@@ -10,6 +10,8 @@ Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; i
 
 ## Observaciones del cliente — 11/11/2026
 
+- Actualización PWA: el aviso se sincroniza con los cambios del worker (también desde otras pestañas) y se limpia cuando ya no queda una versión en espera. La recarga espera a `controllerchange` del worker solicitado, no al estado `activated`; la activación ahora ejecuta `clients.claim()`. Se conserva la confirmación para no perder formularios sin permiso, se bloquean pulsaciones repetidas y se muestra progreso/error con límite de espera. Seis pruebas nuevas de regresión; 35/35 pruebas dirigidas, typecheck, lint y compilación correctos con Node 24. Producción `3b7d4682-ec71-4cff-9f20-1b549027b85d`: HTML, `/sw.js` y JavaScript verificados por contenido contra la compilación local. No se inició servidor local ni se validó en teléfono físico; no se repitió la suite completa.
+
 - Padrón compacto: se retiraron sus tres tarjetas de resumen; búsqueda por código/nombre con botón Buscar o Enter, filtros avanzados plegados inicialmente y confirmación con Aplicar filtros. Las acciones Ver ficha, Editar y Eliminar tienen ancho/alto iguales y colores suaves diferentes mediante los tokens existentes. TypeScript, lint y compilación verificados; se actualizaron los casos de navegador, sin ejecutarlos localmente.
 
 - Inicio muestra Galpones antes de los módulos. El selector admite varios galpones y exige al menos uno para continuar. La barra superior muestra la selección y permite cambiarla; al cambiar se desmonta el módulo anterior para descartar formularios y respuestas pendientes.

@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {ModalDialog} from './ModalDialog';
+import {activateWaitingWorker, observeWaitingWorker} from '../utils/pwaUpdate';
 import {
   PWA_INSTALL_READY_EVENT,
   PWA_INSTALLED_EVENT,
@@ -9,6 +10,9 @@ import {
 export function PwaControls() {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
   const [confirmUpdate, setConfirmUpdate] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState('');
+  const updatingRef = useRef(false);
   const updateButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -25,17 +29,15 @@ export function PwaControls() {
     window.addEventListener('appinstalled', installed);
 
     let registration: ServiceWorkerRegistration | undefined;
+    let stopObserving: (() => void) | undefined;
     let cancelled = false;
-    const check = () => {
-      if (registration?.waiting) setWaiting(registration.waiting);
-    };
     if (import.meta.env.PROD && 'serviceWorker' in navigator && window.isSecureContext) {
       void navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((result) => {
         if (cancelled) return;
         registration = result;
-        check();
-        result.addEventListener('updatefound', () => {
-          result.installing?.addEventListener('statechange', check);
+        stopObserving = observeWaitingWorker(result, navigator.serviceWorker, (worker) => {
+          setWaiting(worker);
+          if (!worker) setConfirmUpdate(false);
         });
       }).catch(() => undefined);
     }
@@ -45,27 +47,27 @@ export function PwaControls() {
     document.addEventListener('visibilitychange', refresh);
     return () => {
       cancelled = true;
+      stopObserving?.();
       window.removeEventListener('beforeinstallprompt', prompt);
       window.removeEventListener('appinstalled', installed);
       document.removeEventListener('visibilitychange', refresh);
     };
   }, []);
 
-  const performUpdate = () => {
-    if (!waiting) return;
+  const performUpdate = async () => {
+    if (!waiting || updatingRef.current) return;
+    updatingRef.current = true;
+    setUpdating(true);
+    setUpdateError('');
     setConfirmUpdate(false);
-    let refreshed = false;
-    const reload = () => {
-      if (!refreshed) {
-        refreshed = true;
-        window.location.reload();
-      }
-    };
-    navigator.serviceWorker.addEventListener('controllerchange', reload, { once: true });
-    waiting.addEventListener('statechange', () => {
-      if (waiting.state === 'activated') reload();
-    });
-    waiting.postMessage({ type: 'ACTIVATE_UPDATE' });
+    try {
+      await activateWaitingWorker(waiting, navigator.serviceWorker);
+      window.location.reload();
+    } catch {
+      setUpdateError('No se pudo completar la actualización. Inténtalo de nuevo.');
+      updatingRef.current = false;
+      setUpdating(false);
+    }
   };
 
   const dismissUpdate = () => {
@@ -73,21 +75,22 @@ export function PwaControls() {
     window.requestAnimationFrame(() => updateButtonRef.current?.focus());
   };
 
-  if (!waiting) return null;
+  if (!waiting && !updating && !updateError) return null;
 
   return (
     <>
       {!confirmUpdate && (
         <aside aria-label="Actualización disponible" className="pwa-update-toast">
-          <span className="text-xs font-semibold">Nueva versión disponible</span>
+          <span className="text-xs font-semibold" role="status">{updating ? 'Actualizando aplicación…' : updateError || 'Nueva versión disponible'}</span>
           <button
             ref={updateButtonRef}
             type="button"
+            disabled={updating || !waiting}
             className="btn btn-primary btn-sm"
             onClick={() => setConfirmUpdate(true)}
             style={{ minHeight: '32px', padding: '0.25rem 0.65rem' }}
           >
-            Actualizar
+            {updating ? 'Actualizando…' : 'Actualizar'}
           </button>
         </aside>
       )}
