@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { IconDownload, IconRefreshCw } from './icons';
+import { IconDownload, IconRefreshCw, IconBarChart, IconHeart } from './icons';
+import { ModuleTabs } from './ModuleTabs';
+import { DataState } from './DataState';
 import { generarReportePdf, type ReportColumn } from '../utils/exportPdf';
 import { generarReporteXlsx } from '../utils/exportXlsx';
 
@@ -193,23 +195,18 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
         </p>
       )}
       {error && <div className="alert alert-danger" role="alert" aria-live="assertive">{error}</div>}
+      <ModuleTabs
+        label="Tipo de informe productivo"
+        active={kind}
+        onChange={value => { setKind(value); setResult(null); }}
+        columns={2}
+        tabs={[
+          { id: 'weights', label: 'Pesajes y ganancia de peso', icon: <IconBarChart size={14} /> },
+          { id: 'births', label: 'Partos, camadas y mortalidad', icon: <IconHeart size={14} /> },
+        ]}
+      />
       <form onSubmit={event => void consult(event)} className="form-stack">
         <div className="form-grid">
-          <div className="form-group">
-            <label className="form-label" htmlFor="productive-report-kind">Tipo de informe productivo</label>
-            <select
-              id="productive-report-kind"
-              className="form-select"
-              value={kind}
-              onChange={event => {
-                setKind(event.target.value as 'weights' | 'births');
-                setResult(null);
-              }}
-            >
-              <option value="weights">Pesajes y ganancia de peso</option>
-              <option value="births">Partos, camadas y mortalidad</option>
-            </select>
-          </div>
           <div className="form-group">
             <label className="form-label" htmlFor="productive-report-from">Desde</label>
             <input id="productive-report-from" className="form-input tabular-nums" type="date" value={filters.from} onChange={event => update('from', event.target.value)} />
@@ -312,7 +309,7 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
 
           {result.kind === 'weights' ? (
             <>
-              <div className="filter-row">
+              <div className="report-metrics">
                 <div className="metric-card">
                   <span>Pesajes</span>
                   <strong className="tabular-nums">{result.data.total.observations}</strong>
@@ -329,35 +326,19 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
                 </div>
               </div>
 
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Fecha</th>
-                      <th className="text-left">Etapa productiva</th>
-                      <th className="text-right">Pesajes</th>
-                      <th className="text-right">Peso promedio</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.data.rows.map((row, index) => (
-                      <tr key={`${row.date}-${row.stageCode}-${index}`}>
-                        <td className="text-left tabular-nums">{row.date}</td>
-                        <td className="text-left">{options.stages.find(stage => stage.code === row.stageCode)?.name ?? row.stageCode ?? 'Sin etapa'}</td>
-                        <td className="text-right tabular-nums font-mono">{row.observations}</td>
-                        <td className="text-right tabular-nums font-mono font-bold">{decimal(row.averageKg, ' kg')}</td>
-                      </tr>
-                    ))}
-                    {!result.data.rows.length && (
-                      <tr>
-                        <td colSpan={4} className="text-center p-4 text-muted">
-                          Sin pesajes para los filtros seleccionados.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              {result.data.rows.length ? (
+                <ul className="data-card-list data-card-grid" aria-label="Pesajes por fecha y etapa">
+                  {result.data.rows.map((row, index) => (
+                    <li key={`${row.date}-${row.stageCode}-${index}`}><article className="data-card">
+                      <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{options.stages.find(stage => stage.code === row.stageCode)?.name ?? row.stageCode ?? 'Sin etapa'}</span><span className="data-card-subtitle">{row.date}</span></div></header>
+                      <dl className="data-card-meta">
+                        <div><dt>Pesajes</dt><dd className="font-mono tabular-nums">{row.observations}</dd></div>
+                        <div><dt>Peso promedio</dt><dd className="font-mono tabular-nums">{decimal(row.averageKg, ' kg')}</dd></div>
+                      </dl>
+                    </article></li>
+                  ))}
+                </ul>
+              ) : <DataState variant="empty" title="Sin pesajes para los filtros seleccionados." />}
 
               <h3 className="mt-4">Gráfico de pesos promedio</h3>
               <div className="report-bars">
@@ -372,7 +353,7 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
             </>
           ) : (
             <>
-              <div className="filter-row">
+              <div className="report-metrics">
                 <div className="metric-card">
                   <span>Crías nacidas</span>
                   <strong className="tabular-nums">{result.data.totals.totalBorn}</strong>
@@ -395,47 +376,24 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
                 </div>
               </div>
 
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Fecha de parto</th>
-                      <th className="text-left">Marrana (Madre)</th>
-                      <th className="text-left">Galpón</th>
-                      <th className="text-left">Ubicación / Corral</th>
-                      <th className="text-left">Lote porcino</th>
-                      <th className="text-right">Nacidos totales</th>
-                      <th className="text-right">Nacidos vivos</th>
-                      <th className="text-right">Nacidos muertos</th>
-                      <th className="text-right">Bajas en lactancia</th>
-                      <th className="text-right">Mortalidad al nacer</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              {result.data.rows.length ? (
+                <ul className="data-card-list data-card-grid" aria-label="Partos y camadas">
                     {result.data.rows.map(row => (
-                      <tr key={row.id}>
-                        <td className="text-left tabular-nums">{row.farrowingDate}</td>
-                        <td className="text-left font-bold">{row.motherCode}</td>
-                        <td className="text-left">{row.barnName}</td>
-                        <td className="text-left">{row.locationCode ?? '—'}</td>
-                        <td className="text-left">{row.lotCode ?? '—'}</td>
-                        <td className="text-right tabular-nums font-mono font-bold">{row.totalBorn}</td>
-                        <td className="text-right tabular-nums font-mono text-success">{row.liveBirths}</td>
-                        <td className="text-right tabular-nums font-mono text-danger">{row.deaths}</td>
-                        <td className="text-right tabular-nums font-mono text-warning">{row.lactationDeaths}</td>
-                        <td className="text-right tabular-nums font-mono">{decimal(row.mortalityPct, ' %')}</td>
-                      </tr>
+                      <li key={row.id}><article className="data-card">
+                        <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{row.motherCode}</span><span className="data-card-subtitle">{row.farrowingDate} · {row.barnName}</span></div></header>
+                        <dl className="data-card-meta">
+                          <div><dt>Ubicación / Corral</dt><dd>{row.locationCode ?? 'Sin asignar'}</dd></div>
+                          <div><dt>Lote porcino</dt><dd>{row.lotCode ?? 'Sin lote'}</dd></div>
+                          <div><dt>Nacidos totales</dt><dd className="font-mono tabular-nums">{row.totalBorn}</dd></div>
+                          <div><dt>Nacidos vivos</dt><dd className="font-mono tabular-nums text-success">{row.liveBirths}</dd></div>
+                          <div><dt>Nacidos muertos</dt><dd className="font-mono tabular-nums text-danger">{row.deaths}</dd></div>
+                          <div><dt>Bajas en lactancia</dt><dd className="font-mono tabular-nums text-warning">{row.lactationDeaths}</dd></div>
+                          <div><dt>Mortalidad al nacer</dt><dd className="font-mono tabular-nums">{decimal(row.mortalityPct, ' %')}</dd></div>
+                        </dl>
+                      </article></li>
                     ))}
-                    {!result.data.rows.length && (
-                      <tr>
-                        <td colSpan={10} className="text-center p-4 text-muted">
-                          Sin nacimientos para los filtros seleccionados.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                </ul>
+              ) : <DataState variant="empty" title="Sin nacimientos para los filtros seleccionados." />}
 
               <h3 className="mt-4">Gráfico de nacimientos por camada</h3>
               <div className="report-bars">

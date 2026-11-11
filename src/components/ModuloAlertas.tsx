@@ -12,6 +12,8 @@ import {
   IconX,
 } from './icons';
 import { ModalDialog } from './ModalDialog';
+import { ModuleTabs } from './ModuleTabs';
+import { Pagination } from './Pagination';
 import { farmToday, fetchOperation } from '../utils/operations';
 import type { Perfil } from '../types';
 
@@ -94,6 +96,10 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
   const [filter, setFilter] = useState({ type: '', status: 'pending', bucket: '' });
   const [form, setForm] = useState({ title: '', dueDate: farmToday(), barnId: '', animalCode: '', reason: '' });
   const [section, setSection] = useState<'agenda' | 'notificaciones' | 'crear' | 'reglas'>('agenda');
+  const [page, setPage] = useState(0);
+  const pageSize = 12;
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(alerts.length / pageSize) - 1));
+  const visibleAlerts = alerts.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -121,6 +127,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
     ];
     if (responses.some(response => !response.ok)) throw new Error(data.find(item => item?.error)?.error || 'No se pudo cargar la agenda');
     setAlerts(data[0].alerts ?? []);
+    setPage(0);
     setCounts(data[0].counts ?? {});
     setBarns(data[1].barns ?? []);
     setNotifications(data[2].notifications ?? []);
@@ -240,7 +247,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
         </button>
       </div>
 
-      {error && (
+      {error && !attendTarget && (
         <div className="alert alert-danger" role="alert" aria-live="assertive">
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconAlertCircle size={16} />
@@ -257,73 +264,18 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
         </div>
       )}
 
-      {/* Pestañas SaaS para navegación limpia */}
-      <div className="admin-tabs mb-4" role="tablist" aria-label="Secciones de alertas y pendientes">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'agenda'}
-          aria-label={`Pestaña Agenda Operativa${criticalPendingCount > 0 ? `, ${criticalPendingCount} avisos críticos` : ''}`}
-          className={`btn btn-sm ${section === 'agenda' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('agenda')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconCalendar size={14} />
-            <span>Agenda Operativa</span>
-            {criticalPendingCount > 0 && (
-              <span className="badge-status badge-danger tabular-nums ml-1">
-                {criticalPendingCount} críticos
-              </span>
-            )}
-          </span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'notificaciones'}
-          aria-label={`Pestaña Notificaciones${unreadCount > 0 ? `, ${unreadCount} sin leer` : ''}`}
-          className={`btn btn-sm ${section === 'notificaciones' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('notificaciones')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconBell size={14} />
-            <span>Notificaciones</span>
-            {unreadCount > 0 && (
-              <span className="badge-status badge-warning tabular-nums ml-1">
-                {unreadCount}
-              </span>
-            )}
-          </span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'crear'}
-          aria-label="Pestaña Crear Aviso operativo manual"
-          className={`btn btn-sm ${section === 'crear' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('crear')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconPlus size={14} />
-            <span>Crear Aviso</span>
-          </span>
-        </button>
-        {isAdmin && (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={section === 'reglas'}
-            aria-label="Pestaña Reglas de Escalamiento crítico"
-            className={`btn btn-sm ${section === 'reglas' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => setSection('reglas')}
-          >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconShield size={14} />
-              <span>Reglas de Escalamiento</span>
-            </span>
-          </button>
-        )}
-      </div>
+      <ModuleTabs
+        label="Secciones de alertas y pendientes"
+        active={section}
+        onChange={setSection}
+        columns={2}
+        tabs={[
+          { id: 'agenda', label: 'Agenda Operativa', icon: <IconCalendar size={14} />, count: criticalPendingCount, ariaLabel: `Pestaña Agenda Operativa${criticalPendingCount > 0 ? `, ${criticalPendingCount} avisos críticos` : ''}` },
+          { id: 'notificaciones', label: 'Notificaciones', icon: <IconBell size={14} />, count: unreadCount, ariaLabel: `Pestaña Notificaciones${unreadCount > 0 ? `, ${unreadCount} sin leer` : ''}` },
+          { id: 'crear', label: 'Crear Aviso', icon: <IconPlus size={14} />, ariaLabel: 'Pestaña Crear Aviso operativo manual' },
+          ...(isAdmin ? [{ id: 'reglas', label: 'Reglas de Escalamiento', icon: <IconShield size={14} />, ariaLabel: 'Pestaña Reglas de Escalamiento crítico' }] : []),
+        ]}
+      />
 
       {section === 'notificaciones' && (
         <section className="card">
@@ -347,9 +299,9 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
               <p className="text-sm text-muted">Las notificaciones de tareas vencidas y avisos escalados aparecerán aquí.</p>
             </div>
           ) : (
-            <ul className="notification-list">
+            <ul className="data-card-list" aria-label="Notificaciones operativas">
               {notifications.map(item => (
-                <li key={item.id} className={item.readAt ? '' : 'notification-unread'}>
+                <li key={item.id} className="data-card" data-state={item.readAt ? 'inactive' : 'active'}>
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div>
                       <strong>
@@ -359,7 +311,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                       <p>{item.body}{item.barnName ? ` · ${item.barnName}` : ''}</p>
                       <small className="tabular-nums text-muted">{item.createdAt}</small>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="data-card-actions">
                       <a
                         href={item.actionUrl}
                         className="btn btn-outline btn-sm"
@@ -462,11 +414,13 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
             </div>
           </form>
           {rules.length > 0 && (
-            <ul className="mt-3">
+            <ul className="data-card-list data-card-grid mt-3" aria-label="Reglas de escalamiento">
               {rules.map(rule => (
-                <li key={rule.alertType} className="text-sm text-muted">
-                  <strong>{labels[rule.alertType] ?? rule.alertType}</strong>: {rule.isActive ? `crítica tras ${rule.overdueDays} día(s)` : 'regla inactiva'} · {rule.roles.join(', ')}
-                </li>
+                <li key={rule.alertType}><article className="data-card" data-state={rule.isActive ? 'active' : 'inactive'}>
+                  <header className="data-card-head"><span className="data-card-title">{labels[rule.alertType] ?? rule.alertType}</span><span className={`badge-status ${rule.isActive ? 'badge-success' : 'badge-outline'}`}>{rule.isActive ? 'Activa' : 'Inactiva'}</span></header>
+                  <dl className="data-card-meta"><div><dt>Escalar tras</dt><dd>{rule.overdueDays} día(s) vencidos</dd></div><div><dt>Destinatarios</dt><dd>{rule.roles.join(', ')}</dd></div></dl>
+                  <div className="data-card-actions"><button type="button" className="btn btn-outline" onClick={() => setRuleForm({ ...rule, overdueDays: String(rule.overdueDays) })}><IconShield size={14} /><span>Editar regla</span></button></div>
+                </article></li>
               ))}
             </ul>
           )}
@@ -481,7 +435,11 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
               <p className="text-muted">Los avisos manuales quedan registrados en el historial con autor, fecha y motivo.</p>
             </div>
           </div>
-          <form className="form-grid" onSubmit={create}>
+          <form className="form-stack" onSubmit={create}>
+            <div className="form-sections">
+            <fieldset className="form-section">
+              <legend>Tarea y fecha</legend>
+              <div className="form-grid">
             <div className="form-group">
               <label className="form-label" htmlFor="manual-alert-title">Título o tarea</label>
               <input id="manual-alert-title" required maxLength={240} className="form-input" placeholder="ej. Revisar tolva de galpón de destete" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
@@ -490,6 +448,11 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
               <label className="form-label" htmlFor="manual-alert-due-date">Fecha prevista</label>
               <input id="manual-alert-due-date" required type="date" className="form-input tabular-nums" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} />
             </div>
+              </div>
+            </fieldset>
+            <fieldset className="form-section">
+              <legend>Destino y motivo</legend>
+              <div className="form-grid">
             <div className="form-group">
               <label className="form-label" htmlFor="manual-alert-barn">Galpón</label>
               <select id="manual-alert-barn" className="form-select" value={form.barnId} onChange={e => setForm({ ...form, barnId: e.target.value })}>
@@ -507,7 +470,10 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
               <label className="form-label" htmlFor="manual-alert-reason">Motivo de atención</label>
               <input id="manual-alert-reason" required minLength={5} className="form-input" placeholder="ej. Observación reportada en inspección diaria" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} />
             </div>
-            <div className="form-span-2 pt-2 border-t border-subtle">
+              </div>
+            </fieldset>
+            </div>
+            <div className="form-actions form-actions-sticky">
               <button className="btn btn-primary" disabled={busy}>
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconPlus size={16} />
@@ -538,7 +504,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                 <p className="text-muted">Próximas incluye hoy + 1 hasta hoy + 7 días. Las fechas posteriores permanecen en la agenda general.</p>
               </div>
             </div>
-            <div className="stats-grid">
+            <div className="report-metrics">
               {groups.map(([key, title]) => (
                 <button
                   className="metric-card"
@@ -608,65 +574,41 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
             </div>
 
             {alerts.length > 0 ? (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="text-center">Prioridad</th>
-                      <th className="text-left">Fecha prevista</th>
-                      <th className="text-left">Plazo</th>
-                      <th className="text-left">Tipo y tarea</th>
-                      <th className="text-left">Animal / Marrana</th>
-                      <th className="text-left">Galpón</th>
-                      <th className="text-left">Detalle</th>
-                      <th className="text-center">Estado</th>
-                      <th className="text-center">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {alerts.map(alert => (
-                      <tr key={alert.key}>
-                        <td className="text-center">
+              <ul className="data-card-list data-card-grid" aria-label="Agenda operativa y avisos">
+                    {visibleAlerts.map(alert => (
+                      <li key={alert.key}><article className="data-card" data-state={alert.status === 'pending' ? 'active' : 'inactive'}>
+                        <header className="data-card-head">
+                          <div className="data-card-identity"><span className="data-card-title">{alert.title}</span><span className="data-card-subtitle">{labels[alert.type] ?? alert.type} · {alert.barnName}</span></div>
                           <span className={`badge-status ${alert.priority === 'critical' ? 'badge-danger' : 'badge-outline'}`}>
                             {alert.priority === 'critical' ? 'Crítica' : 'Normal'}
                           </span>
-                        </td>
-                        <td className="text-left tabular-nums">{alert.dueDate}</td>
-                        <td className="text-left">
+                        </header>
+                        <dl className="data-card-meta">
+                          <div><dt>Fecha prevista</dt><dd className="font-mono tabular-nums">{alert.dueDate}</dd></div>
+                          <div><dt>Plazo</dt><dd>
                           <span className={`badge-status ${alert.bucket === 'overdue' ? 'badge-danger' : alert.bucket === 'today' ? 'badge-warning' : 'badge-outline'}`}>
                             {labels[alert.bucket] ?? alert.bucket}
                           </span>
-                        </td>
-                        <td className="text-left">
-                          <strong>{labels[alert.type] ?? alert.type}</strong>
-                          <div className="text-xs text-muted">{alert.title}</div>
-                        </td>
-                        <td className="text-left font-bold">{alert.animalCode ?? '—'}</td>
-                        <td className="text-left">{alert.barnName}</td>
-                        <td className="text-left text-xs">
+                          </dd></div>
+                          <div><dt>Animal / Marrana</dt><dd>{alert.animalCode ?? 'Sin animal'}</dd></div>
+                          <div><dt>Estado</dt><dd><span className={`badge-status ${alert.status === 'pending' ? 'badge-warning' : alert.status === 'attended' ? 'badge-info' : 'badge-success'}`}>{labels[alert.status] ?? alert.status}</span></dd></div>
+                        </dl>
+                        <p className="data-card-note">
                           {Object.entries(alert.details)
                             .map(([key, value]) => `${key}: ${String(value)}`)
                             .join(' · ') || '—'}
-                          {alert.resolutionReason && <div className="text-muted mt-1">Resolución: {alert.resolutionReason}</div>}
-                          <div className="mt-1">
-                            <a href={alert.eventLink} className="text-primary font-semibold">
-                              Ver evento original
-                            </a>
-                          </div>
-                        </td>
-                        <td className="text-center">
-                          <span className={`badge-status ${alert.status === 'pending' ? 'badge-warning' : alert.status === 'attended' ? 'badge-info' : 'badge-success'}`}>
-                            {labels[alert.status] ?? alert.status}
-                          </span>
-                        </td>
-                        <td className="text-center">
-                          <div className="inline-flex items-center justify-center gap-2 flex-wrap">
+                        </p>
+                        {alert.resolutionReason && <p className="data-card-note">Resolución: {alert.resolutionReason}</p>}
+                          <div className="data-card-actions">
+                            <a href={alert.eventLink} className="btn btn-outline"><IconArrowRight size={14} /><span>Ver evento original</span></a>
                             {alert.status === 'pending' && (
                               <button
                                 type="button"
-                                className="btn btn-secondary btn-sm"
+                                className="btn btn-primary"
                                 disabled={busy}
                                 onClick={() => {
+                                  setError('');
+                                  setAttendReason('');
                                   setAttendTarget(alert);
                                 }}
                               >
@@ -696,12 +638,9 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                               {recipient.readAt ? ` · leída ${recipient.readAt}` : ''}
                             </div>
                           ))}
-                        </td>
-                      </tr>
+                      </article></li>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+              </ul>
             ) : (
               <div className="card empty-state-card mt-3">
                 <div className="empty-icon-wrap">
@@ -723,6 +662,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                 </button>
               </div>
             )}
+            <Pagination page={currentPage} pageSize={pageSize} total={alerts.length} loading={busy} onPage={setPage} navLabel="Paginación de la agenda" prevLabel="Página anterior de avisos" nextLabel="Página siguiente de avisos" unit="avisos" />
           </section>
         </>
       )}
@@ -739,6 +679,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
           <h4 id="alert-attend-dialog-title" className="text-lg font-bold mb-2">
             Marcar Aviso como Atendido
           </h4>
+          {error && <div className="alert alert-error" role="alert">{error}</div>}
           <p className="text-sm text-muted mb-3">
             <strong>{attendTarget.title}</strong>
             {attendTarget.animalCode ? ` · Animal: ${attendTarget.animalCode}` : ''}
@@ -764,7 +705,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                 autoFocus
               />
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="form-actions form-actions-sticky">
               <button
                 type="button"
                 className="btn btn-outline"

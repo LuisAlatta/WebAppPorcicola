@@ -1,6 +1,6 @@
 import {expect,test} from './module-fixture';
 
-test('informes productivos aplican filtros y muestran tabla, indicadores y gráfico',async({page})=>{
+test('informes productivos aplican filtros y muestran tarjetas, indicadores y gráfico',async({page})=>{
   const urls:string[]=[];
   await page.route('**/api/**',route=>route.fulfill({status:200,json:{ok:true}}));
   await page.route('**/api/auth/me',route=>route.fulfill({status:200,json:{ok:true,user:{role:'administrador',username:'admin@prueba.pe'}}}));
@@ -23,9 +23,10 @@ test('informes productivos aplican filtros y muestran tabla, indicadores y gráf
   expect(urls[0]).toContain('animalCode=CERDO-01');expect(urls[0]).toContain('locationCode=corral-a');
   const [download]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'Descargar Excel'}).click()]);
   expect(download.suggestedFilename()).toBe('pesos.xlsx');expect(urls[1]).toBe(urls[0]);
-  await page.getByLabel('Tipo de informe productivo').selectOption('births');await page.getByLabel('Arete de la madre (Marrana)').fill('MADRE-01');
+  await page.getByRole('tab',{name:'Partos, camadas y mortalidad'}).click();await page.getByLabel('Arete de la madre (Marrana)').fill('MADRE-01');
   await page.getByRole('button',{name:'Consultar informe productivo'}).click();
   await expect(page.getByText('Nacidos muertos',{exact:true}).first()).toBeVisible();await expect(page.getByText('Bajas en lactancia',{exact:true}).first()).toBeVisible();
-  await expect(page.getByRole('columnheader',{name:'Ubicación / Corral'})).toBeVisible();await expect(page.getByRole('columnheader',{name:'Lote porcino'})).toBeVisible();
+  const births=page.getByRole('list',{name:'Partos y camadas'});
+  await expect(births).toContainText('corral-a');await expect(births).toContainText('lote-a');
   await expect(page.getByText('10.00 %',{exact:true}).first()).toBeVisible();expect(urls[2]).toContain('motherCode=MADRE-01');
 });

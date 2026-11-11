@@ -2389,7 +2389,17 @@ fieldset legend {
   }
 }
 
-.report-bars{display:grid;gap:.55rem;margin-top:1rem}.report-bars label{display:grid;grid-template-columns:minmax(110px,180px) minmax(80px,1fr) minmax(90px,150px);align-items:center;gap:.75rem;font-size:.875rem}.report-bars progress{width:100%;height:.8rem;accent-color:#188b73}.report-bars strong{text-align:right}@media(max-width:640px){.report-bars label{grid-template-columns:minmax(90px,1fr) 2fr;gap:.4rem}.report-bars strong{grid-column:2;text-align:left}}
+.report-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+.report-metrics .metric-card { min-width: 0; height: 100%; }
+.report-bars { display: grid; align-content: start; gap: 0.5rem; height: 18rem; overflow-y: auto; margin-top: 1rem; padding: 0.25rem; }
+.report-bars:empty { display: none; }
+.report-bars label { display: grid; grid-template-columns: minmax(110px, 180px) minmax(80px, 1fr) minmax(90px, 150px); align-items: center; gap: 0.75rem; font-size: 0.875rem; }
+.report-bars progress { width: 100%; height: 0.75rem; accent-color: var(--color-primary); }
+.report-bars strong { text-align: right; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .report-bars label { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 0.5rem; }
+  .report-bars strong { grid-column: 2; text-align: left; }
+}
 
 /* ==========================================================================
    Menú Principal (2 Columnas - Diseño Moderno y Simétrico)

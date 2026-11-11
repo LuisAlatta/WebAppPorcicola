@@ -14,6 +14,8 @@ import { generarReportePdf } from '../utils/exportPdf';
 import { generarReporteXlsx } from '../utils/exportXlsx';
 import { fetchOperation } from '../utils/operations';
 import { InformesProductivos } from './InformesProductivos';
+import { ModuleTabs } from './ModuleTabs';
+import { DataState } from './DataState';
 
 type Barn = { id: number; name: string };
 type Field = { key: string; label: string; dataType: 'text' | 'date' | 'number' | 'money' | 'percent'; unit?: string; filterable: boolean };
@@ -434,60 +436,18 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
         </div>
       )}
 
-      <div className="admin-tabs mb-4" role="tablist" aria-label="Secciones de reportes">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'panel'}
-          aria-label="Pestaña Panel General de estadísticas e indicadores"
-          className={`btn btn-sm ${section === 'panel' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('panel')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconBarChart size={14} />
-            <span>Panel general</span>
-          </span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'productivos'}
-          aria-label="Pestaña Informes Productivos: pesajes, partos y camadas"
-          className={`btn btn-sm ${section === 'productivos' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('productivos')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconBarChart size={14} />
-            <span>Informes productivos (pesos y partos)</span>
-          </span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'crear'}
-          aria-label="Pestaña Diseñar Reporte: constructor personalizado de informes"
-          className={`btn btn-sm ${section === 'crear' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('crear')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconPlus size={14} />
-            <span>Diseñar reporte</span>
-          </span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'guardados'}
-          aria-label={`Pestaña Informes Guardados: ${saved.length} plantillas disponibles`}
-          className={`btn btn-sm ${section === 'guardados' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('guardados')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconCheck size={14} />
-            <span>Informes guardados ({saved.length})</span>
-          </span>
-        </button>
-      </div>
+      <ModuleTabs
+        label="Secciones de reportes"
+        active={section}
+        onChange={setSection}
+        columns={2}
+        tabs={[
+          { id: 'panel', label: 'Panel general', ariaLabel: 'Pestaña Panel General de estadísticas e indicadores', icon: <IconBarChart size={14} /> },
+          { id: 'productivos', label: 'Informes productivos (pesos y partos)', ariaLabel: 'Pestaña Informes Productivos: pesajes, partos y camadas', icon: <IconBarChart size={14} /> },
+          { id: 'crear', label: 'Diseñar reporte', ariaLabel: 'Pestaña Diseñar Reporte: constructor personalizado de informes', icon: <IconPlus size={14} /> },
+          { id: 'guardados', label: 'Informes guardados', count: saved.length, ariaLabel: `Pestaña Informes Guardados: ${saved.length} plantillas disponibles`, icon: <IconCheck size={14} /> },
+        ]}
+      />
 
       {section === 'productivos' && <InformesProductivos barns={barns} />}
 
@@ -519,7 +479,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
             </p>
           </section>
 
-          <div className="filter-row">
+          <div className="report-metrics">
             {[
               ['Cabezas en inventario', dashboard?.totalAnimals],
               ['Animales identificados', dashboard?.identifiedAnimals],
@@ -530,36 +490,27 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
             ].map(([label, value]) => (
               <div className="metric-card" key={String(label)}>
                 <span>{label}</span>
-                <strong className="tabular-nums">{value ?? '—'}</strong>
+                <strong className="font-numeric tabular-nums">{value ?? '—'}</strong>
               </div>
             ))}
           </div>
 
           <section className="card">
             <h2>Población de animales por tipo</h2>
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Tipo de animal</th>
-                    <th className="text-right">Total animales</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboard?.animalsByType.map(row => (
-                    <tr key={row.type}>
-                      <td className="text-left">{row.type}</td>
-                      <td className="text-right tabular-nums font-mono font-bold">{row.total}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {dashboard && (dashboard.animalsByType.length ? (
+              <ul className="data-card-list data-card-grid" aria-label="Población por tipo">
+                {dashboard.animalsByType.map(row => (
+                  <li key={row.type}><article className="data-card">
+                    <header className="data-card-head"><span className="data-card-title">{row.type}</span><span className="badge-status badge-primary font-numeric tabular-nums">{row.total} animales</span></header>
+                  </article></li>
+                ))}
+              </ul>
+            ) : <DataState variant="empty" title="Sin población para el alcance seleccionado" />)}
             <div className="report-bars">
               {dashboard?.animalsByType.map(row => (
                 <label key={row.type}>
                   <span>{row.type}</span>
-                  <progress max={Math.max(1, ...(dashboard?.animalsByType.map(item => item.total) ?? []))} value={row.total} />
+                  <progress aria-label={`Población ${row.type}`} max={Math.max(1, ...(dashboard?.animalsByType.map(item => item.total) ?? []))} value={row.total} />
                   <strong className="tabular-nums">{row.total}</strong>
                 </label>
               ))}
@@ -568,40 +519,23 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
 
           <section className="card">
             <h2>Ventas por mes y moneda</h2>
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Mes</th>
-                    <th className="text-left">Moneda</th>
-                    <th className="text-right">Total ventas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {currencyTotals.map((row, i) => (
-                    <tr key={`${row.month}-${row.currency}-${i}`}>
-                      <td className="text-left tabular-nums">{row.month}</td>
-                      <td className="text-left">{row.currency === 'PEN' ? 'PEN (S/)' : row.currency}</td>
-                      <td className="text-right tabular-nums font-mono font-bold">{row.value}</td>
-                    </tr>
-                  ))}
-                  {!currencyTotals.length && (
-                    <tr>
-                      <td colSpan={3} className="text-center p-4 text-muted">
-                        Sin ventas registradas en el periodo.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {dashboard && (currencyTotals.length ? (
+              <ul className="data-card-list data-card-grid" aria-label="Ventas por mes y moneda">
+                {currencyTotals.map((row, i) => (
+                  <li key={`${row.month}-${row.currency}-${i}`}><article className="data-card">
+                    <header className="data-card-head"><span className="data-card-title font-numeric">{row.month}</span><span className="badge-status badge-outline">{row.currency}</span></header>
+                    <dl className="data-card-meta"><div><dt>Total ventas</dt><dd className="font-mono tabular-nums">{row.value}</dd></div></dl>
+                  </article></li>
+                ))}
+              </ul>
+            ) : <DataState variant="empty" title="Sin ventas registradas en el periodo." />)}
             <div className="report-bars">
               {currencyTotals.map(row => {
                 const max = Math.max(1, ...currencyTotals.filter(item => item.currency === row.currency).map(item => item.amountMinor));
                 return (
                   <label key={`${row.month}-${row.currency}`}>
                     <span>{row.month} · {row.currency}</span>
-                    <progress max={max} value={row.amountMinor} />
+                    <progress aria-label={`Ventas ${row.month} ${row.currency}`} max={max} value={row.amountMinor} />
                     <strong className="tabular-nums">{row.value}</strong>
                   </label>
                 );
@@ -611,44 +545,26 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
 
           <section className="card">
             <h2>Costo de raciones y alimentación</h2>
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Mes</th>
-                    <th className="text-left">Moneda</th>
-                    <th className="text-right">Raciones entregadas</th>
-                    <th className="text-right">Costo total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboard?.feedCosts.map(row => (
-                    <tr key={`${row.month}-${row.currency}`}>
-                      <td className="text-left tabular-nums">{row.month}</td>
-                      <td className="text-left">{row.currency === 'PEN' ? 'PEN (S/)' : row.currency}</td>
-                      <td className="text-right tabular-nums font-mono">{row.count}</td>
-                      <td className="text-right tabular-nums font-mono font-bold">
-                        {(row.costMinor / 100).toLocaleString('es-PE', { style: 'currency', currency: row.currency })}
-                      </td>
-                    </tr>
-                  ))}
-                  {!dashboard?.feedCosts.length && (
-                    <tr>
-                      <td colSpan={4} className="text-center p-4 text-muted">
-                        Sin entregas de alimento con costo en el periodo.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {dashboard && (dashboard.feedCosts.length ? (
+              <ul className="data-card-list data-card-grid" aria-label="Costos de alimentación por mes y moneda">
+                {dashboard.feedCosts.map(row => (
+                  <li key={`${row.month}-${row.currency}`}><article className="data-card">
+                    <header className="data-card-head"><span className="data-card-title font-numeric">{row.month}</span><span className="badge-status badge-outline">{row.currency}</span></header>
+                    <dl className="data-card-meta">
+                      <div><dt>Raciones entregadas</dt><dd className="font-mono tabular-nums">{row.count}</dd></div>
+                      <div><dt>Costo total</dt><dd className="font-mono tabular-nums">{(row.costMinor / 100).toLocaleString('es-PE', { style: 'currency', currency: row.currency })}</dd></div>
+                    </dl>
+                  </article></li>
+                ))}
+              </ul>
+            ) : <DataState variant="empty" title="Sin entregas de alimento con costo en el periodo." />)}
             <div className="report-bars">
               {dashboard?.feedCosts.map(row => {
                 const max = Math.max(1, ...(dashboard?.feedCosts.filter(item => item.currency === row.currency).map(item => item.costMinor) ?? []));
                 return (
                   <label key={`${row.month}-${row.currency}`}>
                     <span>{row.month} · {row.currency}</span>
-                    <progress max={max} value={row.costMinor} />
+                    <progress aria-label={`Costo de alimentación ${row.month} ${row.currency}`} max={max} value={row.costMinor} />
                     <strong className="tabular-nums">{(row.costMinor / 100).toLocaleString('es-PE', { style: 'currency', currency: row.currency })}</strong>
                   </label>
                 );
@@ -679,6 +595,9 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                 </span>
               </button>
             </div>
+            <div className="form-sections">
+            <fieldset className="form-section">
+              <legend>Tipo y finalidad</legend>
             <div className="form-grid">
               <div className="form-group">
                 <label className="form-label" htmlFor="report-source">Fuente de datos</label>
@@ -710,6 +629,11 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                 <label className="form-label" htmlFor="report-purpose">Finalidad u objetivo</label>
                 <input id="report-purpose" className="form-input" maxLength={500} placeholder="ej. Evaluar ganancia media diaria antes del traslado a engorde" value={purpose} onChange={e => setPurpose(e.target.value)} />
               </div>
+            </div>
+            </fieldset>
+            <fieldset className="form-section">
+              <legend>Alcance y organización</legend>
+            <div className="form-grid">
               <div className="form-group">
                 <label className="form-label" htmlFor="report-barn">Galpón</label>
                 <select id="report-barn" className="form-select" value={selectedBarn} onChange={e => setSelectedBarn(e.target.value)}>
@@ -817,7 +741,9 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                   </span>
                 ))}
               </div>
-              <fieldset className="form-span-2">
+            </div>
+            </fieldset>
+              <fieldset className="form-section">
                 <legend className="form-label font-bold mb-2">Columnas visibles</legend>
                 <div className="checkbox-pill-grid">
                   {activeSource?.fields.map(f => (
@@ -832,7 +758,8 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                   ))}
                 </div>
               </fieldset>
-              <div className="form-span-2 flex flex-wrap gap-2 pt-2 border-t border-subtle">
+              <p className="note-box">{activeSource?.label ?? 'Selecciona una fuente'} · {columns.length} columnas · {from || 'inicio'} a {to || 'hoy'} · {selectedBarn ? barns.find(barn => String(barn.id) === selectedBarn)?.name ?? selectedBarn : 'Todos los galpones asignados'}. La vista previa permite descargar PDF o Excel.</p>
+              <div className="form-actions form-actions-sticky flex-wrap">
                 <button
                   className="btn btn-primary"
                   aria-label="Generar vista previa interactiva del reporte"
@@ -1115,22 +1042,17 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
           </div>
 
           {saved.length > 0 ? (
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Nombre del reporte</th>
-                    <th className="text-left">Finalidad y alcance</th>
-                    <th className="text-center">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <ul className="data-card-list data-card-grid" aria-label="Informes guardados">
                   {saved.map(item => (
-                    <tr key={item.id}>
-                      <td className="text-left font-bold">{item.name}</td>
-                      <td className="text-left text-muted">{item.purpose}</td>
-                      <td className="text-center">
-                        <div className="inline-flex items-center justify-center gap-2">
+                    <li key={item.id}><article className="data-card">
+                      <header className="data-card-head"><span className="data-card-title">{item.name}</span></header>
+                      <p className="data-card-note">{item.purpose}</p>
+                      <dl className="data-card-meta">
+                        <div><dt>Fuente</dt><dd>{sources.find(source => source.id === item.definition.source)?.label ?? String(item.definition.source ?? 'Sin fuente')}</dd></div>
+                        <div><dt>Desde</dt><dd>{String(item.definition.from ?? 'Inicio')}</dd></div>
+                        <div><dt>Hasta</dt><dd>{String(item.definition.to ?? 'Hoy')}</dd></div>
+                      </dl>
+                        <div className="data-card-actions">
                           <button
                             className="btn btn-secondary btn-sm"
                             aria-label={`Abrir y ejecutar informe ${item.name}`}
@@ -1152,12 +1074,9 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                             </span>
                           </button>
                         </div>
-                      </td>
-                    </tr>
+                    </article></li>
                   ))}
-                </tbody>
-              </table>
-            </div>
+            </ul>
           ) : (
             <div className="card empty-state-card mt-3">
               <div className="empty-icon-wrap">
