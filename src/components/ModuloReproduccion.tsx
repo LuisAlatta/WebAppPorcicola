@@ -13,6 +13,9 @@ import {
   IconX,
 } from './icons';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
+import { DataState } from './DataState';
+import { ModalDialog } from './ModalDialog';
+import { ModuleTabs } from './ModuleTabs';
 import type { Perfil } from '../types';
 
 interface AnimalOption {
@@ -193,6 +196,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     setStatus('pending');
   };
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [repeatCycle, setRepeatCycle] = useState<string | null>(null);
@@ -284,11 +288,16 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
   }, [from, to, status]);
 
   const load = useCallback(async () => {
-    const data = await fetchData();
-    setCycles(data.cycles);
-    setTargetLitters(data.targetLitters);
-    setFemales(data.females);
-    setSires(data.sires);
+    setError(null);
+    try {
+      const data = await fetchData();
+      setCycles(data.cycles);
+      setTargetLitters(data.targetLitters);
+      setFemales(data.females);
+      setSires(data.sires);
+    } finally {
+      setLoading(false);
+    }
   }, [fetchData]);
 
   useEffect(() => {
@@ -300,9 +309,12 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         setTargetLitters(data.targetLitters);
         setFemales(data.females);
         setSires(data.sires);
+        setLoading(false);
       })
       .catch((err: unknown) => {
-        if (active) setError(err instanceof Error ? err.message : 'Error cargando reproducción.');
+        if (!active) return;
+        setError(err instanceof Error ? err.message : 'Error cargando reproducción.');
+        setLoading(false);
       });
     return () => {
       active = false;
@@ -681,7 +693,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
           type="button"
           className="btn btn-outline btn-sm"
           disabled={busy}
-          onClick={() => void load()}
+          onClick={() => void load().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Error cargando reproducción.'))}
           aria-label="Actualizar agenda reproductiva"
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -691,40 +703,21 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         </button>
       </div>
 
-      {error && <div className="alert alert-error" role="alert" aria-live="assertive">{error}</div>}
+      {error && !dateCorrection && !countCorrection && !postweaningCycle && !litterEventCycle && cycles.length > 0 && <div className="alert alert-error" role="alert" aria-live="assertive">{error}</div>}
       {notice && <div className="alert alert-success" role="status" aria-live="polite">{notice}</div>}
 
-      <div className="admin-tabs mb-4" role="tablist" aria-label="Secciones del módulo reproductivo">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'ciclos'}
-          className={`btn btn-sm ${section === 'ciclos' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('ciclos')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconHeart size={14} />
-            <span>Ciclos reproductivos</span>
-            {cycles.length > 0 && (
-              <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{cycles.length}</span>
-            )}
-          </span>
-        </button>
-        {!soloLectura && (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={section === 'registro'}
-            className={`btn btn-sm ${section === 'registro' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => setSection('registro')}
-          >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconPlus size={14} />
-              <span>Registrar servicio / Gestante</span>
-            </span>
-          </button>
-        )}
-      </div>
+      <ModuleTabs
+        label="Secciones del módulo reproductivo"
+        active={section}
+        onChange={setSection}
+        columns={2}
+        tabs={[
+          { id: 'ciclos', label: 'Ciclos reproductivos', icon: <IconHeart size={14} />, count: cycles.length },
+          ...(!soloLectura
+            ? [{ id: 'registro', label: 'Registrar servicio / Gestante', icon: <IconPlus size={14} /> }]
+            : []),
+        ]}
+      />
 
       {section === 'registro' && !soloLectura && (
         <div className="card mb-4">
@@ -769,6 +762,9 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
           </div>
 
           <form onSubmit={submitCycle} className="form-stack">
+            <div className="form-sections">
+            <fieldset className="form-section">
+              <legend>Identificación del ciclo</legend>
             <div className="grid-3">
               <div className="form-group">
                 <label className="form-label">Marrana (Hembra reproductora)</label>
@@ -819,8 +815,11 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 </div>
               )}
             </div>
+            </fieldset>
 
             {!isAntecedent && (
+              <fieldset className="form-section">
+                <legend>Padre o material genético</legend>
               <div className="grid-3">
                 <div className="form-group">
                   <label className="form-label">Origen del material</label>
@@ -877,8 +876,11 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                   />
                 </div>
               </div>
+            </fieldset>
             )}
 
+            <fieldset className="form-section">
+              <legend>Parto y antecedentes</legend>
             <div className="grid-3">
               <div className="form-group">
                 <label className="form-label">
@@ -926,6 +928,8 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 onChange={(e) => setForm((prev) => ({ ...prev, observations: e.target.value }))}
                 maxLength={1000}
               />
+            </div>
+            </fieldset>
             </div>
 
             <div className="form-actions">
@@ -1051,65 +1055,74 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
           </div>
         </div>
 
-        {!cycles.length ? (
-          <div className="empty-state-card">
-            <div className="empty-icon-wrap">
-              <IconHeart size={28} className="text-primary" />
-            </div>
-            <p className="font-semibold text-base">Sin ciclos reproductivos para los filtros seleccionados</p>
-            <p className="text-sm text-muted">
-              Ajusta las fechas o el estado, o registra un nuevo servicio reproductivo para abrir el ciclo de una marrana.
-            </p>
-            {hasActiveFilters && (
+        {loading && !cycles.length ? (
+          <DataState variant="loading" title="Cargando ciclos reproductivos…" />
+        ) : error && !cycles.length ? (
+          <DataState
+            variant="error"
+            title="No se pudieron cargar los ciclos reproductivos"
+            description={error}
+            action={
               <button
                 type="button"
-                className="btn btn-outline btn-sm mt-3"
-                onClick={clearFilters}
+                className="btn btn-outline inline-flex items-center justify-center gap-2"
+                onClick={() => {
+                  setLoading(true);
+                  void load().catch((err) => {
+                    setError(err instanceof Error ? err.message : 'Error cargando reproducción.');
+                    setLoading(false);
+                  });
+                }}
               >
-                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconX size={14} />
-                  <span>Limpiar filtros</span>
-                </span>
+                <IconRefreshCw size={16} />
+                <span>Reintentar</span>
               </button>
-            )}
-          </div>
+            }
+          />
+        ) : !cycles.length ? (
+          <DataState
+            variant="empty"
+            title="Sin ciclos reproductivos para los filtros seleccionados"
+            description="Ajusta las fechas o el estado, o registra un nuevo servicio reproductivo para abrir el ciclo de una marrana."
+            icon={<IconHeart size={28} className="text-primary" />}
+            action={hasActiveFilters ? <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" onClick={clearFilters}><IconX size={16} /><span>Limpiar filtros</span></button> : !soloLectura ? <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" onClick={() => setSection('registro')}><IconPlus size={16} /><span>Registrar servicio</span></button> : undefined}
+          />
         ) : (
           <div className="flex flex-col gap-3">
             {cycles.map((cycle) => (
               <article className="reproduction-cycle" key={cycle.id}>
                 {/* Header del Ciclo */}
-                <div className="flex flex-wrap items-start justify-between gap-3 pb-2.5 border-b border-subtle">
-                  <div className="flex flex-col gap-1">
+                <header className="data-card-head">
+                  <div className="data-card-identity">
                     <div className="inline-flex items-center gap-2 flex-wrap">
                       <span className="arete-badge">{cycle.femaleCode}</span>
                       {cycle.femaleAlias && <span className="font-semibold text-sm">{cycle.femaleAlias}</span>}
                       <span className="badge-status badge-outline text-xs tabular-nums font-mono">Ciclo #{cycle.cycleNumber}</span>
-                      <span
-                        className={`badge-status ${
-                          cycle.reproductiveStatus === 'gestation'
-                            ? 'badge-success'
-                            : cycle.reproductiveStatus === 'possible_pregnancy'
-                            ? 'badge-primary'
-                            : cycle.reproductiveStatus === 'abortion'
-                            ? 'badge-danger'
-                            : 'badge-outline'
-                        }`}
-                      >
-                        {statusLabels[cycle.reproductiveStatus] ?? cycle.reproductiveStatus}
-                      </span>
                       {cycle.antecedent && (
                         <span className="badge-status badge-outline text-xs">Antecedente</span>
                       )}
                     </div>
-                    <div className="text-xs text-muted">
+                    <span className="data-card-subtitle">
                       {cycle.barnName} · {cycle.locationCode ?? 'Ubicación sin asignar'} · {cycle.lotCode ?? 'Sin lote'} ·{' '}
                       {cycle.femaleBreed ?? 'Raza sin registrar'}
                       {cycle.aptitude ? ` · ${cycle.aptitude}` : ''}
-                      {cycle.lastFarrowingDate ? <> · Último parto: <strong className="tabular-nums font-mono">{cycle.lastFarrowingDate}</strong></> : ''}
-                    </div>
+                    </span>
                   </div>
 
                   <div className="reproduction-due flex flex-col items-end gap-1">
+                    <span
+                      className={`badge-status ${
+                        cycle.reproductiveStatus === 'gestation'
+                          ? 'badge-success'
+                          : cycle.reproductiveStatus === 'possible_pregnancy'
+                          ? 'badge-primary'
+                          : cycle.reproductiveStatus === 'abortion'
+                          ? 'badge-danger'
+                          : 'badge-outline'
+                      }`}
+                    >
+                      {statusLabels[cycle.reproductiveStatus] ?? cycle.reproductiveStatus}
+                    </span>
                     <span
                       className={`badge-status tabular-nums font-mono ${
                         cycle.cycleStatus !== 'open' ? 'badge-outline' : cycle.daysRemaining < 0
@@ -1122,15 +1135,25 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       <IconCalendar size={13} />
                       <span>{cycle.dueLabel}</span>
                     </span>
-                    <div className="text-xs text-muted">
-                      {cycle.cycleStatus === 'open' ? 'Probable parto' : 'Fecha probable registrada'}: <strong className="tabular-nums font-mono">{cycle.probableFarrowingDate}</strong>
-                      {cycle.cycleStatus === 'open' && <> · <span className="tabular-nums font-mono font-medium">{cycle.daysRemaining}</span> días ({cycle.dueDateSource === 'manual' ? 'manual' : <><span className="tabular-nums font-mono">{cycle.gestationDays}</span> días</>})</>}
-                    </div>
-                    {cycle.dueDateReason && (
-                      <div className="text-xs text-muted italic max-w-xs text-right">{cycle.dueDateReason}</div>
-                    )}
+                    <span className="text-xs text-muted tabular-nums font-mono">
+                      {cycle.daysRemaining} días
+                    </span>
                   </div>
-                </div>
+                </header>
+
+                <dl className="data-card-meta">
+                  <div><dt>Servicio</dt><dd className="font-mono tabular-nums">{cycle.serviceAnchorDate ?? 'Sin registrar'}</dd></div>
+                  <div><dt>Parto probable</dt><dd className="font-mono tabular-nums">{cycle.probableFarrowingDate}</dd></div>
+                  <div><dt>Fuente de fecha</dt><dd>{cycle.dueDateSource === 'manual' ? 'Manual' : `${cycle.gestationDays} días de gestación`}</dd></div>
+                  <div><dt>Parto real</dt><dd className="font-mono tabular-nums">{cycle.litter?.farrowingDate ?? cycle.lastFarrowingDate ?? 'Sin registrar'}</dd></div>
+                  <div><dt>Camada</dt><dd className="font-mono tabular-nums">{cycle.litter ? `${cycle.litter.femaleAlive + cycle.litter.maleAlive + cycle.litter.unsexedAlive} lechones vivos` : 'Sin camada abierta'}</dd></div>
+                </dl>
+
+                {cycle.dueDateReason && (
+                  <p className="text-xs text-muted italic mt-2">
+                    <strong>Motivo de fecha manual:</strong> {cycle.dueDateReason}
+                  </p>
+                )}
 
                 {/* Historial de Servicios */}
                 {cycle.services.length > 0 && (
@@ -1161,25 +1184,31 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
 
                 {/* Eventos / Palpaciones */}
                 {cycle.events.length > 0 && (
-                  <div className="mt-2.5">
-                    <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-1.5">
                       Eventos y palpaciones ({cycle.events.length})
                     </div>
-                    <div className="flex flex-col gap-1">
+                    <ol className="timeline">
                       {cycle.events.map((entry) => (
-                        <div key={entry.id} className="text-xs text-muted flex items-center gap-2 flex-wrap">
-                          <span className="tabular-nums font-mono">{entry.eventDate}</span>
-                          <span>·</span>
-                          <span className="font-medium text-body">{entry.eventType}</span>
-                          {entry.physiologicalStatus && (
-                            <span className="badge-status badge-outline text-xs">
-                              {statusLabels[entry.physiologicalStatus] ?? entry.physiologicalStatus}
-                            </span>
-                          )}
-                          {entry.reason && <span className="italic">· {entry.reason}</span>}
-                        </div>
+                        <li key={entry.id} className="timeline-item">
+                          <span className="timeline-dot" aria-hidden="true" />
+                          <div className="timeline-body">
+                            <div className="timeline-head">
+                              <span className="timeline-title">{entry.eventType}</span>
+                              <span className="timeline-date font-mono tabular-nums">{entry.eventDate}</span>
+                            </div>
+                            <div className="timeline-meta">
+                              {entry.physiologicalStatus && (
+                                <span className="badge-status badge-outline text-xs">
+                                  {statusLabels[entry.physiologicalStatus] ?? entry.physiologicalStatus}
+                                </span>
+                              )}
+                              {entry.reason && <span className="italic">{entry.reason}</span>}
+                            </div>
+                          </div>
+                        </li>
                       ))}
-                    </div>
+                    </ol>
                   </div>
                 )}
 
@@ -1191,83 +1220,92 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
 
                 {/* Camada / Parto */}
                 {cycle.litter && (
-                  <div className="card-subtle p-3 rounded mt-3">
-                    <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                      <div className="inline-flex items-center gap-2">
-                        <IconActivity size={15} className="text-primary" />
-                        <strong className="text-sm">Camada · <span className="tabular-nums font-mono">{cycle.litter.id.slice(0, 8)}</span></strong>
+                  <section className="data-card litter-card mt-3" aria-label={`Camada de ${cycle.femaleCode}`}>
+                    <header className="data-card-head">
+                      <div className="data-card-identity">
+                        <span className="data-card-title inline-flex items-center gap-2">
+                          <IconActivity size={15} className="text-primary" />
+                          <span>Camada · <span className="tabular-nums font-mono">{cycle.litter.id.slice(0, 8)}</span></span>
+                        </span>
+                        <span className="data-card-subtitle">
+                          Parto real: <span className="tabular-nums font-mono">{cycle.litter.farrowingDate ?? cycle.lastFarrowingDate ?? 'Sin registrar'}</span>
+                        </span>
                       </div>
-                      <span className="text-xs text-muted">
-                        Parto real: <strong className="tabular-nums font-mono">{cycle.litter.farrowingDate ?? cycle.lastFarrowingDate ?? 'Sin registrar'}</strong>
-                      </span>
-                    </div>
+                    </header>
 
-                    <p className="text-xs text-muted mb-2">
-                      Lechones activos:{' '}
-                      <span className="tabular-nums font-mono font-semibold text-body">{cycle.litter.femaleAlive}</span> hembras ·{' '}
-                      <span className="tabular-nums font-mono font-semibold text-body">{cycle.litter.maleAlive}</span> machos ·{' '}
-                      <span className="tabular-nums font-mono font-semibold text-body">{cycle.litter.unsexedAlive}</span> sin sexar ·{' '}
-                      <strong className="text-body tabular-nums font-mono font-bold">
-                        {cycle.litter.femaleAlive + cycle.litter.maleAlive + cycle.litter.unsexedAlive} vivos totales
-                      </strong>
-                      . Destete previsto:{' '}
-                      <strong className="text-body tabular-nums font-mono">{cycle.litter.expectedWeaningDate ?? 'Sin parámetro'}</strong>
-                      {cycle.litter.actualWeaningDate ? <> · Destete real: <strong className="tabular-nums font-mono">{cycle.litter.actualWeaningDate}</strong></> : ''}.
-                    </p>
+                    <dl className="data-card-meta">
+                      <div><dt>Hembras vivas</dt><dd className="font-mono tabular-nums">{cycle.litter.femaleAlive}</dd></div>
+                      <div><dt>Machos vivos</dt><dd className="font-mono tabular-nums">{cycle.litter.maleAlive}</dd></div>
+                      <div><dt>Sin sexar</dt><dd className="font-mono tabular-nums">{cycle.litter.unsexedAlive}</dd></div>
+                      <div><dt>Vivos totales</dt><dd className="font-mono tabular-nums font-semibold">{cycle.litter.femaleAlive + cycle.litter.maleAlive + cycle.litter.unsexedAlive}</dd></div>
+                      <div><dt>Destete previsto</dt><dd className="font-mono tabular-nums">{cycle.litter.expectedWeaningDate ?? 'Sin parámetro'}</dd></div>
+                      <div><dt>Destete real</dt><dd className="font-mono tabular-nums">{cycle.litter.actualWeaningDate ?? 'Sin registrar'}</dd></div>
+                    </dl>
 
                     {!soloLectura && (
-                      <div className="form-actions gap-2 flex-wrap">
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-xs"
-                          aria-label={`Registrar baja, adopción o destete para camada de ${cycle.femaleCode}`}
-                          onClick={() => {
-                            const nextCycleId = litterEventCycle === cycle.id ? null : cycle.id;
-                            setLitterEventCycle(nextCycleId);
-                            if (nextCycleId) setLitterEventEffectiveDate(cycle.litter?.farrowingDate ?? farmToday());
-                          }}
-                        >
-                          <span className="inline-flex items-center justify-center gap-2 leading-none">
-                            <IconPlus size={12} />
-                            <span>Baja, adopción o destete</span>
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-xs"
-                          disabled={busy || !(cycle.litter.farrowingDate ?? cycle.lastFarrowingDate)}
-                          aria-label={`Corregir fecha real del parto para camada de ${cycle.femaleCode}`}
-                          onClick={() => openDateCorrection(cycle)}
-                        >
-                          <span className="inline-flex items-center justify-center gap-2 leading-none">
-                            <IconEdit size={12} />
-                            <span>Corregir fecha real del parto</span>
-                          </span>
-                        </button>
-                        {cycle.litter.birthCounts && !cycle.litter.historicalOnly && (
+                      <>
+                        <div className="data-card-actions">
                           <button
                             type="button"
-                            className="btn btn-outline btn-xs"
-                            disabled={busy}
-                            aria-label={`Corregir cantidades de lechones para camada de ${cycle.femaleCode}`}
-                            onClick={() => openCountCorrection(cycle)}
+                            className="btn btn-primary"
+                            aria-label={`Registrar baja, adopción o destete para camada de ${cycle.femaleCode}`}
+                            onClick={() => {
+                              const nextCycleId = litterEventCycle === cycle.id ? null : cycle.id;
+                              setLitterEventCycle(nextCycleId);
+                              if (nextCycleId) setLitterEventEffectiveDate(cycle.litter?.farrowingDate ?? farmToday());
+                            }}
                           >
-                            <span className="inline-flex items-center justify-center gap-2 leading-none">
-                              <IconEdit size={12} />
-                              <span>Corregir cantidades</span>
-                            </span>
+                            <IconPlus size={14} />
+                            <span>Baja, adopción o destete</span>
                           </button>
-                        )}
-                      </div>
+                        </div>
+                        <details className="data-card-disclosure">
+                          <summary>
+                            <IconEdit size={14} />
+                            <span>Corregir datos de la camada</span>
+                          </summary>
+                          <div className="data-card-actions">
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              disabled={busy || !(cycle.litter.farrowingDate ?? cycle.lastFarrowingDate)}
+                              aria-label={`Corregir fecha real del parto para camada de ${cycle.femaleCode}`}
+                              onClick={() => openDateCorrection(cycle)}
+                            >
+                              <IconEdit size={14} />
+                              <span>Corregir fecha real del parto</span>
+                            </button>
+                            {cycle.litter.birthCounts && !cycle.litter.historicalOnly && (
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                disabled={busy}
+                                aria-label={`Corregir cantidades de lechones para camada de ${cycle.femaleCode}`}
+                                onClick={() => openCountCorrection(cycle)}
+                              >
+                                <IconEdit size={14} />
+                                <span>Corregir cantidades</span>
+                              </button>
+                            )}
+                          </div>
+                        </details>
+                      </>
                     )}
 
                     {/* Corrección de fecha del parto */}
                     {!soloLectura && dateCorrection?.cycleId === cycle.id && (
+                      <ModalDialog
+                        labelledBy="litter-date-dialog-title"
+                        onDismiss={() => setDateCorrection(null)}
+                        dismissDisabled={busy}
+                      >
                       <form
-                        className="form-stack mt-3 p-3 bg-surface rounded border border-border"
+                        className="form-stack"
                         aria-label="Corrección de fecha real del parto"
                         onSubmit={(event) => void saveLitterDate(event)}
                       >
+                        <h4 id="litter-date-dialog-title" className="text-lg font-bold mb-1">Corregir fecha real del parto</h4>
+                        {error && <div className="alert alert-error" role="alert">{error}</div>}
                         <p className="text-xs text-muted">
                           Fecha vigente al abrir: <strong>{dateCorrection.expectedCurrentDate}</strong>. Indique el
                           motivo de la corrección para conservarlo en el historial.
@@ -1334,15 +1372,23 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           </button>
                         </div>
                       </form>
+                      </ModalDialog>
                     )}
 
                     {/* Corrección de cantidades */}
                     {!soloLectura && countCorrection?.cycleId === cycle.id && (
+                      <ModalDialog
+                        labelledBy="litter-count-dialog-title"
+                        onDismiss={() => setCountCorrection(null)}
+                        dismissDisabled={busy}
+                      >
                       <form
-                        className="form-stack mt-3 p-3 bg-surface rounded border border-border"
+                        className="form-stack"
                         aria-label="Corrección de cantidades de nacimiento"
                         onSubmit={(event) => void saveLitterCounts(event)}
                       >
+                        <h4 id="litter-count-dialog-title" className="text-lg font-bold mb-1">Corregir cantidades de nacimiento</h4>
+                        {error && <div className="alert alert-error" role="alert">{error}</div>}
                         <p className="text-xs text-muted">
                           Corrija los nacimientos originales. Las bajas y destetes posteriores se conservarán y se
                           comprobarán antes de guardar.
@@ -1415,8 +1461,9 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           </button>
                         </div>
                       </form>
+                      </ModalDialog>
                     )}
-                  </div>
+                  </section>
                 )}
 
                 {/* Plan postdestete */}
@@ -1453,11 +1500,19 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 )}
 
                 {postweaningCycle === cycle.id && (
+                  <ModalDialog
+                    labelledBy={`postweaning-dialog-title-${cycle.id}`}
+                    onDismiss={() => setPostweaningCycle(null)}
+                    dismissDisabled={busy}
+                  >
                   <form
-                    className="form-stack mt-3 p-3 bg-surface rounded border border-border"
+                    className="form-stack"
                     aria-label={`Plan postdestete para ${cycle.femaleCode}`}
                     onSubmit={(event) => void savePostweaningPlan(event, cycle)}
                   >
+                    <h4 id={`postweaning-dialog-title-${cycle.id}`} className="text-lg font-bold mb-1">Plan postdestete</h4>
+                    {error && <div className="alert alert-error" role="alert">{error}</div>}
+                    <p className="text-xs text-muted mb-2">{cycle.femaleCode} · ajusta el destete de referencia y los intervalos de celo y repeticiones.</p>
                     <div className="grid-2">
                       <div className="form-group">
                         <label className="form-label text-xs">Fecha real del destete anterior</label>
@@ -1550,14 +1605,23 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       </button>
                     </div>
                   </form>
+                  </ModalDialog>
                 )}
 
                 {/* Evento de Camada (baja, adopción, destete) */}
                 {litterEventCycle === cycle.id && cycle.litter && (
+                  <ModalDialog
+                    labelledBy={`litter-event-dialog-title-${cycle.id}`}
+                    onDismiss={() => setLitterEventCycle(null)}
+                    dismissDisabled={busy}
+                  >
                   <form
-                    className="form-stack mt-3 p-3 bg-surface rounded border border-border"
+                    className="form-stack"
                     onSubmit={(event) => void saveLitterEvent(event, cycle)}
                   >
+                    <h4 id={`litter-event-dialog-title-${cycle.id}`} className="text-lg font-bold mb-1">Baja, adopción o destete</h4>
+                    {error && <div className="alert alert-error" role="alert">{error}</div>}
+                    <p className="text-xs text-muted mb-2">{cycle.femaleCode} · camada {cycle.litter.id.slice(0, 8)}</p>
                     <div className="grid-3">
                       <div className="form-group">
                         <label className="form-label text-xs">Evento</label>
@@ -1698,6 +1762,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       </button>
                     </div>
                   </form>
+                  </ModalDialog>
                 )}
 
                 {/* Barra de Acciones del Ciclo Abierto */}

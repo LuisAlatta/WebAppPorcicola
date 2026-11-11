@@ -2837,6 +2837,26 @@ fieldset legend {
 .weight-correction-form { padding: 0.75rem; background: var(--color-bg); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); }
 .tag-history .data-card-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .data-card-total { border-left-color: var(--color-primary-ring); background: var(--color-primary-light); }
+.data-card-disclosure { border-top: 1px solid var(--color-border-subtle); padding-top: 0.5rem; }
+.data-card-disclosure > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 2.5rem;
+  padding: 0 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-secondary, #445e52);
+  cursor: pointer;
+  list-style: none;
+}
+.data-card-disclosure > summary::-webkit-details-marker { display: none; }
+.data-card-disclosure > summary::after { content: ""; width: 0.5rem; height: 0.5rem; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform var(--transition-fast); }
+.data-card-disclosure[open] > summary::after { transform: rotate(-135deg); }
+.data-card-disclosure > .data-card-actions { margin-top: 0.5rem; }
+.litter-card { background: var(--color-bg); }
+.litter-card .data-card-meta { background: var(--color-surface); }
 @media (min-width: 720px) { .data-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* Ficha: datos en lista de definiciones */

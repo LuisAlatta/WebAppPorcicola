@@ -48,6 +48,8 @@ Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; i
 
 - Renovación visual, fase 3 (Sanidad y Vacunas): Sanidad usa `ModuleTabs` con contador en Retiros e Historial y conserva las etiquetas accesibles. Retiros vigentes, próximas actuaciones e historial clínico pasaron a tarjetas con encabezado, metadatos y acción Corregir en el pie; los vacíos usan `DataState`. En Vacunas, la agenda incorpora un botón Filtros con contador y chips removibles, y cada dosis es una tarjeta con vacuna, animal, fechas, estado y acciones simétricas: Aplicar como primaria y Reprogramar/Cancelar o Corregir/Anular en el pie. Las reglas automáticas también son tarjetas con Editar y Desactivar. Los cinco modales ya usan la hoja móvil de `ModalDialog`. Las pruebas de navegador de sanidad y vacunas localizan tarjetas. Verificación: typecheck, lint, build, 28 pruebas dirigidas de interfaz y 10 de integración; despliegue en producción con contenido comprobado por HTTP.
 
+- Renovación visual, fase 4, Reproducción: pestañas compartidas, resumen de ciclos y camadas en cuadrículas, correcciones plegables, eventos en línea de tiempo y registro agrupado en tarjetas. Fecha del parto, cantidades, plan postdestete y eventos de camada usan modales; los errores se muestran dentro del diálogo para permitir reintentos. Carga con esqueleto, vacío con acción y error con Reintentar. Typecheck, lint, build y 21 pruebas dirigidas correctos; pruebas de navegador adaptadas, no ejecutadas. Producción `078a7b2d-c40f-48d8-9c28-253f53268daa`, assets comprobados por HTTP. Finanzas continúa pendiente dentro de la fase 4.
+
 ## Orden de lectura
 
 1. Este archivo, para conocer el estado y los próximos pasos.

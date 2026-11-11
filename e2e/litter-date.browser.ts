@@ -28,7 +28,7 @@ test('conflicto de fecha preserva formulario y reintento usa la misma operación
     if(bodies.length===1){await route.fulfill({status:409,json:{error:'La fecha fue modificada. Actualice el registro.'}});return;}
     fixture.setDate(String(body.farrowingDate));await route.fulfill({status:201,json:{ok:true,litterId:'litter-date-1',farrowingDate:body.farrowingDate,replayed:false}});
   });
-  await page.goto('/reproduccion');await page.getByRole('button',{name:/Corregir fecha real del parto/}).first().click();
+  await page.goto('/reproduccion');await page.locator('summary').filter({hasText:'Corregir datos de la camada'}).first().click();await page.getByRole('button',{name:/Corregir fecha real del parto/}).first().click();
   await page.getByLabel('Nueva fecha real del parto',{exact:true}).fill('2026-06-19');await page.getByLabel('Motivo de la corrección de fecha',{exact:true}).fill('Fecha comprobada en el cuaderno');
   const saveDate=page.getByRole('button',{name:'Guardar corrección de fecha de parto'});
   await saveDate.focus();await saveDate.press('Enter');
@@ -70,19 +70,21 @@ test('adopción envía las fichas identificadas y la camada destino',async({page
   await page.route('**/api/reproduction/litters/targets',route=>route.fulfill({status:200,json:{ok:true,targets:[{litterId:'litter-source',motherCode:'CERDA-ORIGEN',barnName:'Galpón A',farrowingDate:'2026-06-20',historicalOnly:false},{litterId:'litter-target',motherCode:'CERDA-DESTINO',barnName:'Galpón A',farrowingDate:'2026-06-20',historicalOnly:false},{litterId:'litter-future',motherCode:'CERDA-FUTURA',barnName:'Galpón A',farrowingDate:'2026-06-22',historicalOnly:false},{litterId:'litter-historical',motherCode:'CERDA-HISTORICA',barnName:'Galpón A',farrowingDate:'2026-05-20',historicalOnly:true}]}}));
   await page.route('**/api/reproduction/litters/litter-source/events',route=>{body=route.request().postDataJSON() as Record<string,unknown>;return route.fulfill({status:201,json:{ok:true}});});
   await page.goto('/reproduccion');const source=page.locator('article').filter({hasText:'CERDA-ORIGEN'});const openEvent=source.getByRole('button',{name:'Baja, adopción o destete'});await openEvent.focus();await expect(openEvent).toBeFocused();await openEvent.press('Enter');
-  await source.locator('select[name="eventType"]').selectOption('adoption');
-  const effectiveDate = source.locator('input[name="effectiveDate"]');
+  const dialog=page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.locator('select[name="eventType"]').selectOption('adoption');
+  const effectiveDate = dialog.locator('input[name="effectiveDate"]');
   await expect(effectiveDate).toHaveAttribute('min', '2026-06-20');
   await effectiveDate.fill('2026-06-21');
-  await source.locator('input[name="quantity"]').fill('1');
-  const identifiedPiglet=source.getByRole('checkbox',{name:/LECHONA-01/});
+  await dialog.locator('input[name="quantity"]').fill('1');
+  const identifiedPiglet=dialog.getByRole('checkbox',{name:/LECHONA-01/});
   await identifiedPiglet.focus();await identifiedPiglet.press('Space');
-  const targets = source.locator('select[name="destinationLitterId"]');
+  const targets = dialog.locator('select[name="destinationLitterId"]');
   await expect(targets.locator('option[value="litter-historical"]')).toHaveCount(0);
   await expect(targets.locator('option[value="litter-future"]')).toHaveCount(0);
   await expect(targets.locator('option[value="litter-target"]')).toContainText('parto 2026-06-20');
-  await targets.selectOption('litter-target');await source.locator('input[name="reason"]').fill('Adopción registrada');
-  const saveButton=source.getByRole('button',{name:'Guardar evento de camada'});
+  await targets.selectOption('litter-target');await dialog.locator('input[name="reason"]').fill('Adopción registrada');
+  const saveButton=dialog.getByRole('button',{name:'Guardar evento de camada'});
   await expect(saveButton).toBeEnabled();
   await saveButton.focus();await saveButton.press('Enter');
   await expect.poll(()=>body?.eventType).toBe('adoption');expect(body).toMatchObject({animalCodes:['LECHONA-01'],destinationLitterId:'litter-target'});
@@ -91,7 +93,7 @@ test('adopción envía las fichas identificadas y la camada destino',async({page
 test('corrección de cantidades conserva el formulario ante conflicto y envía valores originales',async({page})=>{
   await setup(page,'responsable');const requests:Record<string,unknown>[]=[];
   await page.route('**/api/reproduction/litters/litter-date-1/correction',async route=>{requests.push(route.request().postDataJSON() as Record<string,unknown>);if(requests.length===1)return route.fulfill({status:409,json:{error:'La camada cambió; actualice los datos.'}});return route.fulfill({status:201,json:{ok:true,replayed:false}});});
-  await page.goto('/reproduccion');await page.getByRole('button',{name:'Corregir cantidades'}).click();
+  await page.goto('/reproduccion');await page.locator('summary').filter({hasText:'Corregir datos de la camada'}).first().click();await page.getByRole('button',{name:'Corregir cantidades'}).click();
   const correctionForm=page.locator('form[aria-label="Corrección de cantidades de nacimiento"]');
   await page.getByLabel('Machos vivos al nacer').fill('3');await page.getByLabel('Motivo de corrección de cantidades').fill('Conteo verificado');
   const saveCounts=correctionForm.getByRole('button',{name:'Guardar cantidades corregidas de nacimiento'});
@@ -109,7 +111,7 @@ test('respuesta perdida conserva datos y clave hasta recuperar corrección confi
     if(bodies.length===1){fixture.setDate(String(body.farrowingDate));await route.abort('failed');return;}
     await route.fulfill({status:200,json:{ok:true,litterId:'litter-date-1',farrowingDate:body.farrowingDate,replayed:true}});
   });
-  await page.goto('/reproduccion');await page.getByRole('button',{name:/Corregir fecha real del parto/}).first().click();
+  await page.goto('/reproduccion');await page.locator('summary').filter({hasText:'Corregir datos de la camada'}).first().click();await page.getByRole('button',{name:/Corregir fecha real del parto/}).first().click();
   await page.getByLabel('Nueva fecha real del parto',{exact:true}).fill('2026-06-19');await page.getByLabel('Motivo de la corrección de fecha',{exact:true}).fill('Contraste con registro original');
   const saveDate=page.getByRole('button',{name:'Guardar corrección de fecha de parto'});
   await saveDate.focus();await saveDate.press('Enter');await expect(page.getByRole('alert')).toContainText('No se pudo confirmar');
@@ -119,5 +121,6 @@ test('respuesta perdida conserva datos y clave hasta recuperar corrección confi
 
 for(const role of ['administrador','responsable','veterinario','operario'])test(`corrección de fecha respeta perfil ${role}`,async({page})=>{
   await setup(page,role);await page.goto('/reproduccion');await expect(page.getByText('Camada · litter-d',{exact:false})).toBeVisible();
+  if(role!=='operario')await page.locator('summary').filter({hasText:'Corregir datos de la camada'}).first().click();
   await expect(page.getByRole('button',{name:/Corregir fecha real del parto/})).toHaveCount(role==='operario'?0:1);
 });
