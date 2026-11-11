@@ -2290,67 +2290,67 @@ fieldset legend {
    Menú Principal (2 Columnas - Diseño Moderno y Simétrico)
    ========================================================================== */
 .menu-app-container {
-  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 640px;
   margin: 0 auto;
   width: 100%;
-  padding: 0.75rem 0.5rem 2rem 0.5rem;
+  padding: 0.25rem 0 1.5rem;
 }
 
 .menu-app-header {
-  text-align: center;
-  margin-bottom: 1.5rem;
+  padding: 0.25rem 0 0;
 }
 
 .menu-app-title {
-  font-size: 1.45rem;
-  font-weight: 800;
+  font-size: 1.5rem;
+  line-height: 1.25;
+  font-weight: 650;
   color: var(--color-text);
-  margin-bottom: 0.25rem;
-  letter-spacing: -0.02em;
+  margin-bottom: 0.375rem;
+  letter-spacing: -0.01em;
 }
 
 .menu-app-subtitle {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
   color: var(--color-text-muted);
 }
 
 .menu-app-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 0.75rem;
   width: 100%;
 }
 
 .menu-app-tile {
-  background: var(--color-surface);
-  border: 1px solid #e1e7e2;
-  border-radius: 18px;
-  padding: 1.4rem 0.85rem;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  text-align: center;
-  cursor: pointer;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
-  min-height: 128px;
+  gap: 0.875rem;
   width: 100%;
+  min-width: 0;
+  min-height: 5.25rem;
+  padding: 0.875rem 1rem;
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
   font-family: inherit;
   outline: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .menu-app-tile:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.07);
+  box-shadow: var(--shadow-md);
 }
 
 .menu-app-tile:active {
-  transform: scale(0.96);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  background: var(--color-bg);
 }
 
 .menu-app-tile:focus-visible {
@@ -2359,27 +2359,47 @@ fieldset legend {
   box-shadow: none;
 }
 
+.menu-app-grid > .menu-app-tile:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
 .menu-tile-icon-box {
-  width: 58px;
-  height: 58px;
-  border-radius: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-sm);
   line-height: 1;
-  transition: transform 0.18s ease;
 }
 
-.menu-app-tile:hover .menu-tile-icon-box {
-  transform: scale(1.08);
+.menu-tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
 }
 
 .menu-tile-title {
-  font-size: 0.95rem;
-  font-weight: 700;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  line-height: 1.3;
   color: var(--color-text);
-  line-height: 1.2;
   letter-spacing: -0.01em;
+}
+
+.menu-tile-description {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.menu-tile-chevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--color-text-muted);
 }
 
 /* Acentos y colores por opción */

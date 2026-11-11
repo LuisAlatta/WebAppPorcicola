@@ -10,6 +10,8 @@ Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; i
 
 ## Observaciones del cliente — 11/11/2026
 
+- Menú principal renovado con el mismo lenguaje visual: encabezado “Tu granja”, tarjetas horizontales con icono, nombre, descripción breve y flecha. Una columna en móvil y dos en pantallas anchas, con la última tarjeta impar ocupando la fila completa para mantener simetría. El nombre accesible de cada tarjeta es solo el módulo.
+
 - Padrón de animales adaptado a móvil: en pantallas de hasta 900 px cada ficha se muestra como tarjeta con código, alias, estado, seis datos en una cuadrícula de tres columnas y ubicación; las acciones Ver ficha, Editar y Eliminar quedan en una fila de igual ancho. En escritorio se conserva la tabla completa. La barra de galpones deja los botones como iconos en móvil para dar espacio a los nombres. Iconos de regreso corregidos: Volver al padrón y Volver a seleccionar galpones usan flecha izquierda, y Volver al Inicio en el aviso de acceso denegado incorpora la misma flecha.
 
 - Gestión de galpones renovada para móvil: barra superior compacta con Actualizar como icono, pestañas simétricas en tres columnas y galpones en tarjetas en lugar de tabla. Cada tarjeta muestra código, nombre, estado con color, zona, capacidad y equipo (responsable, operario, veterinario) con "Sin asignar" resaltado; acciones Editar, Personal, Estado y Eliminar en una cuadrícula 2x2 uniforme. El alta queda como botón de ancho completo en móvil y el formulario de equipo usa tarjetas por rol con borde de color; el motivo ya no usa estilo en línea y ocupa una columna en pantallas angostas. Vacío y carga con estados consistentes.

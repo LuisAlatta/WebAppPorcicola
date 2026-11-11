@@ -19,6 +19,15 @@ test('selecciona varios galpones antes de mostrar módulos y cambia el alcance',
   await page.getByRole('button', { name: 'Siguiente', exact: true }).click();
   await expect(page.getByText('Galpones: Galpón 1, Galpón 3', { exact: true })).toBeVisible();
   await expect(page.getByRole('main').getByRole('button', { name: 'Animales', exact: true })).toBeVisible();
+  await expect(page.locator('.menu-app-tile')).toHaveCount(8);
+  await expect(page.locator('.menu-app-tile').first()).toContainText('Fichas, pesajes y padrón');
+  const tiles = await page.locator('.menu-app-tile').evaluateAll(nodes => nodes.slice(0, 2).map(node => {
+    const rect = node.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  }));
+  expect(tiles[0].width).toBe(tiles[1].width);
+  expect(tiles[0].height).toBeGreaterThanOrEqual(84);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.getByRole('button', { name: 'Cambiar galpones', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: 'Galpón 1', exact: true })).toBeChecked();
   await page.getByRole('checkbox', { name: 'Galpón 3', exact: true }).uncheck();

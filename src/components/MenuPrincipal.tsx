@@ -11,6 +11,7 @@ import {
   IconBarChart,
   IconSettings,
   IconShield,
+  IconArrowRight,
 } from './icons';
 
 interface MenuPrincipalProps {
@@ -22,6 +23,7 @@ interface MenuPrincipalProps {
 interface MenuOption {
   view: Vista;
   title: string;
+  description: string;
   icon: React.ReactNode;
   colorClass: string;
   adminOnly?: boolean;
@@ -32,49 +34,57 @@ export function MenuPrincipal({ perfil, onNavigate }: MenuPrincipalProps) {
     {
       view: 'animales',
       title: 'Animales',
-      icon: <IconPig size={30} />,
+      description: 'Fichas, pesajes y padrón',
+      icon: <IconPig size={24} />,
       colorClass: 'menu-tile-animales',
     },
     {
       view: 'inventario',
       title: 'Inventario',
-      icon: <IconBox size={30} />,
+      description: 'Stock y movimientos',
+      icon: <IconBox size={24} />,
       colorClass: 'menu-tile-inventario',
     },
     {
       view: 'reproduccion',
       title: 'Reproducción',
-      icon: <IconHeart size={30} />,
+      description: 'Ciclos, servicios y partos',
+      icon: <IconHeart size={24} />,
       colorClass: 'menu-tile-reproduccion',
     },
     {
       view: 'alimentacion',
       title: 'Alimentación',
-      icon: <IconWheat size={30} />,
+      description: 'Consumo y raciones',
+      icon: <IconWheat size={24} />,
       colorClass: 'menu-tile-alimentacion',
     },
     {
       view: 'sanidad',
       title: 'Sanidad',
-      icon: <IconActivity size={30} />,
+      description: 'Tratamientos y retiros',
+      icon: <IconActivity size={24} />,
       colorClass: 'menu-tile-sanidad',
     },
     {
       view: 'alertas',
       title: 'Alertas',
-      icon: <IconBell size={30} />,
+      description: 'Pendientes y avisos',
+      icon: <IconBell size={24} />,
       colorClass: 'menu-tile-alertas',
     },
     {
       view: 'finanzas',
       title: 'Finanzas',
-      icon: <IconCoins size={30} />,
+      description: 'Ingresos, gastos y saldos',
+      icon: <IconCoins size={24} />,
       colorClass: 'menu-tile-finanzas',
     },
     {
       view: 'reportes',
       title: 'Reportes',
-      icon: <IconBarChart size={30} />,
+      description: 'Indicadores y exportaciones',
+      icon: <IconBarChart size={24} />,
       colorClass: 'menu-tile-reportes',
     },
   ];
@@ -84,14 +94,16 @@ export function MenuPrincipal({ perfil, onNavigate }: MenuPrincipalProps) {
       {
         view: 'configuracion',
         title: 'Configuración',
-        icon: <IconSettings size={30} />,
+        description: 'Parámetros de la granja',
+        icon: <IconSettings size={24} />,
         colorClass: 'menu-tile-configuracion',
         adminOnly: true,
       },
       {
         view: 'administracion',
         title: 'Administración',
-        icon: <IconShield size={30} />,
+        description: 'Usuarios y galpones',
+        icon: <IconShield size={24} />,
         colorClass: 'menu-tile-administracion',
         adminOnly: true,
       },
@@ -100,6 +112,10 @@ export function MenuPrincipal({ perfil, onNavigate }: MenuPrincipalProps) {
 
   return (
     <div className="menu-app-container">
+      <header className="menu-app-header">
+        <h1 className="menu-app-title">Tu granja</h1>
+        <p className="menu-app-subtitle">Elige un módulo para trabajar.</p>
+      </header>
       <div className="menu-app-grid">
         {options.map((opt) => (
           <button
@@ -107,11 +123,16 @@ export function MenuPrincipal({ perfil, onNavigate }: MenuPrincipalProps) {
             type="button"
             className={`menu-app-tile ${opt.colorClass}`}
             onClick={() => onNavigate(opt.view)}
+            aria-label={opt.title}
           >
-            <div className="menu-tile-icon-box">
+            <span className="menu-tile-icon-box">
               {opt.icon}
-            </div>
-            <span className="menu-tile-title">{opt.title}</span>
+            </span>
+            <span className="menu-tile-body">
+              <span className="menu-tile-title">{opt.title}</span>
+              <span className="menu-tile-description">{opt.description}</span>
+            </span>
+            <IconArrowRight size={16} className="menu-tile-chevron" />
           </button>
         ))}
       </div>
