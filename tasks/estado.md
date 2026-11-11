@@ -15,7 +15,8 @@ Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; i
 - La selección es temporal en la pestaña: al recargar o cerrar sesión debe realizarse nuevamente. Los enlaces directos conservan su destino al completar la selección.
 - El padrón incorpora Editar y Eliminar en cada fila para los perfiles con permiso. Eliminar exige confirmación y motivo: usa la desactivación auditada y reversible, conserva la historia y no altera inventario ni registra salida física. El filtro inicial muestra solo fichas activas; las inactivas pueden consultarse y reactivarse desde su ficha.
 - Se añadieron pruebas de selección, validación de permisos, alcance en consultas y exportaciones, y casos de navegador para selección múltiple y acciones del padrón. Las pruebas de módulos existentes completan ahora la selección inicial mediante una fixture compartida.
-- Despliegue pendiente de cambiar la sesión global de Cloudflare: la cuenta detectada corresponde a otro proyecto. No se han modificado credenciales ni recursos remotos.
+- Producción publicada tras verificar la cuenta correcta: versión `d9e1725f-a9c7-44d2-8640-cfb6576fa8eb`, Worker `web-porcicola-produccion`. Rutas `/` y `/galpones` verificadas con HTTP 200 y la compilación actual; APIs `/api/barns` y `/api/animals` verificadas con HTTP 401 sin sesión. Cron `5 5 * * *` desplegado correctamente. No se hicieron cambios de esquema ni de datos.
+- Typecheck, lint, compilación y pruebas dirigidas correctos. La suite completa agotó el tiempo incluso con Node 24 y un solo worker (600 segundos): no se considera validada la regresión completa. Pruebas de navegador añadidas, pero no ejecutadas localmente para no iniciar servidores.
 
 ## Orden de lectura
 
