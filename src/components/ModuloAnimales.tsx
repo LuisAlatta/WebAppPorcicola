@@ -5,6 +5,7 @@ import {
   IconAlertTriangle,
   IconArrowLeft,
   IconArrowRight,
+  IconBuilding,
   IconCalendar,
   IconCheck,
   IconClipboard,
@@ -12,7 +13,6 @@ import {
   IconEye,
   IconEyeOff,
   IconFilter,
-  IconList,
   IconPig,
   IconPlus,
   IconRefreshCw,
@@ -254,6 +254,22 @@ function emptyForm(): AnimalForm {
 function formatWeight(value: number | null): string {
   if (value === null || value === undefined) return 'Sin dato';
   return `${Number(value).toFixed(2)} kg`;
+}
+
+function useCompactLayout() {
+  const query = '(max-width: 900px)';
+  const [compact, setCompact] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : false,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(query);
+    const sync = () => setCompact(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
+  return compact;
 }
 
 function Metric({
@@ -890,6 +906,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
 
   const animals = data?.animals ?? [];
   const total = data?.total ?? 0;
+  const compactLayout = useCompactLayout();
   const closeAnimalWorkspace = () => {
     if (saving || busy) return;
     detailRequest.current?.abort();
@@ -953,7 +970,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
           aria-label="Ir a sección padrón de animales"
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconList size={14} />
+            <IconArrowLeft size={14} />
             <span>Volver al padrón</span>
             {total > 0 && (
               <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{total}</span>
@@ -1227,6 +1244,59 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 </p>
               </div>
             ) : (
+              compactLayout ? (
+                <ul className="animal-card-list" aria-label="Padrón de animales">
+                  {animals.map((animal) => (
+                    <li key={animal.id}>
+                      <article className="animal-card" data-state={animal.isActive ? 'active' : 'inactive'}>
+                        <header className="animal-card-head">
+                          <div className="animal-card-identity">
+                            <span className="animal-card-code">{animal.code}</span>
+                            {animal.alias ? <span className="animal-card-alias">{animal.alias}</span> : null}
+                          </div>
+                          <span className={animal.isActive ? (STATUS_BADGE[animal.status] ?? 'badge-status') : 'badge-status badge-outline'}>
+                            {animal.isActive ? animal.statusLabel : 'Inactiva'}
+                          </span>
+                        </header>
+
+                        <dl className="animal-card-meta">
+                          <div><dt>Arete</dt><dd className="font-mono">{animal.currentTag}</dd></div>
+                          <div><dt>Tipo</dt><dd>{animal.animalTypeLabel}</dd></div>
+                          <div><dt>Sexo</dt><dd>{animal.sexLabel}</dd></div>
+                          <div><dt>Edad</dt><dd className="font-mono">{animal.ageDays !== null ? `${animal.ageDays} d` : animal.ageLabel ?? 'Sin dato'}</dd></div>
+                          <div><dt>Peso vivo</dt><dd className="font-mono">{formatWeight(animal.currentWeightKg)}</dd></div>
+                          <div><dt>Etapa</dt><dd>{animal.stageName}</dd></div>
+                        </dl>
+
+                        <p className="animal-card-location">
+                          <IconBuilding size={14} />
+                          <span>{animal.barnName}</span>
+                          <span className="animal-card-place">{animal.locationName ?? 'Sin ubicación'}{animal.lotName ? ` · Lote ${animal.lotName}` : ''}</span>
+                        </p>
+
+                        <div className="animal-card-actions">
+                          <button
+                            type="button"
+                            className="btn animal-action animal-action-view"
+                            onClick={() => void openDetail(animal.code)}
+                            disabled={loadingDetail}
+                            aria-label={`Ver ficha de ${animal.code}`}
+                          >
+                            <IconEye size={14} />
+                            <span>Ver ficha</span>
+                          </button>
+                          {!soloLectura && <>
+                            <button type="button" className="btn animal-action animal-action-edit" disabled={loadingDetail || busy}
+                              aria-label={`Editar animal ${animal.code}`} onClick={async () => { const record = await openDetail(animal.code); if (record) startEdit(record); }}><IconEdit size={14} /><span>Editar</span></button>
+                            <button type="button" className="btn animal-action animal-action-delete" disabled={!animal.isActive || busy}
+                              aria-label={`Eliminar animal ${animal.code}`} onClick={() => { setDeleteTarget(animal); setDeleteReason(''); setDeleteError(''); }}><IconTrash size={14} /><span>Eliminar</span></button>
+                          </>}
+                        </div>
+                      </article>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
               <div className="table-responsive">
                 <table className="data-table" aria-label="Padrón de animales">
                   <thead>
@@ -1298,6 +1368,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   </tbody>
                 </table>
               </div>
+              )
             )}
             {total > 0 && <nav aria-label="Páginas del padrón" className="animal-pagination">
               <button type="button" className="btn btn-outline btn-sm" aria-label="Página anterior del padrón" disabled={loading || page === 0} onClick={() => { listRequest.current++; setPage(value => value - 1); }}><IconArrowLeft size={16} /><span>Anterior</span></button>

@@ -80,7 +80,7 @@ test('padrón compacto con filtros desplegables y acciones simétricas', async (
   await expect(page.getByLabel('Estado productivo', { exact: true })).toBeVisible();
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-  const actions = page.locator('.animal-table-actions .animal-action');
+  const actions = page.locator('.animal-card-actions .animal-action');
   const styles = await actions.evaluateAll(buttons => buttons.map(button => {
     const rect = button.getBoundingClientRect();
     return { width: rect.width, height: rect.height, color: getComputedStyle(button).backgroundColor };
@@ -88,11 +88,27 @@ test('padrón compacto con filtros desplegables y acciones simétricas', async (
   expect(styles).toHaveLength(3);
   expect(new Set(styles.map(style => `${style.width},${style.height}`)).size).toBe(1);
   expect(new Set(styles.map(style => style.color)).size).toBe(3);
+  await expect(page.locator('.animal-card')).toHaveCount(1);
+  await expect(page.locator('.animal-card-meta')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  const pager = page.getByRole('navigation', { name: 'Páginas del padrón', exact: true });
+  expect(await pager.evaluate(element => element.closest('.table-responsive, .animal-card-list') === null)).toBe(true);
+  const before = await pager.boundingBox();
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const after = await pager.boundingBox();
+  expect(after?.x).toBe(before?.x);
+});
+
+test('en escritorio conserva la tabla y la paginación fuera de su desplazamiento', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockAnimalApi(page, initialAnimal());
+  await page.goto('/animales');
+  await expect(page.locator('.animal-card-list')).toHaveCount(0);
+  await expect(page.locator('.table-responsive table[aria-label="Padrón de animales"]')).toBeVisible();
   const pager = page.getByRole('navigation', { name: 'Páginas del padrón', exact: true });
   expect(await pager.evaluate(element => element.closest('.table-responsive') === null)).toBe(true);
   const before = await pager.boundingBox();
-  await page.locator('.table-responsive').first().evaluate(element => { element.scrollLeft = element.scrollWidth; });
+  await page.locator('.table-responsive').evaluate(element => { element.scrollLeft = element.scrollWidth; });
   const after = await pager.boundingBox();
   expect(after?.x).toBe(before?.x);
 });

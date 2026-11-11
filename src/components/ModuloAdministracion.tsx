@@ -16,6 +16,7 @@ import {
   IconCalendar,
   IconSettings,
   IconActivity,
+  IconArrowLeft,
 } from './icons';
 import { farmToday, newOperationKey } from '../utils/operations';
 import { ModalDialog } from './ModalDialog';
@@ -278,10 +279,11 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
         <div>
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary inline-flex items-center justify-center gap-2"
             onClick={() => onNavigate('inicio')}
           >
-            Volver al Inicio
+            <IconArrowLeft size={16} />
+            <span>Volver al Inicio</span>
           </button>
         </div>
       </div>
