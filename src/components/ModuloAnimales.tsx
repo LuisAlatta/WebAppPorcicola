@@ -302,6 +302,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     mother: '', father: '', breed: '', aptitude: '', originType: '', entryStage: '',
   });
   const [form, setForm] = useState<AnimalForm>(emptyForm);
+  const [appliedFilters, setAppliedFilters] = useState<Filters>(filters);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [operationKey, setOperationKey] = useState<string>(() => newOperationKey('ani'));
   const [saving, setSaving] = useState<boolean>(false);
@@ -329,6 +331,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const [weightCorrection, setWeightCorrection] = useState<{ id: number; kg: string; reason: string; operationKey: string } | null>(null);
 
   const queryString = useMemo(() => {
+    const filters = appliedFilters;
     const params = new URLSearchParams();
     params.set('limit', String(pageSize));
     params.set('offset', String(page * pageSize));
@@ -344,7 +347,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
     for (const key of ['mother','father','breed','aptitude','originType','entryStage'] as const) if (filters[key].trim()) params.set(key,filters[key].trim());
     const text = params.toString();
     return text ? `?${text}` : '';
-  }, [filters, page]);
+  }, [appliedFilters, page]);
 
   const loadList = useCallback(async () => {
     const request = ++listRequest.current;
@@ -394,24 +397,34 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const options = data?.options;
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
-    listRequest.current++;
-    setPage(0);
     setFilters((prev) => ({ ...prev, [key]: value, ...(key === 'barnId' ? {location: ''} : {}) }));
   };
 
+  const applyFilters = (searchOnly = false) => {
+    const next = searchOnly ? { ...appliedFilters, q: filters.q.trim() } : { ...filters, q: filters.q.trim() };
+    if (page === 0 && (Object.keys(next) as (keyof Filters)[]).every(key => next[key] === appliedFilters[key])) {
+      void loadList();
+      return;
+    }
+    listRequest.current++;
+    setPage(0);
+    setAppliedFilters(next);
+  };
+
   const hasActiveFilters = useMemo(() => {
+    const filters = appliedFilters;
     return Boolean(
       filters.q || filters.type || filters.sex || filters.status || filters.stage ||
-      filters.barnId || filters.location || filters.lot || filters.active ||
+      filters.barnId || filters.location || filters.lot || filters.active !== '1' ||
       filters.mother || filters.father || filters.breed || filters.aptitude ||
       filters.originType || filters.entryStage
     );
-  }, [filters]);
+  }, [appliedFilters]);
 
   const clearFilters = useCallback(() => {
     listRequest.current++;
     setPage(0);
-    setFilters({
+    const cleared: Filters = {
       q: '',
       type: '',
       sex: '',
@@ -420,14 +433,16 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
       barnId: '',
       location: '',
       lot: '',
-      active: '',
+      active: '1',
       mother: '',
       father: '',
       breed: '',
       aptitude: '',
       originType: '',
       entryStage: '',
-    });
+    };
+    setFilters(cleared);
+    setAppliedFilters(cleared);
   }, []);
 
   const setField = <K extends keyof AnimalForm>(key: K, value: AnimalForm[K]) => {
@@ -857,8 +872,6 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
   const animals = data?.animals ?? [];
   const total = data?.total ?? 0;
-  const inactivas = animals.filter((animal) => !animal.isActive).length;
-  const conPeso = animals.filter((animal) => animal.currentWeightKg !== null).length;
 
   return (
     <div>
@@ -981,33 +994,15 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
 
       {data && section === 'padron' && (
         <div className="section-block">
-          <div className="grid-3">
-            <Metric
-              label="Animales en el padrón"
-              value={String(total)}
-              detail={total === animals.length ? 'Todos visibles' : `Mostrando ${animals.length}`}
-              icon={<IconPig size={14} />}
-            />
-            <Metric
-              label="Fichas inactivas"
-              value={String(inactivas)}
-              detail="No intervienen en selecciones nuevas"
-              icon={<IconEyeOff size={14} />}
-            />
-            <Metric
-              label="Con peso actual"
-              value={String(conPeso)}
-              detail="Último pesaje válido por fecha"
-              icon={<IconScale size={14} />}
-            />
-          </div>
-
           <div className="card">
-            <div className="card-header-clean mb-2 flex-wrap gap-2 justify-between">
-              <div className="inline-flex items-center gap-2">
-                <IconFilter size={16} className="text-primary" />
-                <span className="section-title">Buscar y filtrar</span>
+            <form className="animal-search-bar" onSubmit={event => { event.preventDefault(); applyFilters(true); }}>
+              <div className="form-group animal-search-field">
+                <label className="form-label" htmlFor="ani-q">Buscar</label>
+                <input id="ani-q" type="search" className="form-input" value={filters.q}
+                  onChange={event => setFilter('q', event.target.value)} placeholder="Código o nombre del animal" />
               </div>
+              <button type="submit" className="btn btn-primary inline-flex items-center justify-center gap-2"><IconSearch size={16} /><span>Buscar</span></button>
+              <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" aria-expanded={filtersOpen} aria-controls="animal-filters-panel" onClick={() => setFiltersOpen(open => !open)}><IconFilter size={16} /><span>Filtros</span></button>
               {hasActiveFilters && (
                 <button
                   type="button"
@@ -1021,21 +1016,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                   </span>
                 </button>
               )}
-            </div>
-
+            </form>
+            {filtersOpen && <form id="animal-filters-panel" className="animal-filters-panel" onSubmit={event => { event.preventDefault(); applyFilters(); }}>
             <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-q">Buscar</label>
-                <input
-                  id="ani-q"
-                  type="search"
-                  className="form-input"
-                  value={filters.q}
-                  onChange={(event) => setFilter('q', event.target.value)}
-                  placeholder="Ej. 002 o A-2002"
-                />
-              </div>
-
               <div className="form-group">
                 <label className="form-label" htmlFor="ani-type">Tipo</label>
                 <select
@@ -1228,6 +1211,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 </select>
               </div>
             </div>
+            <div className="animal-filter-actions"><button type="submit" className="btn btn-primary inline-flex items-center justify-center gap-2"><IconCheck size={16} /><span>Aplicar filtros</span></button></div>
+            </form>}
           </div>
 
           <div className="card">
@@ -1237,14 +1222,6 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <span>Padrón de animales</span>
               </span>
               <span className="text-xs text-muted">{total} ficha{total === 1 ? '' : 's'}</span>
-              {hasActiveFilters && (
-                <button type="button" className="btn btn-outline btn-sm" onClick={clearFilters}>
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconX size={14} />
-                    <span>Limpiar filtros</span>
-                  </span>
-                </button>
-              )}
             </div>
 
             {animals.length === 0 ? (
@@ -1316,23 +1293,23 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                           </span>
                         </td>
                         <td className="text-center">
-                          <div className="animal-row-actions">
+                          <div className="animal-row-actions animal-table-actions">
                           <button
                             type="button"
-                            className="btn btn-outline btn-sm"
+                            className="btn animal-action animal-action-view"
                             onClick={() => void openDetail(animal.code)}
                             disabled={loadingDetail}
                             aria-label={`Ver ficha de ${animal.code}`}
                           >
-                            <span className="inline-flex items-center justify-center gap-1 leading-none text-xs">
+                            <span className="inline-flex items-center justify-center gap-2 leading-none">
                               <IconEye size={14} />
                               <span>Ver ficha</span>
                             </span>
                           </button>
                           {!soloLectura && <>
-                            <button type="button" className="btn btn-outline btn-sm inline-flex items-center justify-center gap-2" disabled={loadingDetail || busy}
+                            <button type="button" className="btn animal-action animal-action-edit" disabled={loadingDetail || busy}
                               aria-label={`Editar animal ${animal.code}`} onClick={async () => { const record = await openDetail(animal.code); if (record) startEdit(record); }}><IconEdit size={14} /><span>Editar</span></button>
-                            <button type="button" className="btn btn-outline btn-sm text-danger inline-flex items-center justify-center gap-2" disabled={!animal.isActive || busy}
+                            <button type="button" className="btn animal-action animal-action-delete" disabled={!animal.isActive || busy}
                               aria-label={`Eliminar animal ${animal.code}`} onClick={() => { setDeleteTarget(animal); setDeleteReason(''); setDeleteError(''); }}><IconTrash size={14} /><span>Eliminar</span></button>
                           </>}
                           </div>

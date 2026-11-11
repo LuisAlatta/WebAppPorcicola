@@ -56,6 +56,30 @@ const listOptions = {
   aptitudes: [], types: [], sexes: [], statuses: [], origins: [], deathCauses: [], saleCauses: [{code:'edad',name:'Edad'}],
 };
 
+test('padrón compacto con filtros desplegables y acciones simétricas', async ({ page }) => {
+  await mockAnimalApi(page, initialAnimal());
+  await page.goto('/animales');
+  await expect(page.getByRole('button', { name: 'Ver ficha de RETRY-001', exact: true })).toBeVisible();
+  await expect(page.getByText('Animales en el padrón', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Fichas inactivas', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Con peso actual', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Estado productivo', { exact: true })).toHaveCount(0);
+  const toggle = page.getByRole('button', { name: 'Filtros', exact: true });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByLabel('Estado productivo', { exact: true })).toBeVisible();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  const actions = page.locator('.animal-table-actions .animal-action');
+  const styles = await actions.evaluateAll(buttons => buttons.map(button => {
+    const rect = button.getBoundingClientRect();
+    return { width: rect.width, height: rect.height, color: getComputedStyle(button).backgroundColor };
+  }));
+  expect(styles).toHaveLength(3);
+  expect(new Set(styles.map(style => `${style.width},${style.height}`)).size).toBe(1);
+  expect(new Set(styles.map(style => style.color)).size).toBe(3);
+});
+
 test('pagina el padrón y vuelve al inicio al cambiar la búsqueda', async ({page}) => {
   await mockAnimalApi(page, initialAnimal());
   const queries: string[] = [];
@@ -69,6 +93,8 @@ test('pagina el padrón y vuelve al inicio al cambiar la búsqueda', async ({pag
   await page.getByRole('button',{name:'Página siguiente del padrón',exact:true}).click();
   await expect(page.getByRole('button',{name:'Ver ficha de PAGINA-2',exact:true})).toBeVisible();
   await page.getByLabel('Buscar',{exact:true}).fill('PAGINA-1');
+  await expect(page.getByRole('button',{name:'Ver ficha de PAGINA-2',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Buscar',exact:true}).click();
   await expect(page.getByRole('button',{name:'Ver ficha de PAGINA-1',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Página anterior del padrón',exact:true})).toBeDisabled();
   expect(queries.some(value=>new URLSearchParams(value).get('offset')==='50')).toBe(true);
@@ -111,12 +137,15 @@ test('el padrón envía los filtros adicionales combinados', async ({ page }) =>
     await route.fulfill({ status:200,json:{ok:true,animals:[],total:0,options:{...listOptions,aptitudes:[{code:'engorde',name:'Engorde'}]}} });
   });
   await page.goto('/animales');
+  await page.getByRole('button', { name: 'Filtros', exact: true }).click();
   await page.getByLabel('Madre', {exact:true}).fill('MADRE-01');
   await page.getByLabel('Padre', {exact:true}).fill('PADRE-02');
   await page.getByLabel('Raza', {exact:true}).fill('Duroc');
   await page.getByLabel('Aptitud', {exact:true}).selectOption('engorde');
   await page.getByLabel('Procedencia', {exact:true}).selectOption('inicial');
   await page.getByLabel('Etapa de ingreso', {exact:true}).selectOption('crecimiento');
+  expect(requests.some(value => new URL(value).searchParams.has('mother'))).toBe(false);
+  await page.getByRole('button', { name: 'Aplicar filtros', exact: true }).click();
   await expect.poll(()=>requests.some(value=>{const q=new URL(value).searchParams;return q.get('mother')==='MADRE-01'&&q.get('father')==='PADRE-02'&&q.get('breed')==='Duroc'&&q.get('aptitude')==='engorde'&&q.get('originType')==='inicial'&&q.get('entryStage')==='crecimiento';})).toBe(true);
 });
 

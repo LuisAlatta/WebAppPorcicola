@@ -10,6 +10,8 @@ Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; i
 
 ## Observaciones del cliente — 11/11/2026
 
+- Padrón compacto: se retiraron sus tres tarjetas de resumen; búsqueda por código/nombre con botón Buscar o Enter, filtros avanzados plegados inicialmente y confirmación con Aplicar filtros. Las acciones Ver ficha, Editar y Eliminar tienen ancho/alto iguales y colores suaves diferentes mediante los tokens existentes. TypeScript, lint y compilación verificados; se actualizaron los casos de navegador, sin ejecutarlos localmente.
+
 - Inicio muestra Galpones antes de los módulos. El selector admite varios galpones y exige al menos uno para continuar. La barra superior muestra la selección y permite cambiarla; al cambiar se desmonta el módulo anterior para descartar formularios y respuestas pendientes.
 - Las peticiones operativas y las exportaciones envían `X-Barn-Ids`. El servidor valida los identificadores y los permisos antes de aplicar el alcance existente de cada módulo, también para administradores. Administración y Configuración conservan su alcance general de granja.
 - La selección es temporal en la pestaña: al recargar o cerrar sesión debe realizarse nuevamente. Los enlaces directos conservan su destino al completar la selección.

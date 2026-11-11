@@ -2477,3 +2477,18 @@ fieldset legend {
 .barn-selection-option input { width: 1.25rem; height: 1.25rem; }
 .barn-scope-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding: 1rem; }
 .animal-row-actions { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; flex-wrap: wrap; }
+.animal-search-bar { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; }
+.animal-search-field { flex: 1 1 16rem; margin: 0; }
+.animal-search-bar > .btn { min-height: 2.75rem; }
+.animal-filters-panel { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border-subtle); }
+.animal-filter-actions { display: flex; justify-content: flex-end; margin-top: 1rem; }
+.animal-table-actions { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 6.5rem; gap: 0.5rem; }
+.animal-table-actions .animal-action { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; height: 2.5rem; padding: 0 0.5rem; font-size: 0.8125rem; line-height: 1; border: 1px solid transparent; }
+.animal-table-actions .animal-action-view { color: var(--color-primary); background: var(--color-primary-light); border-color: var(--color-primary-ring); }
+.animal-table-actions .animal-action-edit { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning-border); }
+.animal-table-actions .animal-action-delete { color: var(--color-danger); background: var(--color-danger-bg); border-color: var(--color-danger-border); }
+.animal-table-actions .animal-action:hover:not(:disabled) { filter: brightness(0.96); }
+@media (max-width: 480px) {
+  .animal-search-field { flex-basis: 100%; }
+  .animal-search-bar > .btn { flex: 1 1 auto; }
+}
