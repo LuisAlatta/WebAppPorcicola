@@ -17,6 +17,8 @@ import {
   IconX,
 } from './icons';
 import { farmToday, newOperationKey } from '../utils/operations';
+import { DataState } from './DataState';
+import { ModuleTabs } from './ModuleTabs';
 import type { Perfil } from '../types';
 
 type MovementType =
@@ -565,89 +567,30 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
         </div>
       )}
 
-      <div className="admin-tabs mb-4" role="tablist" aria-label="Secciones de inventario de animales">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'existencias'}
-          aria-label="Ver existencias y saldos por etapa"
-          className={`btn btn-sm ${section === 'existencias' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('existencias')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconScale size={14} />
-            <span>Existencias</span>
-          </span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'registrar'}
-          aria-label="Registrar nuevo movimiento de inventario"
-          className={`btn btn-sm ${section === 'registrar' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('registrar')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconPlus size={14} />
-            <span>Registrar movimiento</span>
-          </span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'movimientos'}
-          aria-label="Ver historial y kardex de movimientos"
-          className={`btn btn-sm ${section === 'movimientos' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('movimientos')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconList size={14} />
-            <span>Movimientos</span>
-          </span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'traslado'}
-          aria-label="Gestionar traslado entre galpones y conciliación física"
-          className={`btn btn-sm ${section === 'traslado' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('traslado')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconRefreshCw size={14} />
-            <span>Traslado y conteo</span>
-          </span>
-        </button>
-      </div>
+      <ModuleTabs
+        label="Secciones de inventario de animales"
+        active={section}
+        onChange={setSection}
+        columns={2}
+        tabs={[
+          { id: 'existencias', label: 'Existencias', icon: <IconScale size={14} />, ariaLabel: 'Ver existencias y saldos por etapa' },
+          { id: 'registrar', label: 'Registrar movimiento', icon: <IconPlus size={14} />, ariaLabel: 'Registrar nuevo movimiento de inventario' },
+          { id: 'movimientos', label: 'Movimientos', icon: <IconList size={14} />, ariaLabel: 'Ver historial y kardex de movimientos' },
+          { id: 'traslado', label: 'Traslado y conteo', icon: <IconRefreshCw size={14} />, ariaLabel: 'Gestionar traslado entre galpones y conciliación física' },
+        ]}
+      />
 
       {loading && !data && (
-        <div className="card empty-state-card">
-          <div className="empty-icon-wrap">
-            <IconRefreshCw size={26} className="text-primary spinner-icon" />
-          </div>
-          <p className="font-semibold text-base">Cargando inventario de animales…</p>
-          <p className="text-sm text-muted">Consultando existencias, movimientos y resumen por etapa al {asOf}.</p>
-        </div>
+        <DataState variant="loading" title="Cargando inventario de animales…" description={`Consultando existencias, movimientos y resumen por etapa al ${asOf}.`} />
       )}
 
       {error && !data && !loading && (
-        <div className="card empty-state-card">
-          <div className="empty-icon-wrap" style={{ background: 'var(--color-danger-bg)' }}>
-            <IconAlertCircle size={26} className="text-danger" />
-          </div>
-          <p className="font-semibold text-base text-danger">No se pudo cargar el inventario</p>
-          <p className="text-sm text-muted">{error}</p>
-          <button
-            type="button"
-            className="btn btn-outline btn-sm mt-2"
-            onClick={() => void loadSnapshot(asOf)}
-          >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconRefreshCw size={14} />
-              <span>Reintentar carga</span>
-            </span>
-          </button>
-        </div>
+        <DataState
+          variant="error"
+          title="No se pudo cargar el inventario"
+          description={error}
+          action={<button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" onClick={() => void loadSnapshot(asOf)}><IconRefreshCw size={16} /><span>Reintentar carga</span></button>}
+        />
       )}
 
       {data && !!data.capacityWarnings?.length && (
@@ -710,54 +653,42 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                 Mortalidad = muertes sobre entradas del período
               </span>
             </div>
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Etapa</th>
-                    <th className="text-right">Inicial</th>
-                    <th className="text-right">Entradas externas</th>
-                    <th className="text-right">Entradas</th>
-                    <th className="text-right">Salidas</th>
-                    <th className="text-right">Muertes</th>
-                    <th className="text-right">Disponibles</th>
-                    <th className="text-right">Mortalidad</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.summary.byStage.map((stage) => (
-                    <tr key={stage.stageCode}>
-                      <td className="text-left font-semibold">{stage.stageName}</td>
-                      <td className="text-right tabular-nums font-mono">{stage.initial}</td>
-                      <td className="text-right tabular-nums font-mono">{stage.entriesExternal}</td>
-                      <td className="text-right tabular-nums font-mono">{stage.entries}</td>
-                      <td className="text-right tabular-nums font-mono">{stage.exits}</td>
-                      <td className="text-right tabular-nums font-mono text-danger">{stage.deaths}</td>
-                      <td className="text-right font-semibold tabular-nums font-mono text-primary">{stage.available}</td>
-                      <td className="text-right tabular-nums font-mono">
-                        {stage.mortalityPct === null
-                          ? <span className="text-muted">Sin datos</span>
-                          : `${stage.mortalityPct}%`}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr className="table-row-total">
-                    <td className="text-left font-bold">{data.summary.total.stageName}</td>
-                    <td className="text-right font-bold tabular-nums font-mono">{data.summary.total.initial}</td>
-                    <td className="text-right font-bold tabular-nums font-mono">{data.summary.total.entriesExternal}</td>
-                    <td className="text-right font-bold tabular-nums font-mono">{data.summary.total.entries}</td>
-                    <td className="text-right font-bold tabular-nums font-mono">{data.summary.total.exits}</td>
-                    <td className="text-right font-bold tabular-nums font-mono text-danger">{data.summary.total.deaths}</td>
-                    <td className="text-right font-bold tabular-nums font-mono text-primary">{data.summary.total.available}</td>
-                    <td className="text-right font-bold tabular-nums font-mono">
-                      {data.summary.total.mortalityPct === null
-                        ? 'Sin datos'
-                        : `${data.summary.total.mortalityPct}%`}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <ul className="data-card-list" aria-label="Resumen por etapa">
+              {data.summary.byStage.map((stage) => (
+                <li key={stage.stageCode}>
+                  <article className="data-card">
+                    <header className="data-card-head">
+                      <span className="data-card-title">{stage.stageName}</span>
+                      <span className="badge-status badge-success tabular-nums font-numeric">{stage.available} disponibles</span>
+                    </header>
+                    <dl className="data-card-meta">
+                      <div><dt>Inicial</dt><dd className="font-mono tabular-nums">{stage.initial}</dd></div>
+                      <div><dt>Entradas externas</dt><dd className="font-mono tabular-nums">{stage.entriesExternal}</dd></div>
+                      <div><dt>Entradas</dt><dd className="font-mono tabular-nums">{stage.entries}</dd></div>
+                      <div><dt>Salidas</dt><dd className="font-mono tabular-nums">{stage.exits}</dd></div>
+                      <div><dt>Muertes</dt><dd className="font-mono tabular-nums text-danger">{stage.deaths}</dd></div>
+                      <div><dt>Mortalidad</dt><dd className="font-mono tabular-nums">{stage.mortalityPct === null ? <span className="text-muted">Sin datos</span> : `${stage.mortalityPct}%`}</dd></div>
+                    </dl>
+                  </article>
+                </li>
+              ))}
+              <li>
+                <article className="data-card data-card-total">
+                  <header className="data-card-head">
+                    <span className="data-card-title">{data.summary.total.stageName}</span>
+                    <span className="badge-status badge-success tabular-nums font-numeric">{data.summary.total.available} disponibles</span>
+                  </header>
+                  <dl className="data-card-meta">
+                    <div><dt>Inicial</dt><dd className="font-mono tabular-nums">{data.summary.total.initial}</dd></div>
+                    <div><dt>Entradas externas</dt><dd className="font-mono tabular-nums">{data.summary.total.entriesExternal}</dd></div>
+                    <div><dt>Entradas</dt><dd className="font-mono tabular-nums">{data.summary.total.entries}</dd></div>
+                    <div><dt>Salidas</dt><dd className="font-mono tabular-nums">{data.summary.total.exits}</dd></div>
+                    <div><dt>Muertes</dt><dd className="font-mono tabular-nums text-danger">{data.summary.total.deaths}</dd></div>
+                    <div><dt>Mortalidad</dt><dd className="font-mono tabular-nums">{data.summary.total.mortalityPct === null ? 'Sin datos' : `${data.summary.total.mortalityPct}%`}</dd></div>
+                  </dl>
+                </article>
+              </li>
+            </ul>
           </div>
 
           <div className="card">
@@ -802,80 +733,43 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
             </div>
 
             {balances.length === 0 ? (
-              <div className="empty-state-card">
-                <div className="empty-icon-wrap">
-                  <IconPig size={26} className="text-primary" />
-                </div>
-                <p className="font-semibold text-base">Sin existencias al {data.asOf}</p>
-                <p className="text-sm text-muted">
-                  Registre el saldo inicial o una compra para empezar a reconstruir el inventario.
-                </p>
-                {!soloLectura && (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    aria-label="Registrar primer movimiento de inventario"
-                    onClick={() => setSection('registrar')}
-                  >
-                    <span className="inline-flex items-center justify-center gap-2 leading-none">
-                      <IconPlus size={14} />
-                      <span>Registrar movimiento</span>
-                    </span>
-                  </button>
-                )}
-              </div>
+              <DataState
+                variant="empty"
+                title={`Sin existencias al ${data.asOf}`}
+                description="Registre el saldo inicial o una compra para empezar a reconstruir el inventario."
+                icon={<IconPig size={26} className="text-primary" />}
+                action={!soloLectura ? <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" aria-label="Registrar primer movimiento de inventario" onClick={() => setSection('registrar')}><IconPlus size={16} /><span>Registrar movimiento</span></button> : undefined}
+              />
             ) : filteredBalances.length === 0 ? (
-              <div className="empty-state-card">
-                <div className="empty-icon-wrap">
-                  <IconFilter size={24} className="text-muted" />
-                </div>
-                <p className="font-semibold text-base">Sin coincidencias para &quot;{balanceSearch}&quot;</p>
-                <p className="text-sm text-muted">
-                  No se encontraron galpones, etapas o lotes que coincidan con el término buscado.
-                </p>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  aria-label="Restablecer filtro de búsqueda de saldos"
-                  onClick={() => setBalanceSearch('')}
-                >
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconRefreshCw size={14} />
-                    <span>Restablecer filtro</span>
-                  </span>
-                </button>
-              </div>
+              <DataState
+                variant="empty"
+                title={`Sin coincidencias para "${balanceSearch}"`}
+                description="No se encontraron galpones, etapas o lotes que coincidan con el término buscado."
+                icon={<IconFilter size={26} className="text-primary" />}
+                action={<button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" aria-label="Restablecer filtro de búsqueda de saldos" onClick={() => setBalanceSearch('')}><IconRefreshCw size={16} /><span>Restablecer filtro</span></button>}
+              />
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Galpón</th>
-                      <th className="text-left">Ubicación</th>
-                      <th className="text-left">Lote</th>
-                      <th className="text-left">Etapa</th>
-                      <th className="text-left">Sexo</th>
-                      <th className="text-right">Cabezas</th>
-                      <th className="text-right">Identificadas</th>
-                      <th className="text-right">Sin identificar</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredBalances.map((balance, index) => (
-                      <tr key={`${balance.barnId}-${balance.locationCode ?? 'sin-u'}-${balance.lotCode ?? 'sin-l'}-${balance.stageCode}-${balance.sex}-${index}`}>
-                        <td className="text-left font-semibold">{balance.barnName}</td>
-                        <td className="text-left">{balance.locationName ?? <span className="text-muted">Sin asignar</span>}</td>
-                        <td className="text-left">{balance.lotName ?? <span className="text-muted">Sin lote</span>}</td>
-                        <td className="text-left">{balance.stageName}</td>
-                        <td className="text-left">{SEX_LABELS[balance.sex] ?? balance.sex}</td>
-                        <td className="text-right font-semibold font-numeric tabular-nums font-mono text-primary">{balance.heads}</td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{balance.identified}</td>
-                        <td className="text-right font-numeric tabular-nums font-mono text-muted">{balance.unidentified}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="data-card-list" aria-label="Saldos por grupo">
+                {filteredBalances.map((balance, index) => (
+                  <li key={`${balance.barnId}-${balance.locationCode ?? 'sin-u'}-${balance.lotCode ?? 'sin-l'}-${balance.stageCode}-${balance.sex}-${index}`}>
+                    <article className="data-card">
+                      <header className="data-card-head">
+                        <div className="data-card-identity">
+                          <span className="data-card-title">{balance.barnName}</span>
+                          <span className="data-card-subtitle">{[balance.locationName ?? 'Sin ubicación', balance.lotName ?? 'Sin lote'].join(' · ')}</span>
+                        </div>
+                        <span className="badge-status badge-success tabular-nums font-numeric">{balance.heads} cabezas</span>
+                      </header>
+                      <dl className="data-card-meta">
+                        <div><dt>Etapa</dt><dd>{balance.stageName}</dd></div>
+                        <div><dt>Sexo</dt><dd>{SEX_LABELS[balance.sex] ?? balance.sex}</dd></div>
+                        <div><dt>Identificadas</dt><dd className="font-mono tabular-nums">{balance.identified}</dd></div>
+                        <div><dt>Sin identificar</dt><dd className="font-mono tabular-nums text-muted">{balance.unidentified}</dd></div>
+                      </dl>
+                    </article>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
 
@@ -884,32 +778,24 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
               <span className="section-title">Desglose por sexo</span>
               <span className="text-xs text-muted">Entradas, salidas y muertes del período</span>
             </div>
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Etapa</th>
-                    <th className="text-right">Machos</th>
-                    <th className="text-right">Hembras</th>
-                    <th className="text-right">Pendientes</th>
-                    <th className="text-right">Total entradas</th>
-                    <th className="text-right">Total salidas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.summary.byStage.map((stage) => (
-                    <tr key={`sex-${stage.stageCode}`}>
-                      <td className="text-left font-semibold">{stage.stageName}</td>
-                      <td className="text-right tabular-nums font-mono">{stage.entriesBySex.macho}</td>
-                      <td className="text-right tabular-nums font-mono">{stage.entriesBySex.hembra}</td>
-                      <td className="text-right tabular-nums font-mono text-muted">{stage.entriesBySex.pendiente}</td>
-                      <td className="text-right font-semibold tabular-nums font-mono text-success">{stage.entriesBySex.total}</td>
-                      <td className="text-right font-semibold tabular-nums font-mono text-danger">{stage.exitsBySex.total}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="data-card-list data-card-grid" aria-label="Desglose por sexo">
+              {data.summary.byStage.map((stage) => (
+                <li key={`sex-${stage.stageCode}`}>
+                  <article className="data-card">
+                    <header className="data-card-head">
+                      <span className="data-card-title">{stage.stageName}</span>
+                      <span className="badge-status badge-outline tabular-nums font-numeric">{stage.entriesBySex.total} entradas</span>
+                    </header>
+                    <dl className="data-card-meta">
+                      <div><dt>Machos</dt><dd className="font-mono tabular-nums">{stage.entriesBySex.macho}</dd></div>
+                      <div><dt>Hembras</dt><dd className="font-mono tabular-nums">{stage.entriesBySex.hembra}</dd></div>
+                      <div><dt>Pendientes</dt><dd className="font-mono tabular-nums text-muted">{stage.entriesBySex.pendiente}</dd></div>
+                      <div><dt>Salidas</dt><dd className="font-mono tabular-nums text-danger">{stage.exitsBySex.total}</dd></div>
+                    </dl>
+                  </article>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
@@ -1599,94 +1485,44 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
           </div>
 
           {movements.length === 0 ? (
-            <div className="empty-state-card">
-              <div className="empty-icon-wrap">
-                <IconList size={26} className="text-primary" />
-              </div>
-              <p className="font-semibold text-base">Sin movimientos registrados</p>
-              <p className="text-sm text-muted">
-                No hay movimientos de inventario registrados a la fecha de corte ({data.asOf}).
-              </p>
-              {!soloLectura && (
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  aria-label="Ir a registrar movimiento de inventario"
-                  onClick={() => setSection('registrar')}
-                >
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconPlus size={14} />
-                    <span>Registrar movimiento</span>
-                  </span>
-                </button>
-              )}
-            </div>
+            <DataState
+              variant="empty"
+              title="Sin movimientos registrados"
+              description={`No hay movimientos de inventario registrados a la fecha de corte (${data.asOf}).`}
+              icon={<IconList size={26} className="text-primary" />}
+              action={!soloLectura ? <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" aria-label="Ir a registrar movimiento de inventario" onClick={() => setSection('registrar')}><IconPlus size={16} /><span>Registrar movimiento</span></button> : undefined}
+            />
           ) : filteredMovements.length === 0 ? (
-            <div className="empty-state-card">
-              <div className="empty-icon-wrap">
-                <IconFilter size={24} className="text-muted" />
-              </div>
-              <p className="font-semibold text-base">Sin resultados para los filtros aplicados</p>
-              <p className="text-sm text-muted">
-                No se encontraron movimientos que coincidan con la búsqueda o el tipo seleccionado.
-              </p>
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                aria-label="Restablecer filtros de búsqueda de movimientos"
-                onClick={() => {
-                  setFilterType('');
-                  setMovementSearch('');
-                }}
-              >
-                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconRefreshCw size={14} />
-                  <span>Restablecer filtros</span>
-                </span>
-              </button>
-            </div>
+            <DataState
+              variant="empty"
+              title="Sin resultados para los filtros aplicados"
+              description="No se encontraron movimientos que coincidan con la búsqueda o el tipo seleccionado."
+              icon={<IconFilter size={26} className="text-primary" />}
+              action={<button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" aria-label="Restablecer filtros de búsqueda de movimientos" onClick={() => { setFilterType(''); setMovementSearch(''); }}><IconRefreshCw size={16} /><span>Restablecer filtros</span></button>}
+            />
           ) : (
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Fecha</th>
-                    <th className="text-left">Tipo</th>
-                    <th className="text-left">Galpón</th>
-                    <th className="text-left">Ubicación / lote</th>
-                    <th className="text-left">Etapa / sexo</th>
-                    <th className="text-right">Cantidad</th>
-                    <th className="text-left">Causa</th>
-                    <th className="text-left">Registró</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMovements.map((movement) => (
-                    <tr key={movement.id}>
-                      <td className="text-left font-numeric tabular-nums font-mono">{movement.effectiveDate}</td>
-                      <td className="text-left">
-                        <span className={TYPE_BADGE[movement.movementType] ?? 'badge-tag'}>
-                          {movement.movementLabel}
-                        </span>
-                      </td>
-                      <td className="text-left font-semibold">{movement.barnName}</td>
-                      <td className="text-left">
-                        {movement.locationName ?? 'Sin ubicación'}
-                        {movement.lotName ? ` · ${movement.lotName}` : ''}
-                      </td>
-                      <td className="text-left">
-                        {movement.stageName} · {SEX_LABELS[movement.sex] ?? movement.sex}
-                      </td>
-                      <td className={`text-right font-semibold font-numeric tabular-nums font-mono ${isNegativeMovement(movement) ? 'text-danger' : 'text-success'}`}>
-                        {formatSigned(movement)}
-                      </td>
-                      <td className="text-left">{movement.causeCode ?? <span className="text-muted">—</span>}</td>
-                      <td className="text-left text-xs text-muted">{movement.createdByName || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="data-card-list" aria-label="Kardex de movimientos">
+              {filteredMovements.map((movement) => (
+                <li key={movement.id}>
+                  <article className="data-card" data-state={isNegativeMovement(movement) ? 'inactive' : 'active'}>
+                    <header className="data-card-head">
+                      <div className="data-card-identity">
+                        <span className="data-card-title font-mono tabular-nums">{movement.effectiveDate}</span>
+                        <span className="data-card-subtitle">{movement.barnName}</span>
+                      </div>
+                      <span className={TYPE_BADGE[movement.movementType] ?? 'badge-tag'}>{movement.movementLabel}</span>
+                    </header>
+                    <dl className="data-card-meta">
+                      <div><dt>Cantidad</dt><dd className={`font-mono font-bold tabular-nums ${isNegativeMovement(movement) ? 'text-danger' : 'text-success'}`}>{formatSigned(movement)}</dd></div>
+                      <div><dt>Etapa y sexo</dt><dd>{movement.stageName} · {SEX_LABELS[movement.sex] ?? movement.sex}</dd></div>
+                      <div><dt>Ubicación y lote</dt><dd>{[movement.locationName ?? 'Sin ubicación', movement.lotName].filter(Boolean).join(' · ')}</dd></div>
+                      <div><dt>Causa</dt><dd>{movement.causeCode ?? <span className="text-muted">Sin causa</span>}</dd></div>
+                      <div><dt>Registró</dt><dd>{movement.createdByName || 'Sin dato'}</dd></div>
+                    </dl>
+                  </article>
+                </li>
+              ))}
+            </ul>
           )}
 
           <p className="card-footer-note">

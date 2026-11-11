@@ -6,6 +6,7 @@ export type ModuleTab = {
   icon?: ReactNode;
   count?: number;
   disabled?: boolean;
+  ariaLabel?: string;
 };
 
 export function ModuleTabs<T extends string>({ tabs, active, onChange, label, columns }: {
@@ -26,6 +27,7 @@ export function ModuleTabs<T extends string>({ tabs, active, onChange, label, co
             type="button"
             role="tab"
             aria-selected={selected}
+            aria-label={tab.ariaLabel}
             className={`module-tab${selected ? ' is-active' : ''}`}
             onClick={() => onChange(tab.id as T)}
             disabled={tab.disabled}

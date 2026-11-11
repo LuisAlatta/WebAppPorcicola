@@ -18,6 +18,8 @@ import {
   IconX,
 } from './icons';
 import { farmToday, newOperationKey, fetchOperation } from '../utils/operations';
+import { DataState } from './DataState';
+import { ModuleTabs } from './ModuleTabs';
 import type { Perfil } from '../types';
 
 type Warehouse = {
@@ -545,64 +547,18 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
         </article>
       </section>
 
-      {/* Pestañas de Navegación Interna SaaS */}
-      <div className="admin-tabs" role="tablist" aria-label="Secciones de alimentación y nutrición">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'raciones'}
-          aria-label="Ver raciones y cobertura estimada por etapa"
-          className={`btn btn-sm ${section === 'raciones' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('raciones')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconWheat size={14} />
-            <span>Raciones y Cobertura</span>
-          </span>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'stock'}
-          aria-label="Ver kardex y existencias por almacén"
-          className={`btn btn-sm ${section === 'stock' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('stock')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconBox size={14} />
-            <span>Kardex y Stock</span>
-          </span>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'turnos'}
-          aria-label="Ver turnos de comederos y conversión alimenticia"
-          className={`btn btn-sm ${section === 'turnos' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('turnos')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconClock size={14} />
-            <span>Turnos y Conversión</span>
-          </span>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'registrar'}
-          aria-label="Registrar nuevo movimiento de insumo o alimento"
-          className={`btn btn-sm ${section === 'registrar' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('registrar')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconPlus size={14} />
-            <span>Registrar Insumo</span>
-          </span>
-        </button>
-      </div>
+      <ModuleTabs
+        label="Secciones de alimentación y nutrición"
+        active={section}
+        onChange={setSection}
+        columns={2}
+        tabs={[
+          { id: 'raciones', label: 'Raciones y Cobertura', icon: <IconWheat size={14} />, ariaLabel: 'Ver raciones y cobertura estimada por etapa' },
+          { id: 'stock', label: 'Kardex y Stock', icon: <IconBox size={14} />, ariaLabel: 'Ver kardex y existencias por almacén' },
+          { id: 'turnos', label: 'Turnos y Conversión', icon: <IconClock size={14} />, ariaLabel: 'Ver turnos de comederos y conversión alimenticia' },
+          { id: 'registrar', label: 'Registrar Insumo', icon: <IconPlus size={14} />, ariaLabel: 'Registrar nuevo movimiento de insumo o alimento' },
+        ]}
+      />
 
       {/* Estado de Carga General */}
       {loading && !inventory && (
@@ -629,82 +585,51 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
             </div>
 
             {projection.length === 0 ? (
-              <div className="empty-state-card">
-                <div className="empty-icon-wrap">
-                  <IconWheat size={26} className="text-primary" />
-                </div>
-                <p className="font-semibold text-base">Sin datos de ración para esta fecha</p>
-                <p className="text-sm text-muted">
-                  No hay animales asignados a etapas con demanda nutricional al corte del {date}.
-                </p>
-                {!readonly && (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    aria-label="Ir a registrar movimiento de insumo"
-                    onClick={() => setSection('registrar')}
-                  >
-                    <span className="inline-flex items-center justify-center gap-2 leading-none">
-                      <IconPlus size={14} />
-                      <span>Registrar movimiento</span>
-                    </span>
-                  </button>
-                )}
-              </div>
+              <DataState
+                variant="empty"
+                title="Sin datos de ración para esta fecha"
+                description={`No hay animales asignados a etapas con demanda nutricional al corte del ${date}.`}
+                icon={<IconWheat size={26} className="text-primary" />}
+                action={!readonly ? <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" aria-label="Ir a registrar movimiento de insumo" onClick={() => setSection('registrar')}><IconPlus size={16} /><span>Registrar movimiento</span></button> : undefined}
+              />
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Etapa</th>
-                      <th className="text-right">Cabezas</th>
-                      <th className="text-left">Alimento</th>
-                      <th className="text-right">Demanda diaria</th>
-                      <th className="text-right">Necesidad etapa</th>
-                      <th className="text-right">Necesidad mensual</th>
-                      <th className="text-right">Disponible</th>
-                      <th className="text-center">Cobertura</th>
-                      <th className="text-left">Comparación por período</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projection.map((row) => (
-                      <tr key={row.stageCode}>
-                        <td className="text-left font-semibold">{row.stageName}</td>
-                        <td className="text-right font-semibold font-numeric tabular-nums font-mono text-primary">{row.heads}</td>
-                        <td className="text-left">
-                          {row.feedName ?? <span className="text-muted">Sin alimento vinculado</span>}
-                          {row.requirements.length > 0 && (
-                            <small className="block text-muted mt-0.5">{row.requirements.join(' · ')}</small>
-                          )}
-                        </td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{row.dailyKg === null ? <span className="text-muted">—</span> : `${row.dailyKg} kg`}</td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{row.stageNeedKg === null ? <span className="text-muted">—</span> : `${row.stageNeedKg} kg`}</td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{row.monthlyNeedKg === null ? <span className="text-muted">—</span> : `${row.monthlyNeedKg} kg`}</td>
-                        <td className="text-right font-semibold font-numeric tabular-nums font-mono">{row.feedCode ? `${row.availableKg} kg` : <span className="text-muted">Sin ración</span>}</td>
-                        <td className="text-center">
-                          {row.coveredDays === null ? (
-                            <span className="text-muted">—</span>
-                          ) : row.coveredDays >= 15 ? (
-                            <span className="badge-status badge-success tabular-nums font-mono">{row.coveredDays} días</span>
-                          ) : row.coveredDays >= 5 ? (
-                            <span className="badge-status badge-warning tabular-nums font-mono">{row.coveredDays} días</span>
-                          ) : (
-                            <span className="badge-status badge-danger tabular-nums font-mono">{row.coveredDays} días</span>
-                          )}
-                        </td>
-                        <td className="text-left text-xs font-numeric tabular-nums font-mono">
-                          <div className="flex flex-col gap-0.5">
-                            <span>{coverage('Día', row.dailyShortageKg)}</span>
-                            <span>{coverage('Etapa', row.stageShortageKg)}</span>
-                            <span>{coverage('Mes', row.monthlyShortageKg)}</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="data-card-list data-card-grid" aria-label="Raciones y cobertura por etapa">
+                {projection.map((row) => (
+                  <li key={row.stageCode}>
+                    <article className="data-card">
+                      <header className="data-card-head">
+                        <div className="data-card-identity">
+                          <span className="data-card-title">{row.stageName}</span>
+                          <span className="data-card-subtitle">{row.heads} cabezas · {row.feedName ?? 'Sin alimento vinculado'}</span>
+                        </div>
+                        {row.coveredDays === null ? (
+                          <span className="badge-status badge-outline">Sin cobertura</span>
+                        ) : row.coveredDays >= 15 ? (
+                          <span className="badge-status badge-success tabular-nums font-mono">{row.coveredDays} días</span>
+                        ) : row.coveredDays >= 5 ? (
+                          <span className="badge-status badge-warning tabular-nums font-mono">{row.coveredDays} días</span>
+                        ) : (
+                          <span className="badge-status badge-danger tabular-nums font-mono">{row.coveredDays} días</span>
+                        )}
+                      </header>
+                      <dl className="data-card-meta">
+                        <div><dt>Demanda diaria</dt><dd className="font-mono tabular-nums">{row.dailyKg === null ? <span className="text-muted">Sin dato</span> : `${row.dailyKg} kg`}</dd></div>
+                        <div><dt>Necesidad etapa</dt><dd className="font-mono tabular-nums">{row.stageNeedKg === null ? <span className="text-muted">Sin dato</span> : `${row.stageNeedKg} kg`}</dd></div>
+                        <div><dt>Necesidad mensual</dt><dd className="font-mono tabular-nums">{row.monthlyNeedKg === null ? <span className="text-muted">Sin dato</span> : `${row.monthlyNeedKg} kg`}</dd></div>
+                        <div><dt>Disponible</dt><dd className="font-mono tabular-nums">{row.feedCode ? `${row.availableKg} kg` : <span className="text-muted">Sin ración</span>}</dd></div>
+                      </dl>
+                      {row.requirements.length > 0 && <p className="data-card-note">{row.requirements.join(' · ')}</p>}
+                      <div className="data-card-note font-mono tabular-nums">
+                        <span className="flex flex-col gap-0.5">
+                          <span>{coverage('Día', row.dailyShortageKg)}</span>
+                          <span>{coverage('Etapa', row.stageShortageKg)}</span>
+                          <span>{coverage('Mes', row.monthlyShortageKg)}</span>
+                        </span>
+                      </div>
+                    </article>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
 
@@ -728,62 +653,42 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
             )}
 
             {feeds.length === 0 ? (
-              <div className="empty-state-card">
-                <div className="empty-icon-wrap">
-                  <IconWheat size={26} className="text-primary" />
-                </div>
-                <p className="font-semibold text-base">No hay raciones vinculadas</p>
-                <p className="text-sm text-muted">
-                  Asigne tipos de alimento a las etapas en el catálogo para generar la demanda agregada.
-                </p>
-              </div>
+              <DataState
+                variant="empty"
+                title="No hay raciones vinculadas"
+                description="Asigne tipos de alimento a las etapas en el catálogo para generar la demanda agregada."
+                icon={<IconWheat size={26} className="text-primary" />}
+              />
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Alimento</th>
-                      <th className="text-right">Cabezas</th>
-                      <th className="text-right">Demanda diaria</th>
-                      <th className="text-right">Necesidad mensual</th>
-                      <th className="text-right">Disponible</th>
-                      <th className="text-center">Cobertura</th>
-                      <th className="text-right">Faltante mensual</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {feeds.map((row) => (
-                      <tr key={row.feedCode}>
-                        <td className="text-left font-semibold">{row.feedName ?? row.feedCode}</td>
-                        <td className="text-right font-semibold font-numeric tabular-nums font-mono text-primary">{row.heads}</td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{row.dailyKg === null ? <span className="text-muted">Sin datos</span> : `${row.dailyKg} kg`}</td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{row.monthlyNeedKg === null ? <span className="text-muted">Sin datos</span> : `${row.monthlyNeedKg} kg`}</td>
-                        <td className="text-right font-semibold font-numeric tabular-nums font-mono">{row.availableKg} kg</td>
-                        <td className="text-center">
-                          {row.coveredDays === null ? (
-                            <span className="text-muted">—</span>
-                          ) : row.coveredDays >= 15 ? (
-                            <span className="badge-status badge-success tabular-nums font-mono">{row.coveredDays} días</span>
-                          ) : row.coveredDays >= 5 ? (
-                            <span className="badge-status badge-warning tabular-nums font-mono">{row.coveredDays} días</span>
-                          ) : (
-                            <span className="badge-status badge-danger tabular-nums font-mono">{row.coveredDays} días</span>
-                          )}
-                        </td>
-                        <td className="text-right">
-                          {row.monthlyShortageKg === null ? (
-                            <span className="text-muted">Sin datos</span>
-                          ) : row.monthlyShortageKg === 0 ? (
-                            <span className="badge-status badge-success">Abastecido</span>
-                          ) : (
-                            <span className="badge-status badge-danger font-numeric tabular-nums font-mono">{row.monthlyShortageKg} kg</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="data-card-list data-card-grid" aria-label="Demanda conjunta por alimento">
+                {feeds.map((row) => (
+                  <li key={row.feedCode}>
+                    <article className="data-card">
+                      <header className="data-card-head">
+                        <div className="data-card-identity">
+                          <span className="data-card-title">{row.feedName ?? row.feedCode}</span>
+                          <span className="data-card-subtitle">{row.heads} cabezas</span>
+                        </div>
+                        {row.coveredDays === null ? (
+                          <span className="badge-status badge-outline">Sin cobertura</span>
+                        ) : row.coveredDays >= 15 ? (
+                          <span className="badge-status badge-success tabular-nums font-mono">{row.coveredDays} días</span>
+                        ) : row.coveredDays >= 5 ? (
+                          <span className="badge-status badge-warning tabular-nums font-mono">{row.coveredDays} días</span>
+                        ) : (
+                          <span className="badge-status badge-danger tabular-nums font-mono">{row.coveredDays} días</span>
+                        )}
+                      </header>
+                      <dl className="data-card-meta">
+                        <div><dt>Demanda diaria</dt><dd className="font-mono tabular-nums">{row.dailyKg === null ? <span className="text-muted">Sin dato</span> : `${row.dailyKg} kg`}</dd></div>
+                        <div><dt>Necesidad mensual</dt><dd className="font-mono tabular-nums">{row.monthlyNeedKg === null ? <span className="text-muted">Sin dato</span> : `${row.monthlyNeedKg} kg`}</dd></div>
+                        <div><dt>Disponible</dt><dd className="font-mono tabular-nums">{row.availableKg} kg</dd></div>
+                        <div><dt>Faltante mensual</dt><dd className="font-mono tabular-nums">{row.monthlyShortageKg === null ? <span className="text-muted">Sin dato</span> : row.monthlyShortageKg === 0 ? <span className="text-success">Abastecido</span> : <span className="text-danger">{row.monthlyShortageKg} kg</span>}</dd></div>
+                      </dl>
+                    </article>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
         </div>
@@ -857,80 +762,41 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
             </div>
 
             {inventory.inventory.length === 0 ? (
-              <div className="empty-state-card">
-                <div className="empty-icon-wrap">
-                  <IconBox size={26} className="text-primary" />
-                </div>
-                <p className="font-semibold text-base">No hay existencias al {date}</p>
-                <p className="text-sm text-muted">
-                  No hay insumos registrados en los almacenes para la fecha de corte seleccionada.
-                </p>
-                {!readonly && (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    aria-label="Registrar compra o entrada de insumo"
-                    onClick={() => {
-                      setKind('purchase');
-                      setSection('registrar');
-                    }}
-                  >
-                    <span className="inline-flex items-center justify-center gap-2 leading-none">
-                      <IconPlus size={14} />
-                      <span>Registrar compra / entrada</span>
-                    </span>
-                  </button>
-                )}
-              </div>
+              <DataState
+                variant="empty"
+                title={`No hay existencias al ${date}`}
+                description="No hay insumos registrados en los almacenes para la fecha de corte seleccionada."
+                icon={<IconBox size={26} className="text-primary" />}
+                action={!readonly ? <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" aria-label="Registrar compra o entrada de insumo" onClick={() => { setKind('purchase'); setSection('registrar'); }}><IconPlus size={16} /><span>Registrar compra / entrada</span></button> : undefined}
+              />
             ) : filteredStock.length === 0 ? (
-              <div className="empty-state-card">
-                <div className="empty-icon-wrap">
-                  <IconFilter size={24} className="text-muted" />
-                </div>
-                <p className="font-semibold text-base">Sin existencias para los filtros aplicados</p>
-                <p className="text-sm text-muted">
-                  No se encontraron lotes que coincidan con &quot;{stockSearch}&quot; en el almacén seleccionado.
-                </p>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  aria-label="Restablecer filtros de búsqueda de existencias"
-                  onClick={() => {
-                    setStockSearch('');
-                    setStockWarehouseFilter('');
-                  }}
-                >
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconRefreshCw size={14} />
-                    <span>Restablecer filtros</span>
-                  </span>
-                </button>
-              </div>
+              <DataState
+                variant="empty"
+                title="Sin existencias para los filtros aplicados"
+                description={`No se encontraron lotes que coincidan con "${stockSearch}" en el almacén seleccionado.`}
+                icon={<IconFilter size={26} className="text-primary" />}
+                action={<button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" aria-label="Restablecer filtros de búsqueda de existencias" onClick={() => { setStockSearch(''); setStockWarehouseFilter(''); }}><IconRefreshCw size={16} /><span>Restablecer filtros</span></button>}
+              />
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Almacén</th>
-                      <th className="text-left">Alimento</th>
-                      <th className="text-left">Lote</th>
-                      <th className="text-right">Disponible</th>
-                      <th className="text-right">Retirado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredStock.map((row) => (
-                      <tr key={`${row.warehouseId}-${row.feedCode}-${row.lotCode}`}>
-                        <td className="text-left font-semibold">{row.warehouseName}</td>
-                        <td className="text-left">{feedOptions.find((x) => x.code === row.feedCode)?.name ?? row.feedCode}</td>
-                        <td className="text-left font-numeric tabular-nums font-mono">{row.lotCode}</td>
-                        <td className="text-right font-semibold font-numeric tabular-nums font-mono text-success">{row.availableKg.toLocaleString('es-PE')} kg</td>
-                        <td className="text-right text-muted font-numeric tabular-nums font-mono">{row.withdrawnKg.toLocaleString('es-PE')} kg</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="data-card-list data-card-grid" aria-label="Existencias por lote">
+                {filteredStock.map((row) => (
+                  <li key={`${row.warehouseId}-${row.feedCode}-${row.lotCode}`}>
+                    <article className="data-card">
+                      <header className="data-card-head">
+                        <div className="data-card-identity">
+                          <span className="data-card-title">{feedOptions.find((x) => x.code === row.feedCode)?.name ?? row.feedCode}</span>
+                          <span className="data-card-subtitle">{row.warehouseName} · lote {row.lotCode}</span>
+                        </div>
+                        <span className="badge-status badge-success tabular-nums font-mono">{row.availableKg.toLocaleString('es-PE')} kg</span>
+                      </header>
+                      <dl className="data-card-meta">
+                        <div><dt>Disponible</dt><dd className="font-mono tabular-nums text-success">{row.availableKg.toLocaleString('es-PE')} kg</dd></div>
+                        <div><dt>Retirado</dt><dd className="font-mono tabular-nums text-muted">{row.withdrawnKg.toLocaleString('es-PE')} kg</dd></div>
+                      </dl>
+                    </article>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
 
@@ -997,93 +863,46 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
             </div>
 
             {movements.length === 0 ? (
-              <div className="empty-state-card">
-                <div className="empty-icon-wrap">
-                  <IconList size={26} className="text-primary" />
-                </div>
-                <p className="font-semibold text-base">Sin movimientos registrados</p>
-                <p className="text-sm text-muted">
-                  Aún no se han asentado operaciones de entrada o consumo de insumos.
-                </p>
-                {!readonly && (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    aria-label="Registrar primer movimiento de insumo"
-                    onClick={() => setSection('registrar')}
-                  >
-                    <span className="inline-flex items-center justify-center gap-2 leading-none">
-                      <IconPlus size={14} />
-                      <span>Registrar primer movimiento</span>
-                    </span>
-                  </button>
-                )}
-              </div>
+              <DataState
+                variant="empty"
+                title="Sin movimientos registrados"
+                description="Aún no se han asentado operaciones de entrada o consumo de insumos."
+                icon={<IconList size={26} className="text-primary" />}
+                action={!readonly ? <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" aria-label="Registrar primer movimiento de insumo" onClick={() => setSection('registrar')}><IconPlus size={16} /><span>Registrar primer movimiento</span></button> : undefined}
+              />
             ) : filteredMovements.length === 0 ? (
-              <div className="empty-state-card">
-                <div className="empty-icon-wrap">
-                  <IconFilter size={24} className="text-muted" />
-                </div>
-                <p className="font-semibold text-base">Sin movimientos para los filtros seleccionados</p>
-                <p className="text-sm text-muted">
-                  No se encontraron operaciones con los criterios aplicados.
-                </p>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  aria-label="Restablecer filtros del kardex de insumos"
-                  onClick={() => {
-                    setMovementSearch('');
-                    setMovementFilterType('');
-                  }}
-                >
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconRefreshCw size={14} />
-                    <span>Restablecer filtros</span>
-                  </span>
-                </button>
-              </div>
+              <DataState
+                variant="empty"
+                title="Sin movimientos para los filtros seleccionados"
+                description="No se encontraron operaciones con los criterios aplicados."
+                icon={<IconFilter size={26} className="text-primary" />}
+                action={<button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" aria-label="Restablecer filtros del kardex de insumos" onClick={() => { setMovementSearch(''); setMovementFilterType(''); }}><IconRefreshCw size={16} /><span>Restablecer filtros</span></button>}
+              />
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Fecha</th>
-                      <th className="text-left">Movimiento</th>
-                      <th className="text-left">Almacén / Lote</th>
-                      <th className="text-right">Cantidad</th>
-                      <th className="text-left">Destino</th>
-                      <th className="text-right">Costo / Documento</th>
-                      <th className="text-left">Responsable</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredMovements.map((m) => {
-                      const isPositive = ['purchase', 'return_in', 'opening'].includes(m.movementType);
-                      return (
-                        <tr key={m.id}>
-                          <td className="text-left font-numeric tabular-nums font-mono">{m.effectiveDate}</td>
-                          <td className="text-left">
-                            <span className={MOVEMENT_TYPE_BADGES[m.movementType] ?? 'badge-tag'}>
-                              {labels[m.movementType] ?? m.movementType}
-                            </span>
-                          </td>
-                          <td className="text-left font-numeric tabular-nums font-mono">{m.warehouseCode} · {m.feedCode} · {m.lotCode}</td>
-                          <td className={`text-right font-semibold font-numeric tabular-nums font-mono ${isPositive ? 'text-success' : 'text-danger'}`}>
-                            {isPositive ? '+' : '−'}{m.quantityKg} kg
-                          </td>
-                          <td className="text-left">{m.animalCode ?? m.destinationBarn ?? <span className="text-muted">—</span>}</td>
-                          <td className="text-right font-numeric tabular-nums font-mono">
-                            {m.currencyCode} {m.totalCost.toFixed(2)}
-                            {m.documentReference ? ` · ${m.documentReference}` : ''}
-                          </td>
-                          <td className="text-left text-xs text-muted">{m.actorName}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="data-card-list" aria-label="Kardex de insumos">
+                {filteredMovements.map((m) => {
+                  const isPositive = ['purchase', 'return_in', 'opening'].includes(m.movementType);
+                  return (
+                    <li key={m.id}>
+                      <article className="data-card" data-state={isPositive ? 'active' : 'inactive'}>
+                        <header className="data-card-head">
+                          <div className="data-card-identity">
+                            <span className="data-card-title font-mono tabular-nums">{m.effectiveDate}</span>
+                            <span className="data-card-subtitle">{m.warehouseCode} · {m.feedCode} · lote {m.lotCode}</span>
+                          </div>
+                          <span className={MOVEMENT_TYPE_BADGES[m.movementType] ?? 'badge-tag'}>{labels[m.movementType] ?? m.movementType}</span>
+                        </header>
+                        <dl className="data-card-meta">
+                          <div><dt>Cantidad</dt><dd className={`font-mono font-bold tabular-nums ${isPositive ? 'text-success' : 'text-danger'}`}>{isPositive ? '+' : '−'}{m.quantityKg} kg</dd></div>
+                          <div><dt>Destino</dt><dd>{m.animalCode ?? m.destinationBarn ?? <span className="text-muted">Sin destino</span>}</dd></div>
+                          <div><dt>Costo y documento</dt><dd className="font-mono tabular-nums">{[`${m.currencyCode} ${m.totalCost.toFixed(2)}`, m.documentReference].filter(Boolean).join(' · ')}</dd></div>
+                          <div><dt>Responsable</dt><dd>{m.actorName}</dd></div>
+                        </dl>
+                      </article>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </section>
         </div>
@@ -1138,16 +957,28 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
             </form>}
             <h3 className="section-title mt-4">Programación del {planDate}</h3>
             <div className="form-group"><label className="form-label" htmlFor="plan-filter-date">Consultar programación por fecha</label><input id="plan-filter-date" type="date" className="form-input" value={planDate} onChange={event => { if (event.target.value) setPlanDate(event.target.value); }} /></div>
-            {plans.length === 0 ? <p className="text-sm text-muted">No hay turnos programados para esta fecha.</p> : <div className="table-responsive"><table className="data-table">
-              <thead><tr><th>Fecha / turno</th><th>Galpón / etapa</th><th>Alimento</th><th>Seguimiento</th>{!readonly && <th>Acción</th>}</tr></thead>
-              <tbody>{plans.map(item => <tr key={item.groupKey}>
-                <td>{item.effectiveDate} · {SHIFT_LABELS[item.shiftCode] ?? item.shiftCode}</td>
-                <td>{item.barnName} · {projection.find(stage => stage.stageCode === item.stageCode)?.stageName ?? item.stageCode}</td>
-                <td>{feedOptions.find(feed => feed.code === item.feedCode)?.name ?? item.feedCode}</td>
-                <td><span className="block">Previsto: {item.plannedKg} kg</span><span className="block">Servido: {item.servedKg} kg</span><span className={item.pendingKg > 0 ? 'badge-status badge-warning' : 'badge-status badge-success'}>{item.plannedKg === 0 ? 'Cancelado' : `Pendiente: ${item.pendingKg} kg`}</span></td>
-                {!readonly && <td><button className="btn btn-outline btn-sm" type="button" aria-label={`Editar programación de ${item.barnName}, ${SHIFT_LABELS[item.shiftCode] ?? item.shiftCode}`} onClick={() => setPlan({ effectiveDate: item.effectiveDate, shiftCode: item.shiftCode, barnId: String(item.barnId), stageCode: item.stageCode, feedCode: item.feedCode, plannedKg: String(item.plannedKg), reason: '' })}>Editar</button></td>}
-              </tr>)}</tbody>
-            </table></div>}
+            {plans.length === 0 ? <DataState variant="empty" title="No hay turnos programados para esta fecha" description={`Sin programación registrada para el ${planDate}.`} icon={<IconCalendar size={26} className="text-primary" />} /> : <ul className="data-card-list data-card-grid" aria-label={`Programación del ${planDate}`}>
+              {plans.map(item => <li key={item.groupKey}>
+                <article className="data-card">
+                  <header className="data-card-head">
+                    <div className="data-card-identity">
+                      <span className="data-card-title font-mono tabular-nums">{item.effectiveDate}</span>
+                      <span className="data-card-subtitle">{item.barnName} · {projection.find(stage => stage.stageCode === item.stageCode)?.stageName ?? item.stageCode}</span>
+                    </div>
+                    <span className={item.pendingKg > 0 ? 'badge-status badge-warning' : 'badge-status badge-success'}>{item.plannedKg === 0 ? 'Cancelado' : `Pendiente: ${item.pendingKg} kg`}</span>
+                  </header>
+                  <dl className="data-card-meta">
+                    <div><dt>Turno</dt><dd>{SHIFT_LABELS[item.shiftCode] ?? item.shiftCode}</dd></div>
+                    <div><dt>Previsto</dt><dd className="font-mono tabular-nums">{item.plannedKg} kg</dd></div>
+                    <div><dt>Servido</dt><dd className="font-mono tabular-nums">{item.servedKg} kg</dd></div>
+                    <div><dt>Alimento</dt><dd>{feedOptions.find(feed => feed.code === item.feedCode)?.name ?? item.feedCode}</dd></div>
+                  </dl>
+                  {!readonly && <div className="data-card-actions">
+                    <button className="btn btn-outline" type="button" aria-label={`Editar programación de ${item.barnName}, ${SHIFT_LABELS[item.shiftCode] ?? item.shiftCode}`} onClick={() => setPlan({ effectiveDate: item.effectiveDate, shiftCode: item.shiftCode, barnId: String(item.barnId), stageCode: item.stageCode, feedCode: item.feedCode, plannedKg: String(item.plannedKg), reason: '' })}><IconRefreshCw size={14} /><span>Editar</span></button>
+                  </div>}
+                </article>
+              </li>)}
+            </ul>}
           </section>
           <section className="card">
             <div className="card-header-clean mb-2">
@@ -1177,73 +1008,37 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
             </div>
 
             {turns.length === 0 ? (
-              <div className="empty-state-card">
-                <div className="empty-icon-wrap">
-                  <IconClock size={26} className="text-primary" />
-                </div>
-                <p className="font-semibold text-base">Aún no hay turnos registrados</p>
-                <p className="text-sm text-muted">
-                  Registre turnos de alimentación para monitorear el consumo exacto de los lotes y alimentar el cálculo de FCR.
-                </p>
-                {!readonly && (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    aria-label="Registrar turno de alimentación"
-                    onClick={() => {
-                      setKind('delivery');
-                      setTurnMode(true);
-                      setSection('registrar');
-                    }}
-                  >
-                    <span className="inline-flex items-center justify-center gap-2 leading-none">
-                      <IconPlus size={14} />
-                      <span>Registrar turno ahora</span>
-                    </span>
-                  </button>
-                )}
-              </div>
+              <DataState
+                variant="empty"
+                title="Aún no hay turnos registrados"
+                description="Registre turnos de alimentación para monitorear el consumo exacto de los lotes y alimentar el cálculo de FCR."
+                icon={<IconClock size={26} className="text-primary" />}
+                action={!readonly ? <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" aria-label="Registrar turno de alimentación" onClick={() => { setKind('delivery'); setTurnMode(true); setSection('registrar'); }}><IconPlus size={16} /><span>Registrar turno ahora</span></button> : undefined}
+              />
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Fecha / Turno</th>
-                      <th className="text-left">Galpón</th>
-                      <th className="text-left">Etapa</th>
-                      <th className="text-left">Alimento / Lote</th>
-                      <th className="text-right">Previsto</th>
-                      <th className="text-right">Servido</th>
-                      <th className="text-right">Consumido medido</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {turns.map((row) => (
-                      <tr key={row.id}>
-                        <td className="text-left">
-                          <span className="font-semibold font-numeric tabular-nums font-mono">{row.effectiveDate}</span>
-                          {' · '}
-                          <span className={row.shiftCode === 'manana' ? 'badge-tag' : row.shiftCode === 'tarde' ? 'badge-info' : 'badge-outline'}>
-                            {SHIFT_LABELS[row.shiftCode] ?? row.shiftCode}
-                          </span>
-                        </td>
-                        <td className="text-left font-semibold">{row.barnName}</td>
-                        <td className="text-left">{row.stageCode}</td>
-                        <td className="text-left font-numeric tabular-nums font-mono">{row.feedCode} · {row.lotCode}</td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{row.plannedKg} kg</td>
-                        <td className="text-right font-semibold font-numeric tabular-nums font-mono text-primary">{row.servedKg} kg</td>
-                        <td className="text-right">
-                          {row.consumedKg === null ? (
-                            <span className="text-muted">Sin medición</span>
-                          ) : (
-                            <span className="font-semibold font-numeric tabular-nums font-mono text-success">{row.consumedKg} kg</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="data-card-list data-card-grid" aria-label="Turnos servidos">
+                {turns.map((row) => (
+                  <li key={row.id}>
+                    <article className="data-card">
+                      <header className="data-card-head">
+                        <div className="data-card-identity">
+                          <span className="data-card-title font-mono tabular-nums">{row.effectiveDate}</span>
+                          <span className="data-card-subtitle">{row.barnName} · {row.stageCode}</span>
+                        </div>
+                        <span className={row.shiftCode === 'manana' ? 'badge-tag' : row.shiftCode === 'tarde' ? 'badge-info' : 'badge-outline'}>
+                          {SHIFT_LABELS[row.shiftCode] ?? row.shiftCode}
+                        </span>
+                      </header>
+                      <dl className="data-card-meta">
+                        <div><dt>Previsto</dt><dd className="font-mono tabular-nums">{row.plannedKg} kg</dd></div>
+                        <div><dt>Servido</dt><dd className="font-mono tabular-nums text-primary">{row.servedKg} kg</dd></div>
+                        <div><dt>Consumido medido</dt><dd className="font-mono tabular-nums">{row.consumedKg === null ? <span className="text-muted">Sin medición</span> : <span className="text-success">{row.consumedKg} kg</span>}</dd></div>
+                      </dl>
+                      <p className="data-card-note font-mono">{row.feedCode} · lote {row.lotCode}</p>
+                    </article>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
 
@@ -1258,50 +1053,38 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
             </div>
 
             {conversion.length === 0 ? (
-              <div className="empty-state-card">
-                <div className="empty-icon-wrap">
-                  <IconScale size={26} className="text-primary" />
-                </div>
-                <p className="font-semibold text-base">Sin cálculos de conversión en los últimos 30 días</p>
-                <p className="text-sm text-muted">
-                  Registre consumo real cada día y pesajes de todas las cabezas en ambos extremos del periodo, con historial continuo en el mismo galpón y etapa.
-                </p>
-              </div>
+              <DataState
+                variant="empty"
+                title="Sin cálculos de conversión en los últimos 30 días"
+                description="Registre consumo real cada día y pesajes de todas las cabezas en ambos extremos del periodo, con historial continuo en el mismo galpón y etapa."
+                icon={<IconScale size={26} className="text-primary" />}
+              />
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Galpón / Etapa</th>
-                      <th className="text-left">Periodo</th>
-                      <th className="text-right">Animales comparables</th>
-                      <th className="text-right">Consumo medido</th>
-                      <th className="text-right">Ganancia neta</th>
-                      <th className="text-right">Conversión (FCR)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {conversion.map((row) => (
-                      <tr key={`${row.barnId}-${row.stageCode}`}>
-                        <td className="text-left font-semibold">{row.barnName} · {row.stageCode}</td>
-                        <td className="text-left font-numeric tabular-nums font-mono">{row.periodFrom} – {row.periodTo}</td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{row.comparableAnimals} / {row.populationHeads}<span className="text-xs text-muted block">{row.coveragePercent}% de cobertura</span></td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{row.consumedKg} kg<span className="text-xs text-muted block">{row.consumptionDays} / {row.requiredConsumptionDays} días</span></td>
-                        <td className="text-right font-numeric tabular-nums font-mono">{row.weightGainKg} kg</td>
-                        <td className="text-right">
-                          {row.feedConversionRatio === null ? (
-                            <span className="text-muted">{row.unavailableReason ?? 'No disponible'}</span>
-                          ) : (
-                            <span className="badge-status badge-primary font-bold font-numeric tabular-nums font-mono">
-                              {row.feedConversionRatio} kg/kg
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="data-card-list data-card-grid" aria-label="Conversión alimenticia por galpón">
+                {conversion.map((row) => (
+                  <li key={`${row.barnId}-${row.stageCode}`}>
+                    <article className="data-card">
+                      <header className="data-card-head">
+                        <div className="data-card-identity">
+                          <span className="data-card-title">{row.barnName}</span>
+                          <span className="data-card-subtitle">{row.stageCode} · {row.periodFrom} – {row.periodTo}</span>
+                        </div>
+                        {row.feedConversionRatio === null ? (
+                          <span className="badge-status badge-outline">No disponible</span>
+                        ) : (
+                          <span className="badge-status badge-primary tabular-nums font-mono">{row.feedConversionRatio} kg/kg</span>
+                        )}
+                      </header>
+                      <dl className="data-card-meta">
+                        <div><dt>Animales comparables</dt><dd className="font-mono tabular-nums">{row.comparableAnimals} / {row.populationHeads} · {row.coveragePercent}%</dd></div>
+                        <div><dt>Consumo medido</dt><dd className="font-mono tabular-nums">{row.consumedKg} kg · {row.consumptionDays} / {row.requiredConsumptionDays} días</dd></div>
+                        <div><dt>Ganancia neta</dt><dd className="font-mono tabular-nums">{row.weightGainKg} kg</dd></div>
+                      </dl>
+                      {row.feedConversionRatio === null && row.unavailableReason && <p className="data-card-note">{row.unavailableReason}</p>}
+                    </article>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
         </div>

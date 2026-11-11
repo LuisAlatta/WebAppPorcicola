@@ -35,9 +35,10 @@ test('programa un turno sin entrega y permite cancelarlo con motivo', async ({ p
   await page.getByLabel('Cantidad prevista del turno (kg)').fill('20');
   await page.getByLabel('Motivo de la programación').fill('Alimentación prevista de la mañana');
   await page.getByRole('button', { name: 'Guardar programación' }).click();
-  const row = page.getByRole('row').filter({ hasText: 'Galpón A · Preinicio' });
+  const row = page.locator('.data-card').filter({ hasText: 'Galpón A · Preinicio' });
   await expect(row).toContainText('Pendiente: 20 kg');
-  await expect(row).toContainText('Servido: 0 kg');
+  await expect(row).toContainText('Servido');
+  await expect(row).toContainText('0 kg');
   expect(supplyWrites).toBe(0);
   expect(futureStockRequests).toBe(0);
   rationChanged = true;
