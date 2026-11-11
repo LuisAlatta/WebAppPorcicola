@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import {ModalDialog} from './ModalDialog';
-import {IconDownload} from './icons';
+import {IconDownload, IconCheck} from './icons';
 import {
   PWA_INSTALL_READY_EVENT,
   PWA_INSTALLED_EVENT,
@@ -18,7 +18,7 @@ const HELP_TEXT: Record<InstallHelp, string> = {
   generic: 'Abre el menú del navegador y elige «Instalar aplicación» o «Añadir a pantalla de inicio».',
 };
 
-export function PwaInstallButton() {
+export function PwaInstallButton({ card = false }: { card?: boolean }) {
   const [prompt, setPrompt] = useState<InstallPrompt | null>(
     () => (typeof window === 'undefined' ? null : window.__pwaInstallPrompt ?? null),
   );
@@ -72,7 +72,8 @@ export function PwaInstallButton() {
 
   return (
     <>
-      <div className="login-install-wrap">
+      <div className={card ? 'pwa-install-card' : 'login-install-wrap'}>
+        {card && <div className="pwa-install-copy"><strong>Mi Granja PRO en tu dispositivo</strong><p>Abre la aplicación desde la pantalla de inicio.</p></div>}
         <button type="button" className="btn-install-app" onClick={handleInstall}>
           <IconDownload size={16} />
           <span>Instalar aplicación</span>
@@ -83,8 +84,8 @@ export function PwaInstallButton() {
         <ModalDialog labelledBy="pwa-install-help-title" onDismiss={() => setHelp(null)}>
           <h4 id="pwa-install-help-title" className="text-lg font-bold mb-2">Instalar Mi Granja PRO</h4>
           <p className="text-sm text-muted mb-4">{HELP_TEXT[help]}</p>
-          <div className="flex justify-end gap-2">
-            <button type="button" className="btn btn-primary" onClick={() => setHelp(null)}>Entendido</button>
+          <div className="form-actions pwa-dialog-actions">
+            <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" onClick={() => setHelp(null)}><IconCheck size={16} /><span>Entendido</span></button>
           </div>
         </ModalDialog>
       )}

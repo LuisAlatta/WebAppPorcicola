@@ -197,3 +197,15 @@ Cada entrega: typecheck, lint, pruebas dirigidas, build, despliegue y verificaci
 - Todo listado tiene carga, vacío y error.
 - Todo modal es usable a 412 px sin scroll horizontal y con acciones alcanzables con el pulgar.
 - Sin iconos de texto ni emojis; sin flechas de carácter.
+
+## 16. Estado de cierre — 11/11/2026
+
+Los módulos y la fase global tienen entregas publicadas; esto no equivale a aceptación completa del plan. Última versión: `6703aee4-d6ad-4225-9b9b-f64348f88f06`.
+
+Pendientes confirmados para el repaso final:
+- C3: falta crear e integrar `ModuleToolbar`.
+- C5: `Pagination` se usa en Animales y Alertas; falta extenderla a los demás listados previstos.
+- C8 y criterios por pantalla: revisar regresos/cancelaciones, estados de listados, hojas móviles y desbordamiento real.
+- Navegador y dispositivo físico sin verificar; la suite completa no se validó.
+
+Adaptaciones conservadas: seis destinos reales en navegación inferior; parámetros con guardado conjunto; etapas con orden editable por campo; ubicaciones y lotes separados sin inventar asociaciones. No se añadieron acciones sin flujo actual (eliminar informes, descartar avisos, restablecer/editar usuarios). Ver detalles y pruebas por entrega en `tasks/estado.md`.

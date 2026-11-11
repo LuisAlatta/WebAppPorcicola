@@ -213,7 +213,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
 
   return (
     <div className="login-page-container">
-      <div className="login-card login-card-uncontained">
+      <div className="login-card">
         <header className="login-header">
           <div className="login-logo-wrap">
             <img
@@ -255,8 +255,10 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                   );
                   setSelectedRole(found ? found.role : null);
                 }}
-                required
-                disabled={loading}
+                 required
+                 disabled={loading}
+                 aria-invalid={Boolean(error)}
+                 aria-describedby={error ? 'login-error' : undefined}
               />
             </div>
           </div>
@@ -278,6 +280,8 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => { userStartedEditing.current = true; setPassword(e.target.value); }}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? 'login-error' : undefined}
                 required
                 disabled={loading}
               />
@@ -285,6 +289,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 type="button"
                 className="btn-password-toggle"
                 aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={showPassword}
                 onClick={() => setShowPassword((value) => !value)}
                 disabled={loading}
               >
@@ -316,7 +321,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
           </div>
 
           {error && (
-            <div className="alert alert-danger login-alert" role="alert">
+            <div id="login-error" className="alert alert-danger login-alert" role="alert">
               <IconAlertCircle size={18} className="flex-shrink-0" />
               <span>{error}</span>
             </div>

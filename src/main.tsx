@@ -16,6 +16,8 @@ import { ModuloReproduccion } from './components/ModuloReproduccion';
 import { ModuloAlimentacion } from './components/ModuloAlimentacion';
 import { ModuloSanidad } from './components/ModuloSanidad';
 import { ModuloAlertas } from './components/ModuloAlertas';
+import { SessionState } from './components/SessionState';
+import { DataState } from './components/DataState';
 const ModuloFinanzas = lazy(() => import('./components/ModuloFinanzas').then(module => ({default:module.ModuloFinanzas})));
 const ModuloAnimales = lazy(() => import('./components/ModuloAnimales').then(module => ({default:module.ModuloAnimales})));
 const ModuloReportes = lazy(() => import('./components/ModuloReportes').then(module => ({default:module.ModuloReportes})));
@@ -152,8 +154,8 @@ function App() {
   };
 
   const renderVista = () => {
-    if(estadoSesion==='cargando')return <div className="session-check" role="status">Comprobando sesión…</div>;
-    if(estadoSesion==='error')return <div className="session-check" role="alert"><h1>No se pudo comprobar la sesión</h1><p>Comprueba la conexión y vuelve a intentar para acceder a los datos de la granja.</p><button className="btn btn-primary" type="button" onClick={()=>window.location.reload()}>Volver a intentar</button></div>;
+    if(estadoSesion==='cargando')return <SessionState state="loading" />;
+    if(estadoSesion==='error')return <SessionState state="error" onAction={()=>window.location.reload()} />;
     if (!estaAutenticado || vistaActual === 'login') {
       return (
         <BocetoLogin
@@ -162,7 +164,7 @@ function App() {
       );
     }
 
-    if((vistaActual==='configuracion'||vistaActual==='administracion')&&perfilActual!=='administrador')return <div className="session-check" role="alert"><h1>Acceso restringido</h1><p>Este módulo solo está disponible para el administrador.</p></div>;
+    if((vistaActual==='configuracion'||vistaActual==='administracion')&&perfilActual!=='administrador')return <SessionState state="denied" onAction={() => handleNavigate('inicio')} />;
     if (vistaActual === 'galpones' || choosingBarns || !barnSelection.ids.length) return <SelectorGalpones perfil={perfilActual} selected={barnSelection.ids} onContinue={(ids, names) => {
       setSelectedBarnIds(ids);
       setBarnSelection({ ids, names });
@@ -180,9 +182,9 @@ function App() {
         );
       case 'listado':
       case 'formulario':
-        return <Suspense fallback={<div className="module-container">Cargando animales…</div>}><ModuloAnimales perfil={perfilActual} {...animalBarnProps} /></Suspense>;
+        return <Suspense fallback={<DataState variant="loading" title="Cargando animales…" />}><ModuloAnimales perfil={perfilActual} {...animalBarnProps} /></Suspense>;
       case 'detalle':
-        return <Suspense fallback={<div className="module-container">Cargando ficha…</div>}><ModuloAnimales perfil={perfilActual} initialAnimalKey={selectedAnimalId} {...animalBarnProps} /></Suspense>;
+        return <Suspense fallback={<DataState variant="loading" title="Cargando ficha…" />}><ModuloAnimales perfil={perfilActual} initialAnimalKey={selectedAnimalId} {...animalBarnProps} /></Suspense>;
       case 'inventario':
         return <ModuloInventario perfil={perfilActual} />;
       case 'alimentacion':
@@ -192,11 +194,11 @@ function App() {
       case 'alertas':
         return <ModuloAlertas perfil={perfilActual} />;
       case 'finanzas':
-        return <Suspense fallback={<div className="module-container">Cargando finanzas…</div>}><ModuloFinanzas perfil={perfilActual} /></Suspense>;
+        return <Suspense fallback={<DataState variant="loading" title="Cargando finanzas…" />}><ModuloFinanzas perfil={perfilActual} /></Suspense>;
       case 'reportes':
-        return <Suspense fallback={<div className="module-container">Cargando reportes…</div>}><ModuloReportes perfil={perfilActual} /></Suspense>;
+        return <Suspense fallback={<DataState variant="loading" title="Cargando reportes…" />}><ModuloReportes perfil={perfilActual} /></Suspense>;
       case 'animales':
-        return <Suspense fallback={<div className="module-container">Cargando animales…</div>}><ModuloAnimales perfil={perfilActual} {...animalBarnProps} /></Suspense>;
+        return <Suspense fallback={<DataState variant="loading" title="Cargando animales…" />}><ModuloAnimales perfil={perfilActual} {...animalBarnProps} /></Suspense>;
       case 'reproduccion':
         return <ModuloReproduccion perfil={perfilActual} />;
       case 'configuracion':

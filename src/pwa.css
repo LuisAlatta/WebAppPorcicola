@@ -1,8 +1,28 @@
-.pwa-controls{display:none}.session-check{max-width:34rem;margin:3rem auto;padding:1.5rem}
-.pwa-update-toast{position:fixed;bottom:4.75rem;right:1rem;z-index:9999;display:flex;align-items:center;gap:.6rem;padding:.5rem .85rem;background:#ffffff;border:1px solid #1b4d3e;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);color:#183b30}
+.session-check { display: flex; flex-direction: column; align-items: center; gap: 1rem; max-width: 34rem; margin: 3rem auto; padding: 1.5rem; text-align: center; }
+.session-check h1 { font-size: 1.25rem; line-height: 1.4; }
+.session-check p { margin: 0; }
+.session-state-icon { display: inline-flex; align-items: center; justify-content: center; width: 3.5rem; height: 3.5rem; border-radius: var(--radius-md); background: var(--color-primary-light); color: var(--color-primary); }
+.pwa-update-toast { position: fixed; bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px)); right: 1rem; z-index: 900; display: flex; align-items: center; gap: 0.75rem; max-width: min(32rem, calc(100vw - 2rem)); padding: 1rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); color: var(--color-text); }
+.pwa-update-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--color-primary); }
+.pwa-update-copy { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; font-size: 0.8125rem; }
+.pwa-update-copy > span { font-size: 0.75rem; color: var(--color-text-muted); }
+.pwa-update-toast > .btn { flex-shrink: 0; min-height: 2.75rem; }
+.connection-banner { display: flex; align-items: center; padding: 0.75rem 1rem; margin: 0 1rem 0.75rem; border: 1px solid var(--color-warning-border); border-radius: var(--radius-md); background: var(--color-warning-bg); color: var(--color-text); font-size: 0.8125rem; }
+.connection-banner > span { align-items: flex-start; text-align: left; line-height: 1.5; }
+.connection-banner svg { flex-shrink: 0; margin-top: 0.125rem; }
+.pwa-install-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.pwa-install-copy strong { font-size: 0.875rem; }
+.pwa-install-copy p { margin: 0.25rem 0 0; font-size: 0.8125rem; color: var(--color-text-muted); }
 .login-install-wrap{margin-top:.75rem}
-.btn-install-app{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;width:100%;height:40px;min-height:40px;padding:0 1rem;background:var(--color-surface);border:1px solid var(--color-primary);border-radius:8px;color:var(--color-primary);font-size:.8125rem;font-weight:600;cursor:pointer;transition:background var(--transition-fast),box-shadow var(--transition-fast),border-color var(--transition-fast)}
+.btn-install-app{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;width:100%;min-height:44px;padding:0 1rem;background:var(--color-surface);border:1px solid var(--color-primary);border-radius:var(--radius-md);color:var(--color-primary);font-size:.8125rem;font-weight:600;cursor:pointer;transition:background var(--transition-fast),box-shadow var(--transition-fast),border-color var(--transition-fast)}
 .btn-install-app:hover{background:var(--color-primary-light)}
 .btn-install-app:active{background:var(--color-primary-light);border-color:var(--color-primary-hover)}
 .btn-install-app:focus-visible{outline:none;box-shadow:var(--shadow-focus)}
-@media(min-width:768px){.pwa-update-toast{bottom:1.5rem;right:1.5rem}}
+@media(min-width:768px){.pwa-update-toast{right:1.5rem}}
+@media (max-width: 640px) {
+  .pwa-dialog-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .pwa-dialog-actions > .btn { width: 100%; }
+  .pwa-install-card { grid-template-columns: minmax(0, 1fr); }
+  .pwa-update-toast { display: grid; grid-template-columns: auto minmax(0, 1fr); left: 1rem; }
+  .pwa-update-toast > .btn { grid-column: 1 / -1; width: 100%; }
+}

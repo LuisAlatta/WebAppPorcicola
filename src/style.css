@@ -143,6 +143,9 @@ body, #root { width: 100%; min-width: 0; overflow-x: clip; }
 }
 
 .navbar-view-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.navbar-brand .navbar-back { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 2.75rem; width: 2.75rem; height: 2.75rem; padding: 0; }
+.navbar-home { display: inline-flex; align-items: center; gap: 0.25rem; margin-left: 0.375rem; }
+.navbar-role-short { display: none; }
 .navbar-titles { display: flex; flex-direction: column; min-width: 0; gap: 0.125rem; }
 .navbar-app-name { font-size: 0.6875rem; font-weight: 600; line-height: 1.25; color: var(--color-primary); }
 .navbar-page-title { font-size: 1rem; font-weight: 650; line-height: 1.3; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -252,39 +255,39 @@ body, #root { width: 100%; min-width: 0; overflow-x: clip; }
   box-shadow: none;
 }
 
-/* Modern Login Screen - Full White & Uncontained */
+/* Acceso con tarjeta central */
 body:has(.login-page-container),
 .app-shell:has(.login-page-container) {
-  background-color: #ffffff !important;
+  background-color: var(--color-bg);
 }
 
 .app-shell:has(.login-page-container) .main-content {
   max-width: 100% !important;
   padding: 0 !important;
   margin: 0 !important;
-  background-color: #ffffff !important;
+  background-color: var(--color-bg);
 }
 
 .login-page-container {
   min-height: 100vh;
+  min-height: 100dvh;
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #ffffff;
-  padding: 2.5rem 1.5rem;
+  background-color: var(--color-bg);
+  padding: max(1.5rem, env(safe-area-inset-top, 0px)) 1rem max(1.5rem, env(safe-area-inset-bottom, 0px));
 }
 
-.login-card,
-.login-card-uncontained {
+.login-card {
   width: 100%;
-  max-width: 380px;
+  max-width: 26rem;
   margin: 0 auto;
-  padding: 0;
-  background: transparent !important;
-  border: none !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
+  padding: clamp(1rem, 4vw, 1.75rem);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .login-header {
@@ -2569,14 +2572,16 @@ fieldset legend {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  height: 58px;
-  padding: 0 0.25rem;
+  height: 4rem;
+  gap: 0.125rem;
+  padding: 0.25rem;
 }
 
 .bottom-nav-button {
   background: none;
   border: none;
   flex: 1;
+  min-width: 0;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
@@ -2606,6 +2611,8 @@ fieldset legend {
 
 .bottom-nav-active {
   color: var(--color-primary);
+  background: var(--color-primary-light);
+  border-radius: var(--radius-md);
 }
 
 .bottom-nav-active .bottom-nav-icon-wrap {
@@ -2631,6 +2638,19 @@ fieldset legend {
   line-height: 1;
   letter-spacing: -0.01em;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 640px) {
+  .navbar-role-full { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .navbar-role-short { display: inline; }
+  .navbar-username { display: none; }
+  .navbar-brand { gap: 0.25rem; }
+  .brand-link-btn { gap: 0.375rem; }
+  .navbar-home { margin-left: 0; }
+  .navbar-app-name { display: flex; flex-wrap: wrap; gap: 0.125rem 0.375rem; }
+  .bottom-nav-text { font-size: 0.625rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

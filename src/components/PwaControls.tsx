@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {ModalDialog} from './ModalDialog';
 import {activateWaitingWorker, observeWaitingWorker} from '../utils/pwaUpdate';
+import {IconDownload, IconRefreshCw, IconX, IconAlertCircle} from './icons';
 import {
   PWA_INSTALL_READY_EVENT,
   PWA_INSTALLED_EVENT,
@@ -81,16 +82,16 @@ export function PwaControls() {
     <>
       {!confirmUpdate && (
         <aside aria-label="Actualización disponible" className="pwa-update-toast">
-          <span className="text-xs font-semibold" role="status">{updating ? 'Actualizando aplicación…' : updateError || 'Nueva versión disponible'}</span>
+          <span className="pwa-update-icon" aria-hidden="true">{updateError ? <IconAlertCircle size={22} /> : <IconRefreshCw size={22} className={updating ? 'spinner-icon' : ''} />}</span>
+          <div className="pwa-update-copy" role="status"><strong>{updating ? 'Actualizando aplicación…' : updateError ? 'Actualización pendiente' : 'Nueva versión disponible'}</strong><span>{updateError || (updating ? 'Espera mientras se carga la nueva versión.' : 'Guarda tus formularios antes de actualizar.')}</span></div>
           <button
             ref={updateButtonRef}
             type="button"
             disabled={updating || !waiting}
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary inline-flex items-center justify-center gap-2"
             onClick={() => setConfirmUpdate(true)}
-            style={{ minHeight: '32px', padding: '0.25rem 0.65rem' }}
           >
-            {updating ? 'Actualizando…' : 'Actualizar'}
+            <IconDownload size={16} /><span>{updating ? 'Actualizando…' : 'Actualizar'}</span>
           </button>
         </aside>
       )}
@@ -101,9 +102,9 @@ export function PwaControls() {
           <p className="text-sm text-muted mb-4">
             La actualización recargará la página para cargar la versión más reciente. Guarda tus formularios pendientes antes de continuar. ¿Deseas recargar ahora?
           </p>
-          <div className="flex justify-end gap-2">
-            <button type="button" className="btn btn-outline" onClick={dismissUpdate}>Más tarde</button>
-            <button type="button" className="btn btn-primary" onClick={performUpdate}>Actualizar ahora</button>
+          <div className="form-actions form-actions-sticky pwa-dialog-actions">
+            <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" onClick={dismissUpdate}><IconX size={16} /><span>Más tarde</span></button>
+            <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" onClick={performUpdate}><IconRefreshCw size={16} /><span>Actualizar ahora</span></button>
           </div>
         </ModalDialog>
       )}

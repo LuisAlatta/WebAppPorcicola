@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Perfil, Vista } from '../types';
+import { PwaInstallButton } from './PwaInstallButton';
 import {
   IconPig,
   IconBox,
@@ -136,6 +137,7 @@ export function MenuPrincipal({ perfil, onNavigate }: MenuPrincipalProps) {
           </button>
         ))}
       </div>
+      <PwaInstallButton card />
     </div>
   );
 }
