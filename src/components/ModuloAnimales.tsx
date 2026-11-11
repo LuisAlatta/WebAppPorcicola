@@ -24,6 +24,9 @@ import {
 import { ModalDialog } from './ModalDialog';
 import { AnimalToolbar } from './AnimalToolbar';
 import { AnimalWorkspace } from './AnimalWorkspace';
+import { DataState } from './DataState';
+import { ModuleTabs } from './ModuleTabs';
+import { Pagination } from './Pagination';
 import { availabilityForStatus } from '../utils/animal-filters';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
 import type { Perfil } from '../types';
@@ -463,6 +466,37 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     setFilters(cleared);
     setAppliedFilters(cleared);
   }, []);
+
+  const filterChips = useMemo(() => {
+    const list: { key: keyof Filters; label: string }[] = [];
+    const nameOf = (items: { code: string; name: string }[] | undefined, value: string) =>
+      items?.find((item) => item.code === value)?.name ?? value;
+    const f = appliedFilters;
+    if (f.q) list.push({ key: 'q', label: `Búsqueda: ${f.q}` });
+    if (f.type) list.push({ key: 'type', label: `Tipo: ${nameOf(options?.types, f.type)}` });
+    if (f.sex) list.push({ key: 'sex', label: `Sexo: ${nameOf(options?.sexes, f.sex)}` });
+    if (f.status) list.push({ key: 'status', label: `Estado: ${nameOf(options?.statuses, f.status)}` });
+    if (f.stage) list.push({ key: 'stage', label: `Etapa: ${nameOf(options?.stages, f.stage)}` });
+    if (f.barnId) list.push({ key: 'barnId', label: `Galpón: ${options?.barns.find((barn) => String(barn.id) === f.barnId)?.name ?? f.barnId}` });
+    if (f.location) list.push({ key: 'location', label: `Ubicación: ${nameOf(options?.locations, f.location)}` });
+    if (f.lot) list.push({ key: 'lot', label: `Lote: ${nameOf(options?.lots, f.lot)}` });
+    if (f.active === '0') list.push({ key: 'active', label: 'Disponibilidad: solo inactivas' });
+    if (f.mother) list.push({ key: 'mother', label: `Madre: ${f.mother}` });
+    if (f.father) list.push({ key: 'father', label: `Padre: ${f.father}` });
+    if (f.breed) list.push({ key: 'breed', label: `Raza: ${f.breed}` });
+    if (f.aptitude) list.push({ key: 'aptitude', label: `Aptitud: ${nameOf(options?.aptitudes, f.aptitude)}` });
+    if (f.originType) list.push({ key: 'originType', label: `Procedencia: ${f.originType}` });
+    if (f.entryStage) list.push({ key: 'entryStage', label: `Etapa de ingreso: ${nameOf(options?.stages, f.entryStage)}` });
+    return list;
+  }, [appliedFilters, options]);
+
+  const removeFilter = (key: keyof Filters) => {
+    const next = { ...appliedFilters, [key]: key === 'active' ? '1' : '', ...(key === 'barnId' ? { location: '' } : {}) } as Filters;
+    setFilters((prev) => ({ ...prev, ...next }));
+    listRequest.current++;
+    setPage(0);
+    setAppliedFilters(next);
+  };
 
   const setField = <K extends keyof AnimalForm>(key: K, value: AnimalForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value, ...(key === 'barnId' ? {locationCode: ''} : {}) }));
@@ -920,17 +954,36 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   return (
     <div>
       {deleteTarget && <ModalDialog labelledBy="animal-delete-title" onDismiss={() => setDeleteTarget(null)} dismissDisabled={busy}>
-        <form onSubmit={event => void handleDelete(event)} aria-busy={busy}>
-          <h2 id="animal-delete-title">Eliminar animal {deleteTarget.code}</h2>
-          <p>La ficha se retirará del padrón activo. Se conservará su historial y podrá reactivarse desde el filtro de fichas inactivas. Esto no registra una venta ni una muerte y no descuenta cabezas del inventario.</p>
-          <label className="form-label" htmlFor="animal-delete-reason">Motivo de eliminación</label>
-          <input id="animal-delete-reason" className="form-input" value={deleteReason} required disabled={busy} onChange={event => setDeleteReason(event.target.value)} />
-          {deleteError && <p role="alert" className="text-danger">{deleteError}</p>}
-          {busy && <p className="animal-action-loading inline-flex items-center gap-2" role="status"><IconRefreshCw size={18} className="spinner-icon" /><span>Eliminando animal… Espera un momento.</span></p>}
-          <div className="animal-row-actions mt-3">
-            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setDeleteTarget(null)}>Cancelar</button>
-            <button type="submit" className="btn btn-danger inline-flex items-center justify-center gap-2" disabled={busy || !deleteReason.trim()}><IconTrash size={16} /><span>{busy ? 'Eliminando…' : 'Confirmar eliminación'}</span></button>
+        <form onSubmit={event => void handleDelete(event)} aria-busy={busy} className="modal-form">
+          <header className="modal-header">
+            <span className="modal-icon modal-icon-danger" aria-hidden="true"><IconTrash size={20} /></span>
+            <div>
+              <h2 id="animal-delete-title">Eliminar animal {deleteTarget.code}</h2>
+              <p className="text-sm text-muted">{deleteTarget.alias ?? 'Sin alias'} · {deleteTarget.barnName}</p>
+            </div>
+          </header>
+          <div className="modal-body">
+            <p className="text-sm">La ficha se retirará del padrón activo. Se conservará su historial y podrá reactivarse desde el filtro de fichas inactivas. Esto no registra una venta ni una muerte y no descuenta cabezas del inventario.</p>
+            <div className="form-group">
+              <label className="form-label" htmlFor="animal-delete-reason">Motivo de eliminación</label>
+              <input
+                id="animal-delete-reason"
+                className="form-input"
+                value={deleteReason}
+                required
+                maxLength={300}
+                disabled={busy}
+                onChange={event => setDeleteReason(event.target.value)}
+              />
+              <p className="form-helper">Queda registrado en la auditoría con tu usuario.</p>
+            </div>
+            {deleteError && <p role="alert" className="alert alert-error">{deleteError}</p>}
+            {busy && <p className="animal-action-loading inline-flex items-center gap-2" role="status"><IconRefreshCw size={18} className="spinner-icon" /><span>Eliminando animal… Espera un momento.</span></p>}
           </div>
+          <footer className="modal-actions">
+            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setDeleteTarget(null)}><IconX size={16} /><span>Cancelar</span></button>
+            <button type="submit" className="btn btn-danger" disabled={busy || !deleteReason.trim()}><IconTrash size={16} /><span>{busy ? 'Eliminando…' : 'Confirmar eliminación'}</span></button>
+          </footer>
         </form>
       </ModalDialog>}
       <AnimalToolbar barns={barnNames} onChangeBarns={onChangeBarns} onRefresh={() => void loadList()} loading={loading} />
@@ -994,10 +1047,16 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       </nav>}
 
       {loading && !data && (
-        <div className="card text-sm text-muted inline-flex items-center justify-center gap-2 leading-none p-4" role="status" aria-live="polite">
-          <IconRefreshCw size={16} className="spinner-icon text-primary" />
-          <span>Cargando padrón de animales…</span>
-        </div>
+        <DataState variant="loading" title="Cargando padrón de animales…" />
+      )}
+
+      {!loading && !data && error && (
+        <DataState
+          variant="error"
+          title="No se pudo cargar el padrón"
+          description={error}
+          action={<button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" onClick={() => void loadList()}><IconRefreshCw size={16} /><span>Reintentar</span></button>}
+        />
       )}
 
       {data && (section === 'padron' || animalModalOpen) && (
@@ -1010,13 +1069,29 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   onChange={event => setFilter('q', event.target.value)} placeholder="Código o nombre del animal" />
               </div>
               <button type="submit" className="btn btn-primary animal-icon-button" aria-label="Buscar" title="Buscar" disabled={loading}><IconSearch size={18} /></button>
-              <button type="button" className="btn btn-outline animal-icon-button" aria-label="Filtros" title="Filtros" aria-expanded={filtersOpen} aria-controls="animal-filters-panel" onClick={() => setFiltersOpen(open => !open)}><IconFilter size={18} /></button>
+              <button type="button" className="btn btn-outline animal-icon-button" aria-label="Filtros" title="Filtros" aria-expanded={filtersOpen} aria-controls="animal-filters-panel" onClick={() => setFiltersOpen(open => !open)}>
+                <IconFilter size={18} />
+                {filterChips.length > 0 && <span className="animal-icon-count tabular-nums font-numeric">{filterChips.length}</span>}
+              </button>
               {!soloLectura && <button type="button" className="btn btn-outline animal-icon-button" aria-label="Registrar animal en el padrón" title="Registrar animal" onClick={startCreate}><IconPlus size={18} /></button>}
             </form>
-              {hasActiveFilters && (
+            {filterChips.length > 0 && (
+              <div className="filter-chip-row" aria-label="Filtros aplicados">
+                {filterChips.map((chip) => (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    className="filter-chip"
+                    onClick={() => removeFilter(chip.key)}
+                    aria-label={`Quitar filtro ${chip.label}`}
+                  >
+                    <span>{chip.label}</span>
+                    <IconX size={12} />
+                  </button>
+                ))}
                 <button
                   type="button"
-                  className="btn btn-ghost btn-sm"
+                  className="btn btn-ghost btn-sm filter-chip-clear"
                   onClick={clearFilters}
                   aria-label="Limpiar todos los filtros"
                 >
@@ -1025,7 +1100,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <span>Limpiar filtros</span>
                   </span>
                 </button>
-              )}
+              </div>
+            )}
             {filtersOpen && <form id="animal-filters-panel" className="animal-filters-panel" onSubmit={event => { event.preventDefault(); applyFilters(); }}>
             <div className="form-grid">
               <div className="form-group">
@@ -1234,15 +1310,13 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             </div>
 
             {animals.length === 0 ? (
-              <div className="empty-state-card" role="status" aria-live="polite">
-                <div className="empty-icon-wrap" aria-hidden="true">
-                  <IconSearch size={26} className="text-primary" />
-                </div>
-                <p className="font-semibold">Sin animales para los filtros seleccionados</p>
-                <p className="text-sm text-muted">
-                  Ajuste la búsqueda o registre el primer animal con su código permanente.
-                </p>
-              </div>
+              <DataState
+                variant="empty"
+                title="Sin animales para los filtros seleccionados"
+                description="Ajuste la búsqueda o registre el primer animal con su código permanente."
+                icon={<IconSearch size={26} className="text-primary" />}
+                action={!soloLectura ? <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" onClick={startCreate}><IconPlus size={16} /><span>Registrar animal</span></button> : undefined}
+              />
             ) : (
               compactLayout ? (
                 <ul className="animal-card-list" aria-label="Padrón de animales">
@@ -1370,11 +1444,17 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               </div>
               )
             )}
-            {total > 0 && <nav aria-label="Páginas del padrón" className="animal-pagination">
-              <button type="button" className="btn btn-outline btn-sm" aria-label="Página anterior del padrón" disabled={loading || page === 0} onClick={() => { listRequest.current++; setPage(value => value - 1); }}><IconArrowLeft size={16} /><span>Anterior</span></button>
-              <span className="animal-pagination-info">Página {page + 1} de {Math.max(1, Math.ceil(total / pageSize))}<small>{total} fichas</small></span>
-              <button type="button" className="btn btn-outline btn-sm" aria-label="Página siguiente del padrón" disabled={loading || (page + 1) * pageSize >= total} onClick={() => { listRequest.current++; setPage(value => value + 1); }}><span>Siguiente</span><IconArrowRight size={16} /></button>
-            </nav>}
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              loading={loading}
+              onPage={(next) => { listRequest.current++; setPage(next); }}
+              navLabel="Páginas del padrón"
+              prevLabel="Página anterior del padrón"
+              nextLabel="Página siguiente del padrón"
+              unit={total === 1 ? 'ficha' : 'fichas'}
+            />
           </div>
         </div>
       )}
@@ -1425,7 +1505,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               </div>
             )}
 
-            <div className="form-grid">
+            <div className="form-sections">
+            <fieldset className="form-section">
+              <legend>Identificación</legend>
+              <div className="form-grid">
               <div className="form-group">
                 <label className="form-label" htmlFor="ani-code">Código permanente</label>
                 <input
@@ -1515,7 +1598,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   ))}
                 </select>
               </div>
+              </div>
+            </fieldset>
 
+            <fieldset className="form-section">
+              <legend>Datos zootécnicos</legend>
+              <div className="form-grid">
               <div className="form-group">
                 <label className="form-label" htmlFor="ani-birth">Fecha de nacimiento</label>
                 <input
@@ -1576,7 +1664,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   placeholder="Requiere la fecha de destete"
                 />
               </div>
+              </div>
+            </fieldset>
 
+            <fieldset className="form-section">
+              <legend>Origen y ubicación</legend>
+              <div className="form-grid">
               {!editingCode && (
                 <>
                   <div className="form-group">
@@ -1758,7 +1851,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   </div>
                 </>
               )}
+              </div>
+            </fieldset>
 
+            <fieldset className="form-section">
+              <legend>Genealogía</legend>
+              <div className="form-grid">
               <div className="form-group">
                 <AnimalPicker label="Madre interna" searchLabel="Buscar madre interna" sex="hembra" useIdValue value={form.motherId ? [form.motherId] : []} onChange={values => setField('motherId', values[0] ?? '')} emptyLabel="Desconocido o externo" />
                 {fieldErrors.mother && (
@@ -1806,7 +1904,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   aria-invalid={Boolean(fieldErrors.father)}
                 />
               </div>
+              </div>
+            </fieldset>
 
+            <fieldset className="form-section">
+              <legend>Observaciones y auditoría</legend>
+              <div className="form-grid">
               <div className="form-group form-col-span-full">
                 <label className="form-label" htmlFor="ani-observations">Observaciones</label>
                 <textarea
@@ -1840,6 +1943,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 )}
                 <p id="ani-reason-helper" className="form-helper">Queda en la auditoría con su usuario y la fecha efectiva.</p>
               </div>
+              </div>
+            </fieldset>
             </div>
 
             <div className="form-actions">
@@ -1930,65 +2035,17 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             </div>
           </div>
 
-          {/* Sub-pestañas SaaS de la Ficha Técnica */}
-          <div className="admin-tabs mb-4" role="tablist" aria-label="Secciones de la ficha">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={fichaTab === 'resumen'}
-              className={`btn btn-sm ${fichaTab === 'resumen' ? 'btn-primary' : 'btn-outline'}`}
-              onClick={() => setFichaTab('resumen')}
-            >
-              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                <IconPig size={14} />
-                <span>Datos técnicos</span>
-              </span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={fichaTab === 'pesajes'}
-              className={`btn btn-sm ${fichaTab === 'pesajes' ? 'btn-primary' : 'btn-outline'}`}
-              onClick={() => setFichaTab('pesajes')}
-            >
-              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                <IconScale size={14} />
-                <span>Pesajes y GMD</span>
-                {detail.weights.length > 0 && (
-                  <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{detail.weights.length}</span>
-                )}
-              </span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={fichaTab === 'trazabilidad'}
-              className={`btn btn-sm ${fichaTab === 'trazabilidad' ? 'btn-primary' : 'btn-outline'}`}
-              onClick={() => setFichaTab('trazabilidad')}
-            >
-              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                <IconClipboard size={14} />
-                <span>Trazabilidad</span>
-                {detail.chronology.length > 0 && (
-                  <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{detail.chronology.length}</span>
-                )}
-              </span>
-            </button>
-            {!soloLectura && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={fichaTab === 'operaciones'}
-                className={`btn btn-sm ${fichaTab === 'operaciones' ? 'btn-primary' : 'btn-outline'}`}
-                onClick={() => setFichaTab('operaciones')}
-              >
-                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconEdit size={14} />
-                  <span>Gestión y Traslados</span>
-                </span>
-              </button>
-            )}
-          </div>
+          <ModuleTabs
+            label="Secciones de la ficha"
+            active={fichaTab}
+            onChange={setFichaTab}
+            tabs={[
+              { id: 'resumen', label: 'Datos técnicos', icon: <IconPig size={14} /> },
+              { id: 'pesajes', label: 'Pesajes y GMD', icon: <IconScale size={14} />, count: detail.weights.length },
+              { id: 'trazabilidad', label: 'Trazabilidad', icon: <IconClipboard size={14} />, count: detail.chronology.length },
+              ...(!soloLectura ? [{ id: 'operaciones', label: 'Gestión y Traslados', icon: <IconEdit size={14} /> }] : []),
+            ]}
+          />
 
           {fichaTab === 'resumen' && (
             <div className="card">
@@ -1996,104 +2053,43 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 <span className="section-title">Datos técnicos y genealogía</span>
                 <span className="text-xs text-muted">Información productiva, procedencia e identificación</span>
               </div>
-              <div className="table-responsive">
-                <table className="data-table">
-                  <tbody>
-                    <tr>
-                      <th>Arete oficial</th>
-                      <td className="font-mono font-bold">{detail.currentTag}</td>
-                      <th>Tipo</th>
-                      <td>{detail.animalTypeLabel}</td>
-                    </tr>
-                    <tr>
-                      <th>Sexo</th>
-                      <td>{detail.sexLabel}</td>
-                      <th>Raza</th>
-                      <td>{detail.breed ?? 'Sin dato'}</td>
-                    </tr>
-                    <tr>
-                      <th>Aptitud</th>
-                      <td>{detail.aptitude ?? 'Sin definir'}</td>
-                      <th>Procedencia</th>
-                      <td>
-                        {detail.originLabel}
-                        {detail.originDetail ? ` · ${detail.originDetail}` : ''}
-                      </td>
-                    </tr>
-                    <tr>
-                      <th>Fecha de ingreso</th>
-                      <td className="tabular-nums">{detail.entryDate}</td>
-                      <th>Etapa de ingreso</th>
-                      <td>{detail.entryStageCode}</td>
-                    </tr>
-                    <tr>
-                      <th>Ubicación</th>
-                      <td>{detail.locationName ?? 'Sin asignar'}</td>
-                      <th>Lote</th>
-                      <td>{detail.lotName ? `Lote ${detail.lotName}` : 'Sin lote'}</td>
-                    </tr>
-                    <tr>
-                      <th>Marrana (Madre)</th>
-                      <td className="font-mono">{detail.mother ? (detail.mother.code ?? detail.mother.external ?? 'Sin dato') : 'Desconocida'}</td>
-                      <th>Verraco (Padre)</th>
-                      <td className="font-mono">{detail.father ? (detail.father.code ?? detail.father.external ?? 'Sin dato') : 'Desconocido'}</td>
-                    </tr>
-                    <tr>
-                      <th>Peso al nacer</th>
-                      <td className="tabular-nums font-mono font-bold">{formatWeight(detail.birthWeightKg)}</td>
-                      <th>Peso al destete</th>
-                      <td className="tabular-nums font-mono font-bold">{formatWeight(detail.weaningWeightKg)}</td>
-                    </tr>
-                    {detail.exitDate && (
-                      <tr>
-                        <th>Fecha de salida</th>
-                        <td className="tabular-nums">{detail.exitDate}</td>
-                        <th>Tipo de salida</th>
-                        <td>{detail.exitType === 'sale' ? 'Venta' : detail.exitType === 'death' ? 'Muerte' : detail.exitType === 'discard' ? 'Descarte' : '—'}{detail.exitCauseLabel ? ` · ${detail.exitCauseLabel}` : ''}</td>
-                      </tr>
-                    )}
-                    <tr>
-                      <th>Observaciones</th>
-                      <td colSpan={3}>{detail.observations ?? 'Sin observaciones'}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              <dl className="detail-grid">
+                <div className="detail-item"><dt>Arete oficial</dt><dd className="font-mono font-bold">{detail.currentTag}</dd></div>
+                <div className="detail-item"><dt>Tipo</dt><dd>{detail.animalTypeLabel}</dd></div>
+                <div className="detail-item"><dt>Sexo</dt><dd>{detail.sexLabel}</dd></div>
+                <div className="detail-item"><dt>Raza</dt><dd>{detail.breed ?? 'Sin dato'}</dd></div>
+                <div className="detail-item"><dt>Aptitud</dt><dd>{detail.aptitude ?? 'Sin definir'}</dd></div>
+                <div className="detail-item"><dt>Procedencia</dt><dd>{detail.originLabel}{detail.originDetail ? ` · ${detail.originDetail}` : ''}</dd></div>
+                <div className="detail-item"><dt>Fecha de ingreso</dt><dd className="font-mono tabular-nums">{detail.entryDate}</dd></div>
+                <div className="detail-item"><dt>Etapa de ingreso</dt><dd>{detail.entryStageCode}</dd></div>
+                <div className="detail-item"><dt>Ubicación</dt><dd>{detail.locationName ?? 'Sin asignar'}</dd></div>
+                <div className="detail-item"><dt>Lote</dt><dd>{detail.lotName ? `Lote ${detail.lotName}` : 'Sin lote'}</dd></div>
+                <div className="detail-item"><dt>Marrana (madre)</dt><dd className="font-mono">{detail.mother ? (detail.mother.code ?? detail.mother.external ?? 'Sin dato') : 'Desconocida'}</dd></div>
+                <div className="detail-item"><dt>Verraco (padre)</dt><dd className="font-mono">{detail.father ? (detail.father.code ?? detail.father.external ?? 'Sin dato') : 'Desconocido'}</dd></div>
+                <div className="detail-item"><dt>Peso al nacer</dt><dd className="font-mono font-bold tabular-nums">{formatWeight(detail.birthWeightKg)}</dd></div>
+                <div className="detail-item"><dt>Peso al destete</dt><dd className="font-mono font-bold tabular-nums">{formatWeight(detail.weaningWeightKg)}</dd></div>
+                {detail.exitDate && (
+                  <>
+                    <div className="detail-item"><dt>Fecha de salida</dt><dd className="font-mono tabular-nums">{detail.exitDate}</dd></div>
+                    <div className="detail-item"><dt>Tipo de salida</dt><dd>{detail.exitType === 'sale' ? 'Venta' : detail.exitType === 'death' ? 'Muerte' : detail.exitType === 'discard' ? 'Descarte' : 'Sin dato'}{detail.exitCauseLabel ? ` · ${detail.exitCauseLabel}` : ''}</dd></div>
+                  </>
+                )}
+                <div className="detail-item detail-item-wide"><dt>Observaciones</dt><dd>{detail.observations ?? 'Sin observaciones'}</dd></div>
+              </dl>
 
               {detail.reproductiveSummary && (
-                <div className="table-responsive mt-3">
-                  <table className="data-table">
-                    <tbody>
-                      <tr>
-                        <th>Servicios de monta / IA</th>
-                        <td className="tabular-nums font-mono font-bold">{detail.reproductiveSummary.serviceCount}</td>
-                        <th>Partos registrados</th>
-                        <td className="tabular-nums font-mono font-bold">{detail.reproductiveSummary.farrowingCount}</td>
-                      </tr>
-                      <tr>
-                        <th>Primer parto</th>
-                        <td className="tabular-nums">{detail.reproductiveSummary.firstFarrowingDate ?? 'Sin dato'}</td>
-                        <th>Último parto</th>
-                        <td className="tabular-nums">{detail.reproductiveSummary.lastFarrowingDate ?? 'Sin dato'}</td>
-                      </tr>
-                      <tr>
-                        <th>Crías nacidas (camada)</th>
-                        <td className="tabular-nums font-mono font-bold">{detail.reproductiveSummary.totalBorn}</td>
-                        <th>Machos / hembras / sin sexar</th>
-                        <td className="tabular-nums font-mono">
-                          {detail.reproductiveSummary.maleBorn} / {detail.reproductiveSummary.femaleBorn} / {detail.reproductiveSummary.unsexedBorn}
-                        </td>
-                      </tr>
-                      <tr>
-                        <th>Peso promedio crías vivas</th>
-                        <td colSpan={3} className="tabular-nums font-mono font-bold">
-                          {formatWeight(detail.reproductiveSummary.averageBirthWeightKg)}
-                          {detail.reproductiveSummary.weighedBirths ? ` · ponderado por ${detail.reproductiveSummary.weighedBirths} crías vivas de camadas con peso registrado` : ''}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <section className="detail-section" aria-label="Resumen reproductivo">
+                  <h3 className="detail-section-title">Resumen reproductivo</h3>
+                  <dl className="detail-grid">
+                    <div className="detail-item"><dt>Servicios de monta o IA</dt><dd className="font-mono font-bold tabular-nums">{detail.reproductiveSummary.serviceCount}</dd></div>
+                    <div className="detail-item"><dt>Partos registrados</dt><dd className="font-mono font-bold tabular-nums">{detail.reproductiveSummary.farrowingCount}</dd></div>
+                    <div className="detail-item"><dt>Primer parto</dt><dd className="font-mono tabular-nums">{detail.reproductiveSummary.firstFarrowingDate ?? 'Sin dato'}</dd></div>
+                    <div className="detail-item"><dt>Último parto</dt><dd className="font-mono tabular-nums">{detail.reproductiveSummary.lastFarrowingDate ?? 'Sin dato'}</dd></div>
+                    <div className="detail-item"><dt>Crías nacidas</dt><dd className="font-mono font-bold tabular-nums">{detail.reproductiveSummary.totalBorn}</dd></div>
+                    <div className="detail-item"><dt>Machos, hembras y sin sexar</dt><dd className="font-mono tabular-nums">{detail.reproductiveSummary.maleBorn} / {detail.reproductiveSummary.femaleBorn} / {detail.reproductiveSummary.unsexedBorn}</dd></div>
+                    <div className="detail-item detail-item-wide"><dt>Peso promedio de crías vivas</dt><dd className="font-mono font-bold tabular-nums">{formatWeight(detail.reproductiveSummary.averageBirthWeightKg)}{detail.reproductiveSummary.weighedBirths ? ` · ponderado por ${detail.reproductiveSummary.weighedBirths} crías vivas de camadas con peso registrado` : ''}</dd></div>
+                  </dl>
+                </section>
               )}
 
               {!soloLectura && (
@@ -2226,133 +2222,108 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   </p>
                 </div>
               ) : (
-                <div className="table-responsive">
-                  <table className="data-table" aria-label="Historial de pesajes">
-                    <thead>
-                      <tr>
-                        <th className="text-left">Fecha</th>
-                        <th className="text-left">Hora</th>
-                        <th className="text-right">Peso vivo</th>
-                        <th className="text-right">Ganancia (GMD)</th>
-                        <th className="text-left">Ubicación histórica</th>
-                        <th className="text-left">Nota</th>
-                        {!soloLectura && <th className="text-center">Acción</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detail.weights.map((weight) => (
-                        <React.Fragment key={weight.id}>
-                          <tr>
-                            <td className="text-left tabular-nums font-mono">{weight.weighedOn}</td>
-                            <td className="text-left tabular-nums font-mono text-xs text-muted">{weight.weighedTime}</td>
-                            <td className="text-right tabular-nums font-mono font-bold">{weight.weightKg.toFixed(2)} kg</td>
-                            <td className="text-right tabular-nums font-mono">
+                <ul className="data-card-list" aria-label="Historial de pesajes">
+                  {detail.weights.map((weight) => (
+                    <li key={weight.id}>
+                      <article className="data-card weight-card" data-state={weight.corrected ? 'corrected' : 'active'}>
+                        <header className="data-card-head">
+                          <div className="data-card-identity">
+                            <span className="data-card-title font-mono">{weight.weighedOn}</span>
+                            <span className="data-card-subtitle font-mono">{weight.weighedTime}</span>
+                          </div>
+                          <span className="badge-status badge-outline">{weight.corrected ? 'Corregido' : 'Registrado'}</span>
+                        </header>
+                        <dl className="data-card-meta">
+                          <div>
+                            <dt>Peso vivo</dt>
+                            <dd className="font-mono font-bold tabular-nums">{weight.weightKg.toFixed(2)} kg</dd>
+                          </div>
+                          <div>
+                            <dt>Ganancia (GMD)</dt>
+                            <dd className="font-mono tabular-nums">
                               {weight.corrected ? (
-                                <span className="text-muted text-xs">Corregido</span>
+                                <span className="text-muted">Sin cálculo</span>
                               ) : weight.gainDays === null ? (
-                                '—'
+                                'Sin dato'
                               ) : (
-                                <span>
-                                  +{weight.gainKg} kg <span className="text-xs text-muted">({(Number(weight.gainKg) / weight.gainDays).toFixed(2)} kg/d)</span>
-                                </span>
+                                <>+{weight.gainKg} kg <span className="text-xs text-muted">({(Number(weight.gainKg) / weight.gainDays).toFixed(2)} kg/d)</span></>
                               )}
-                            </td>
-                            <td className="text-left text-xs">{[weight.barnId ? data?.options.barns.find((barn) => barn.id === weight.barnId)?.name : null, weight.locationCode, weight.lotCode].filter(Boolean).join(' · ') || '—'}</td>
-                            <td className="text-left text-xs">{weight.note ?? '—'}</td>
-                            {!soloLectura && (
-                              <td className="text-center">
-                                {!weight.corrected && detail.exitDate === null && (
-                                  <button
-                                    type="button"
-                                    className="btn btn-outline btn-sm"
-                                    onClick={() =>
-                                      setWeightCorrection({
-                                        id: weight.id,
-                                        kg: String(weight.weightKg),
-                                        reason: '',
-                                        operationKey: newOperationKey('ani-pesaje-corr'),
-                                      })
-                                    }
-                                    aria-label={`Corregir pesaje del ${weight.weighedOn}`}
-                                  >
-                                    <span className="inline-flex items-center justify-center gap-1 leading-none text-xs">
-                                      <IconEdit size={12} />
-                                      <span>Corregir</span>
-                                    </span>
-                                  </button>
-                                )}
-                              </td>
-                            )}
-                          </tr>
-                          {weightCorrection?.id === weight.id && (
-                            <tr>
-                              <td colSpan={7}>
-                                <form onSubmit={handleWeightCorrection} className="form-stack p-3 bg-subtle rounded-md border border-subtle">
-                                  <div className="grid-2">
-                                    <div className="form-group">
-                                      <label className="form-label" htmlFor={`weight-corr-kg-${weight.id}`}>Peso corregido (kg)</label>
-                                      <input
-                                        id={`weight-corr-kg-${weight.id}`}
-                                        className="form-input font-numeric tabular-nums font-bold"
-                                        type="number"
-                                        min="0.01"
-                                        max="500"
-                                        step="0.01"
-                                        value={weightCorrection.kg}
-                                        onChange={(event) =>
-                                          setWeightCorrection((prev) => prev ? { ...prev, kg: event.target.value } : prev)
-                                        }
-                                        required
-                                      />
-                                    </div>
-                                    <div className="form-group">
-                                      <label className="form-label" htmlFor={`weight-corr-reason-${weight.id}`}>Motivo de corrección</label>
-                                      <input
-                                        id={`weight-corr-reason-${weight.id}`}
-                                        className="form-input"
-                                        value={weightCorrection.reason}
-                                        placeholder="Ej. Error tipográfico en báscula"
-                                        onChange={(event) =>
-                                          setWeightCorrection((prev) => prev ? { ...prev, reason: event.target.value } : prev)
-                                        }
-                                        required
-                                        maxLength={300}
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="form-actions">
-                                    <button
-                                      type="submit"
-                                      className="btn btn-primary btn-sm"
-                                      disabled={busy}
-                                      aria-label="Guardar corrección"
-                                    >
-                                      <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                        <IconCheck size={14} />
-                                        <span>{busy ? 'Guardando…' : 'Guardar corrección'}</span>
-                                      </span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn-outline btn-sm"
-                                      onClick={() => setWeightCorrection(null)}
-                                      aria-label="Cancelar corrección"
-                                    >
-                                      <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                        <IconX size={14} />
-                                        <span>Cancelar</span>
-                                      </span>
-                                    </button>
-                                  </div>
-                                </form>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Ubicación histórica</dt>
+                            <dd>{[weight.barnId ? data?.options.barns.find((barn) => barn.id === weight.barnId)?.name : null, weight.locationCode, weight.lotCode].filter(Boolean).join(' · ') || 'Sin dato'}</dd>
+                          </div>
+                        </dl>
+                        {weight.note && <p className="data-card-note">{weight.note}</p>}
+                        {!soloLectura && !weight.corrected && detail.exitDate === null && (
+                          <div className="data-card-actions">
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() => setWeightCorrection({
+                                id: weight.id,
+                                kg: String(weight.weightKg),
+                                reason: '',
+                                operationKey: newOperationKey('ani-pesaje-corr'),
+                              })}
+                              aria-label={`Corregir pesaje del ${weight.weighedOn}`}
+                            >
+                              <IconEdit size={14} />
+                              <span>Corregir</span>
+                            </button>
+                          </div>
+                        )}
+                        {weightCorrection?.id === weight.id && (
+                          <form onSubmit={handleWeightCorrection} className="form-stack weight-correction-form">
+                            <div className="grid-2">
+                              <div className="form-group">
+                                <label className="form-label" htmlFor={`weight-corr-kg-${weight.id}`}>Peso corregido (kg)</label>
+                                <input
+                                  id={`weight-corr-kg-${weight.id}`}
+                                  className="form-input font-numeric tabular-nums font-bold"
+                                  type="number"
+                                  min="0.01"
+                                  max="500"
+                                  step="0.01"
+                                  value={weightCorrection.kg}
+                                  onChange={(event) =>
+                                    setWeightCorrection((prev) => prev ? { ...prev, kg: event.target.value } : prev)
+                                  }
+                                  required
+                                />
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label" htmlFor={`weight-corr-reason-${weight.id}`}>Motivo de corrección</label>
+                                <input
+                                  id={`weight-corr-reason-${weight.id}`}
+                                  className="form-input"
+                                  value={weightCorrection.reason}
+                                  placeholder="Ej. Error tipográfico en báscula"
+                                  onChange={(event) =>
+                                    setWeightCorrection((prev) => prev ? { ...prev, reason: event.target.value } : prev)
+                                  }
+                                  required
+                                  maxLength={300}
+                                />
+                              </div>
+                            </div>
+                            <div className="form-actions">
+                              <button type="submit" className="btn btn-primary btn-sm" disabled={busy} aria-label="Guardar corrección">
+                                <IconCheck size={14} />
+                                <span>{busy ? 'Guardando…' : 'Guardar corrección'}</span>
+                              </button>
+                              <button type="button" className="btn btn-outline btn-sm" onClick={() => setWeightCorrection(null)} aria-label="Cancelar corrección">
+                                <IconX size={14} />
+                                <span>Cancelar</span>
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </article>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           )}
@@ -2368,36 +2339,25 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   <span className="text-xs text-muted">Altas, aretes, tipos, pesajes y movimientos de inventario</span>
                 </div>
                 {detail.chronology.length === 0 ? (
-                  <div className="card empty-state-card mt-3">
-                    <div className="empty-icon-wrap">
-                      <IconClipboard size={28} className="text-muted" />
-                    </div>
-                    <p className="font-semibold text-base">Sin eventos en la cronología</p>
-                    <p className="text-sm text-muted">
-                      Los pesajes, traslados, aplicaciones sanitarias y eventos reproductivos se reflejarán aquí automáticamente.
-                    </p>
-                  </div>
+                  <DataState
+                    variant="empty"
+                    title="Sin eventos en la cronología"
+                    description="Los pesajes, traslados, aplicaciones sanitarias y eventos reproductivos se reflejarán aquí automáticamente."
+                    icon={<IconClipboard size={26} className="text-primary" />}
+                  />
                 ) : (
-                  <div className="table-responsive">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th className="text-left">Fecha</th>
-                          <th className="text-left">Evento operativo</th>
-                          <th className="text-left">Detalle</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.chronology.map((item) => (
-                          <tr key={`${item.kind}-${item.date}-${item.id ?? 'alta'}`}>
-                            <td className="text-left tabular-nums font-mono">{item.date}</td>
-                            <td className="text-left font-semibold">{item.title}</td>
-                            <td className="text-left text-sm">{item.detail}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ol className="timeline" aria-label="Cronología operativa">
+                    {detail.chronology.map((item) => (
+                      <li key={`${item.kind}-${item.date}-${item.id ?? 'alta'}`} className="timeline-item" data-kind={item.kind}>
+                        <span className="timeline-dot" aria-hidden="true" />
+                        <div className="timeline-body">
+                          <span className="timeline-date font-mono tabular-nums">{item.date}</span>
+                          <span className="timeline-title">{item.title}</span>
+                          <span className="timeline-detail">{item.detail}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
                 )}
               </div>
 
@@ -2410,36 +2370,29 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   <span className="text-xs text-muted">Se conserva el historial de aretes y fechas de asignación</span>
                 </div>
                 {detail.tags.length === 0 ? (
-                  <div className="card empty-state-card mt-3">
-                    <div className="empty-icon-wrap">
-                      <IconClipboard size={28} className="text-muted" />
-                    </div>
-                    <p className="font-semibold text-base">Sin cambios de arete</p>
-                    <p className="text-sm text-muted">
-                      El animal conserva su arete oficial vigente ({detail.currentTag}).
-                    </p>
-                  </div>
+                  <DataState
+                    variant="empty"
+                    title="Sin cambios de arete"
+                    description={`El animal conserva su arete oficial vigente (${detail.currentTag}).`}
+                    icon={<IconClipboard size={26} className="text-primary" />}
+                  />
                 ) : (
-                  <div className="table-responsive">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th className="text-left">Arete oficial</th>
-                          <th className="text-left">Vigente desde</th>
-                          <th className="text-left">Vigente hasta</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.tags.map((tag) => (
-                          <tr key={tag.id}>
-                            <td className="text-left font-mono font-bold">{tag.tag}</td>
-                            <td className="text-left tabular-nums font-mono">{tag.validFrom}</td>
-                            <td className="text-left tabular-nums font-mono">{tag.validTo ?? 'Vigente'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ul className="data-card-list tag-history" aria-label="Aretes históricos">
+                    {detail.tags.map((tag) => (
+                      <li key={tag.id}>
+                        <article className="data-card tag-card">
+                          <header className="data-card-head">
+                            <span className="data-card-title font-mono">{tag.tag}</span>
+                            <span className={`badge-status ${tag.validTo ? 'badge-outline' : 'badge-success'}`}>{tag.validTo ? 'Histórico' : 'Vigente'}</span>
+                          </header>
+                          <dl className="data-card-meta">
+                            <div><dt>Vigente desde</dt><dd className="font-mono tabular-nums">{tag.validFrom}</dd></div>
+                            <div><dt>Vigente hasta</dt><dd className="font-mono tabular-nums">{tag.validTo ?? 'Sin fecha de cierre'}</dd></div>
+                          </dl>
+                        </article>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             </>
@@ -2904,56 +2857,40 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
 
           {saleReturnModalOpen && detail && (
             <ModalDialog labelledBy="animal-sale-return-dialog-title" onDismiss={() => setSaleReturnModalOpen(false)} dismissDisabled={busy}>
-              <div className="card-header-clean mb-2">
-                <h4 id="animal-sale-return-dialog-title" className="text-lg font-bold inline-flex items-center justify-center gap-2 leading-none">
-                  <IconRefreshCw size={18} className="text-primary" />
-                  <span>Devolver venta de animal</span>
-                </h4>
-              </div>
-              <p className="text-sm text-muted mb-3">
-                Se cancelará el registro de salida del animal <strong>{detail.code}</strong>, se reintegrará 1 cabeza al inventario del galpón y se generará el contra-asiento financiero auditable.
-              </p>
-              <form onSubmit={(e) => { e.preventDefault(); void confirmSaleReturn(); }} className="form-stack">
-                <div className="form-group mb-4">
-                  <label className="form-label text-sm" htmlFor="modal-sale-return-reason">
-                    Motivo de la devolución:
-                  </label>
+              <header className="modal-header">
+                <span className="modal-icon modal-icon-primary" aria-hidden="true"><IconRefreshCw size={20} /></span>
+                <div>
+                  <h2 id="animal-sale-return-dialog-title">Devolver venta de animal</h2>
+                  <p className="text-sm text-muted">Ficha {detail.code}</p>
+                </div>
+              </header>
+              <div className="modal-body">
+                <p className="text-sm text-muted">
+                  Se cancelará el registro de salida del animal <strong>{detail.code}</strong>, se reintegrará 1 cabeza al inventario del galpón y se generará el contra-asiento financiero auditable.
+                </p>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="modal-sale-return-reason">Motivo de la devolución</label>
                   <input
                     id="modal-sale-return-reason"
                     className="form-input"
                     value={saleReturnReason}
                     onChange={(e) => setSaleReturnReason(e.target.value)}
-                    placeholder="Ej. Reclamo del cliente / transacción revertida"
+                    placeholder="Ej. Reclamo del cliente o transacción revertida"
                     required
                     autoFocus
                   />
                 </div>
-                <div className="form-actions justify-end">
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    disabled={busy}
-                    onClick={() => setSaleReturnModalOpen(false)}
-                    aria-label="Cancelar devolución"
-                  >
-                    <span className="inline-flex items-center justify-center gap-2 leading-none">
-                      <IconX size={14} />
-                      <span>Cancelar</span>
-                    </span>
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={busy || !saleReturnReason.trim()}
-                    aria-label="Confirmar devolución de venta"
-                  >
-                    <span className="inline-flex items-center justify-center gap-2 leading-none">
-                      <IconCheck size={14} />
-                      <span>{busy ? 'Guardando…' : 'Confirmar devolución'}</span>
-                    </span>
-                  </button>
-                </div>
-              </form>
+              </div>
+              <footer className="modal-actions">
+                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setSaleReturnModalOpen(false)} aria-label="Cancelar devolución">
+                  <IconX size={16} />
+                  <span>Cancelar</span>
+                </button>
+                <button type="button" className="btn btn-primary" disabled={busy || !saleReturnReason.trim()} aria-label="Confirmar devolución de venta" onClick={() => void confirmSaleReturn()}>
+                  <IconCheck size={16} />
+                  <span>{busy ? 'Guardando…' : 'Confirmar devolución'}</span>
+                </button>
+              </footer>
             </ModalDialog>
           )}
         </div>

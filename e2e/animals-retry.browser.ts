@@ -215,7 +215,7 @@ test('descarte desde la ficha no solicita importe y envía su causa',async({page
   await page.getByLabel('Tipo de salida').selectOption('discard');await expect(page.getByLabel('Importe de venta')).toHaveCount(0);
   await page.getByLabel('Causa',{exact:true}).selectOption('edad');await page.locator('#ani-exit-date').fill('2026-11-07');await page.locator('#ani-exit-reason').fill('Retiro por edad');const submitExit=page.getByRole('button',{name:'Registrar baja de animal'});await submitExit.focus();await submitExit.press('Enter');
   await page.getByRole('tab', { name: /Datos técnicos/ }).click();
-  await expect(page.getByRole('cell',{name:'Descarte · Edad'})).toBeVisible();expect(sent).toMatchObject({exitType:'discard',causeCode:'edad',effectiveDate:'2026-11-07'});
+  await expect(page.getByText('Descarte · Edad',{exact:true})).toBeVisible();expect(sent).toMatchObject({exitType:'discard',causeCode:'edad',effectiveDate:'2026-11-07'});
 });
 
 test('el pesaje permite elegir la etapa que actualizará la ficha',async({page})=>{
@@ -370,10 +370,10 @@ test('ficha muestra el resumen reproductivo y la causa de salida', async ({ page
   const animal = { ...initialAnimal(), sex: 'hembra', sexLabel: 'Hembra', exitDate: '2026-11-07', exitType: 'death', status: 'muerto', statusLabel: 'Muerto', exitCauseCode: 'enfermedad', exitCauseLabel: 'Enfermedad', reproductiveSummary: {serviceCount: 3, farrowingCount: 2, firstFarrowingDate: '2026-01-10', lastFarrowingDate: '2026-09-10', totalBorn: 19, maleBorn: 10, femaleBorn: 9, unsexedBorn: 0, averageBirthWeightKg: 1.45, weighedBirths: 17} };
   await mockAnimalApi(page, animal);
   await page.goto('/animal/RETRY-001');
-  await expect(page.getByRole('cell', {name:'Muerte · Enfermedad'})).toBeVisible();
-  await expect(page.getByRole('row').filter({hasText:'Servicios'})).toContainText('3');
-  await expect(page.getByRole('row').filter({hasText:'Primer parto'})).toContainText('2026-01-10');
-  await expect(page.getByRole('row').filter({hasText:'Peso promedio crías vivas'})).toContainText('17 crías vivas');
+  await expect(page.getByText('Muerte · Enfermedad', { exact: true })).toBeVisible();
+  await expect(page.locator('.detail-item').filter({ hasText: 'Servicios de monta o IA' })).toContainText('3');
+  await expect(page.locator('.detail-item').filter({ hasText: 'Primer parto' })).toContainText('2026-01-10');
+  await expect(page.locator('.detail-item').filter({ hasText: 'Peso promedio de crías vivas' })).toContainText('17 crías vivas');
 });
 
 test('cambiar arete reintenta la misma operación después de perderse la respuesta', async ({ page }) => {
