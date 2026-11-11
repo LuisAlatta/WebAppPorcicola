@@ -8,7 +8,6 @@ import { BocetoLogin, migrateRememberedUsername } from './components/BocetoLogin
 import { MenuPrincipal } from './components/MenuPrincipal';
 import { BottomNav } from './components/BottomNav';
 import { SelectorGalpones } from './components/SelectorGalpones';
-import { IconBox } from './components/icons';
 import { installBarnScopeFetch, setSelectedBarnIds } from './utils/barn-scope';
 import { ModuloAdministracion } from './components/ModuloAdministracion';
 import { ModuloConfiguracion } from './components/ModuloConfiguracion';
@@ -130,7 +129,8 @@ function App() {
     setPerfilActual(perfil);
     if (username) setUsuarioActual(username);
     setEstaAutenticado(true);
-    if(vistaActual==='login')handleNavigate('inicio');
+    setChoosingBarns(false);
+    handleNavigate('galpones');
   };
 
   const handleLogout = async () => {
@@ -161,13 +161,12 @@ function App() {
     }
 
     if((vistaActual==='configuracion'||vistaActual==='administracion')&&perfilActual!=='administrador')return <div className="session-check" role="alert"><h1>Acceso restringido</h1><p>Este módulo solo está disponible para el administrador.</p></div>;
-    if (vistaActual === 'galpones' || choosingBarns || (!barnSelection.ids.length && vistaActual !== 'inicio')) return <SelectorGalpones selected={barnSelection.ids} onContinue={(ids, names) => {
+    if (vistaActual === 'galpones' || choosingBarns || !barnSelection.ids.length) return <SelectorGalpones perfil={perfilActual} selected={barnSelection.ids} onContinue={(ids, names) => {
       setSelectedBarnIds(ids);
       setBarnSelection({ ids, names });
       setChoosingBarns(false);
       handleNavigate(vistaActual === 'galpones' ? 'inicio' : vistaActual);
     }} />;
-    if (vistaActual === 'inicio' && !barnSelection.ids.length) return <div className="menu-app-container"><div className="menu-app-grid"><button className="menu-app-tile menu-tile-inventario" type="button" onClick={() => handleNavigate('galpones')}><div className="menu-tile-icon-box"><IconBox size={30} /></div><span className="menu-tile-title">Galpones</span></button></div></div>;
     switch (vistaActual) {
       case 'inicio':
         return (
@@ -214,7 +213,7 @@ function App() {
     <div className="app-shell">
       {estaAutenticado && vistaActual !== 'login' && (
         <Navbar
-          vistaActual={vistaActual}
+          vistaActual={!barnSelection.ids.length && vistaActual === 'inicio' ? 'galpones' : vistaActual}
           perfilActual={perfilActual}
           usuario={usuarioActual}
           onNavigate={handleNavigate}

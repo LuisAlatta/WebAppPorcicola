@@ -92,7 +92,10 @@ test('el rol del servidor limita menú y acceso directo',async({page})=>{
  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{error:'Sin sesión'}}));
  await page.route('**/api/auth/login',route=>route.fulfill({status:200,json:{ok:true,user:{role:'operario',username:'operario@prueba.pe'}}}));
  await page.goto('/administracion');await page.getByLabel('Usuario',{exact:true}).fill('operario@prueba.pe');await page.getByLabel('Contraseña',{exact:true}).fill('PasswordSoloPrueba');await page.getByRole('button',{name:'Entrar',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Acceso restringido'})).toBeVisible();await expect(page.getByRole('navigation')).toBeVisible();await expect(page.getByRole('button',{name:'Administración',exact:true})).toHaveCount(0);await expect(page.locator('#select-perfil')).toHaveCount(0);await expect(page).toHaveURL(/\/administracion$/);
+  await expect(page).toHaveURL(/\/galpones$/);
+  await page.route('**/api/auth/me',route=>route.fulfill({json:{user:{role:'operario',username:'operario@prueba.pe'}}}));
+  await page.goto('/administracion');
+  await expect(page.getByRole('heading',{name:'Acceso restringido'})).toBeVisible();await expect(page.getByRole('navigation')).toBeVisible();await expect(page.getByRole('button',{name:'Administración',exact:true})).toHaveCount(0);await expect(page.locator('#select-perfil')).toHaveCount(0);await expect(page).toHaveURL(/\/administracion$/);
 });
 test('fallo al verificar sesión oculta módulos y permite reintentar',async({page})=>{
  await page.route('**/api/auth/me',route=>route.abort('failed'));await page.goto('/animales');await expect(page.getByRole('heading',{name:'No se pudo comprobar la sesión'})).toBeVisible();await expect(page.getByRole('navigation')).toHaveCount(0);
@@ -109,7 +112,7 @@ for(const role of ['administrador','responsable','operario','veterinario'])test(
  await page.route('**/api/**',route=>route.fulfill({status:403,json:{error:'Consulta no disponible en esta prueba'}}));
  await page.route('**/api/auth/me',route=>route.fulfill({status:200,json:{ok:true,user:{role,username:`${role}@prueba.pe`}}}));
   await page.route('**/api/barns',route=>route.fulfill({json:{barns:[{id:1,name:'Galpón A'}]}}));
-  await page.goto('/inicio');await page.getByRole('main').getByRole('button',{name:'Galpones',exact:true}).click();await page.getByRole('checkbox',{name:'Galpón A'}).check();await page.getByRole('button',{name:'Siguiente',exact:true}).click();await expect(page.getByRole('navigation')).toBeVisible();await expect(page.getByRole('button',{name:'Administración',exact:true})).toHaveCount(role==='administrador'?1:0);await expect(page.getByRole('button',{name:'Configuración',exact:true})).toHaveCount(role==='administrador'?1:0);await expect(page.locator('#select-perfil')).toHaveCount(0);
+  await page.goto('/inicio');await page.getByRole('checkbox',{name:'Galpón A'}).check();await page.getByRole('button',{name:'Siguiente',exact:true}).click();await expect(page.getByRole('navigation')).toBeVisible();await expect(page.getByRole('button',{name:'Administración',exact:true})).toHaveCount(role==='administrador'?1:0);await expect(page.getByRole('button',{name:'Configuración',exact:true})).toHaveCount(role==='administrador'?1:0);await expect(page.locator('#select-perfil')).toHaveCount(0);
 });
 test('una versión nueva espera y cancelar actualización conserva el formulario',async({page})=>{
  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{error:'Sin sesión'}}));await page.goto('/login');await page.evaluate(()=>navigator.serviceWorker.ready);await page.reload();await page.getByLabel('Usuario',{exact:true}).fill('borrador@prueba.pe');

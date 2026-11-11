@@ -23,6 +23,7 @@ import { ModuloConfiguracion } from './ModuloConfiguracion';
 interface ModuloAdministracionProps {
   perfil: Perfil;
   onNavigate: (vista: 'inicio' | 'listado' | 'formulario' | 'detalle' | 'administracion') => void;
+  barnsOnly?: boolean;
 }
 
 interface UserItem {
@@ -100,8 +101,8 @@ const ACTION_LABEL: Record<AuditItem['action'], string> = {
   delete: 'Baja',
 };
 
-export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracionProps) {
-  const [activeTab, setActiveTab] = useState<'usuarios' | 'galpones' | 'equipo' | 'historial' | 'auditoria' | 'configuracion'>('usuarios');
+export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: ModuloAdministracionProps) {
+  const [activeTab, setActiveTab] = useState<'usuarios' | 'galpones' | 'equipo' | 'historial' | 'auditoria' | 'configuracion'>(barnsOnly ? 'galpones' : 'usuarios');
   const [users, setUsers] = useState<UserItem[]>([]);
   const [barns, setBarns] = useState<BarnItem[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -120,6 +121,11 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
 
   // Formulario nuevo galpón
   const [showBarnModal, setShowBarnModal] = useState<boolean>(false);
+  const [editingBarn, setEditingBarn] = useState<BarnItem | null>(null);
+  const [barnSaving, setBarnSaving] = useState(false);
+  const [barnError, setBarnError] = useState('');
+  const [statusBarn, setStatusBarn] = useState<BarnItem | null>(null);
+  const [nextBarnStatus, setNextBarnStatus] = useState<BarnItem['status']>('preparacion');
   const [newBarnCode, setNewBarnCode] = useState<string>('');
   const [newBarnName, setNewBarnName] = useState<string>('');
   const [newBarnZone, setNewBarnZone] = useState<string>('');
@@ -338,12 +344,15 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
 
   const handleCreateBarn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (barnSaving) return;
+    setBarnSaving(true);
+    setBarnError('');
     setErrorMsg(null);
     setSuccessMsg(null);
 
     try {
-      const res = await fetch('/api/admin/barns', {
-        method: 'POST',
+      const res = await fetch(editingBarn ? `/api/admin/barns/${editingBarn.id}` : '/api/admin/barns', {
+        method: editingBarn ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code: newBarnCode,
@@ -355,19 +364,38 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
 
       const data = await res.json() as { ok?: boolean; error?: string };
       if (!res.ok) {
-        setErrorMsg(data.error || 'Error al crear galpón');
+        setBarnError(data.error || 'No se pudo guardar el galpón');
         return;
       }
 
-      setSuccessMsg(`Galpón ${newBarnName} (${newBarnCode}) creado exitosamente`);
+      setSuccessMsg(`Galpón ${newBarnName} ${editingBarn ? 'actualizado' : 'creado'} exitosamente`);
       setShowBarnModal(false);
       setNewBarnCode('');
       setNewBarnName('');
       setNewBarnZone('');
       await refreshData();
     } catch (err) {
-      setErrorMsg(String(err));
+      setBarnError(String(err));
+    } finally {
+      setBarnSaving(false);
     }
+  };
+
+  const handleSaveBarnStatus = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!statusBarn || barnSaving) return;
+    setBarnSaving(true); setBarnError(''); setErrorMsg(null); setSuccessMsg(null);
+    try {
+      const response = await fetch(`/api/admin/barns/${statusBarn.id}/status`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextBarnStatus }),
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) { setBarnError(data.error ?? 'No se pudo cambiar el estado'); return; }
+      setStatusBarn(null);
+      setSuccessMsg(`Estado de ${statusBarn.name} actualizado`);
+      await refreshData();
+    } catch { setBarnError('No se pudo confirmar el cambio de estado. Comprueba la conexión.'); }
+    finally { setBarnSaving(false); }
   };
 
   const handleSaveTeam = async (e: React.FormEvent) => {
@@ -553,7 +581,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
       {/* Encabezado */}
       <div className="module-heading mb-4">
         <p className="text-xs text-muted">
-          Cuentas de usuario, asignación de galpones y equipo operativo.
+          {barnsOnly ? 'Crea y edita galpones, asigna su personal y revisa los cambios.' : 'Cuentas de usuario, asignación de galpones y equipo operativo.'}
         </p>
         <div className="inline-flex items-center justify-center gap-2 leading-none">
           <button
@@ -590,8 +618,9 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
       )}
 
       {/* Pestañas de navegación interna */}
+      {loading && <p role="status" className="text-muted">Cargando datos de administración…</p>}
       <div className="admin-tabs mb-4">
-        <button
+        {!barnsOnly && <button
           type="button"
           className={`btn btn-sm ${activeTab === 'usuarios' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setActiveTab('usuarios')}
@@ -600,7 +629,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
             <IconUser size={16} />
             <span>Usuarios ({users.length})</span>
           </span>
-        </button>
+        </button>}
 
         <button
           type="button"
@@ -635,7 +664,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
           </span>
         </button>
 
-        <button
+        {!barnsOnly && <button
           type="button"
           className={`btn btn-sm ${activeTab === 'auditoria' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setActiveTab('auditoria')}
@@ -644,9 +673,9 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
             <IconClipboard size={16} />
             <span>Auditoría ({auditLog.length})</span>
           </span>
-        </button>
+        </button>}
 
-        <button
+        {!barnsOnly && <button
           type="button"
           className={`btn btn-sm ${activeTab === 'configuracion' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setActiveTab('configuracion')}
@@ -655,7 +684,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
             <IconSettings size={16} />
             <span>Configuración</span>
           </span>
-        </button>
+        </button>}
       </div>
 
       {/* 1. PESTAÑA: CUENTAS DE USUARIOS */}
@@ -845,7 +874,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
             <button
               type="button"
               className="btn btn-primary btn-sm"
-              onClick={() => setShowBarnModal(true)}
+              onClick={() => { setEditingBarn(null); setNewBarnCode(''); setNewBarnName(''); setNewBarnZone(''); setNewBarnCapacity(80); setBarnError(''); setShowBarnModal(true); }}
             >
               <span className="inline-flex items-center justify-center gap-2 leading-none">
                 <IconPlus size={16} />
@@ -854,6 +883,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
             </button>
           </div>
 
+          {!loading && !barns.length && <p role="status" className="text-muted">No hay galpones registrados. Crea el primero con Nuevo Galpón.</p>}
           <div className="table-responsive">
             <table className="data-table">
               <thead>
@@ -890,6 +920,10 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
                       </div>
                     </td>
                     <td>
+                      <div className="barn-management-actions">
+                      <button type="button" className="btn btn-outline btn-sm inline-flex items-center justify-center gap-2" aria-label={`Editar galpón ${b.name}`} onClick={() => { setEditingBarn(b); setNewBarnCode(b.code); setNewBarnName(b.name); setNewBarnZone(b.zone); setNewBarnCapacity(b.capacity); setBarnError(''); setShowBarnModal(true); }}><IconEdit size={14} /><span>Editar</span></button>
+                      <button type="button" className="btn btn-outline btn-sm inline-flex items-center justify-center gap-2" aria-label={`Asignar personal a ${b.name}`} onClick={() => { setSelectedBarnId(b.id); setSelectedRespId(b.responsable?.id || ''); setSelectedOperId(b.operario?.id || ''); setSelectedVetId(b.veterinario?.id || ''); setAssignmentReason(''); setAssignmentOperationKey(newOperationKey('asig')); setActiveTab('equipo'); }}><IconUser size={14} /><span>Personal</span></button>
+                      <button type="button" className="btn btn-outline btn-sm inline-flex items-center justify-center gap-2" aria-label={`Cambiar estado de ${b.name}`} onClick={() => { setStatusBarn(b); setNextBarnStatus(b.status); setBarnError(''); }}><IconSettings size={14} /><span>Estado</span></button>
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm text-danger"
@@ -901,6 +935,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
                           <span>Eliminar</span>
                         </span>
                       </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -909,50 +944,71 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
           </div>
 
           {/* Modal Nuevo Galpón */}
+          {statusBarn && <ModalDialog labelledBy="barn-status-title" onDismiss={() => setStatusBarn(null)} dismissDisabled={barnSaving}>
+            <form onSubmit={event => void handleSaveBarnStatus(event)}>
+              <h4 id="barn-status-title">Estado de {statusBarn.name}</h4>
+              <p className="text-sm text-muted">Para activar se necesita el equipo completo. Un galpón con animales no puede cerrarse.</p>
+              <label htmlFor="barn-status" className="form-label">Estado del galpón</label>
+              <select id="barn-status" className="form-select" value={nextBarnStatus} disabled={barnSaving} onChange={event => setNextBarnStatus(event.target.value as BarnItem['status'])}>
+                <option value="preparacion">En preparación</option><option value="operativo">Operativo</option><option value="inactivo">Inactivo</option>
+              </select>
+              {barnError && <p role="alert" className="text-danger">{barnError}</p>}
+              <div className="form-actions"><button type="button" className="btn btn-outline" disabled={barnSaving} onClick={() => setStatusBarn(null)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={barnSaving}>{barnSaving ? 'Guardando…' : 'Guardar estado'}</button></div>
+            </form>
+          </ModalDialog>}
           {showBarnModal && (
-            <ModalDialog labelledBy="admin-create-barn-dialog-title" onDismiss={() => setShowBarnModal(false)}>
-                <h4 id="admin-create-barn-dialog-title" className="text-lg font-bold mb-3">Registrar Nuevo Galpón</h4>
+            <ModalDialog labelledBy="admin-create-barn-dialog-title" onDismiss={() => setShowBarnModal(false)} dismissDisabled={barnSaving}>
+                <h4 id="admin-create-barn-dialog-title" className="text-lg font-bold mb-3">{editingBarn ? 'Editar galpón' : 'Registrar Nuevo Galpón'}</h4>
+                {barnError && <p className="text-danger" role="alert">{barnError}</p>}
                 <form onSubmit={handleCreateBarn}>
                   <div className="form-group mb-2">
-                    <label className="form-label text-sm">Código Único:</label>
+                    <label className="form-label text-sm" htmlFor="barn-code">Código Único:</label>
                     <input
                       type="text"
                       className="form-input"
                       required
                       value={newBarnCode}
+                      id="barn-code"
+                      disabled={!!editingBarn || barnSaving}
                       onChange={(e) => setNewBarnCode(e.target.value)}
                       placeholder="Ej. G-C"
                     />
                   </div>
                   <div className="form-group mb-2">
-                    <label className="form-label text-sm">Nombre del Galpón:</label>
+                    <label className="form-label text-sm" htmlFor="barn-name">Nombre del Galpón:</label>
                     <input
                       type="text"
                       className="form-input"
                       required
                       value={newBarnName}
+                      id="barn-name"
+                      disabled={barnSaving}
                       onChange={(e) => setNewBarnName(e.target.value)}
                       placeholder="Ej. Galpón C Maternidad"
                     />
                   </div>
                   <div className="form-group mb-2">
-                    <label className="form-label text-sm">Ubicación / Zona:</label>
+                    <label className="form-label text-sm" htmlFor="barn-zone">Ubicación / Zona:</label>
                     <input
                       type="text"
                       className="form-input"
                       value={newBarnZone}
+                      id="barn-zone"
+                      disabled={barnSaving}
                       onChange={(e) => setNewBarnZone(e.target.value)}
                       placeholder="Ej. Sector Maternidad Norte"
                     />
                   </div>
                   <div className="form-group mb-3">
-                    <label className="form-label text-sm">Capacidad en Cabezas:</label>
+                    <label className="form-label text-sm" htmlFor="barn-capacity">Capacidad en Cabezas:</label>
                     <input
                       type="number"
                       className="form-input"
                       required
                       min={1}
                       value={newBarnCapacity}
+                      id="barn-capacity"
+                      disabled={barnSaving}
                       onChange={(e) => setNewBarnCapacity(Number(e.target.value))}
                     />
                   </div>
@@ -962,11 +1018,12 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
                       type="button"
                       className="btn btn-outline"
                       onClick={() => setShowBarnModal(false)}
+                      disabled={barnSaving}
                     >
                       Cancelar
                     </button>
-                    <button type="submit" className="btn btn-primary">
-                      Registrar Galpón
+                    <button type="submit" className="btn btn-primary" disabled={barnSaving || !newBarnName.trim() || !newBarnCode.trim()}>
+                      {barnSaving ? 'Guardando…' : editingBarn ? 'Guardar cambios' : 'Registrar Galpón'}
                     </button>
                   </div>
                 </form>
@@ -977,6 +1034,7 @@ export function ModuloAdministracion({ perfil, onNavigate }: ModuloAdministracio
           {barnToDelete && (
             <ModalDialog labelledBy="admin-delete-barn-dialog-title" onDismiss={() => setBarnToDelete(null)} dismissDisabled={deleteBarnLoading}>
                 <h4 id="admin-delete-barn-dialog-title" className="text-lg font-bold mb-2 text-danger">Confirmar Eliminación</h4>
+                {errorMsg && <p role="alert" className="text-danger">{errorMsg}</p>}
                 <p className="text-sm mb-4">
                   ¿Está seguro de eliminar el galpón <strong>{barnToDelete.name}</strong>? Esta acción solo es posible si no tiene registros asociados.
                 </p>

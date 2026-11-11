@@ -1,0 +1,29 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import { SelectorGalpones } from '../src/components/SelectorGalpones';
+import { ModuloAdministracion } from '../src/components/ModuloAdministracion';
+import type { Perfil } from '../src/types';
+
+describe('Acceso a gestión desde Galpones', () => {
+  it.each<Perfil>(['administrador', 'responsable', 'operario', 'veterinario'])('muestra gestión solo al administrador: %s', perfil => {
+    const html = renderToStaticMarkup(createElement(SelectorGalpones, { perfil, selected: [], onContinue: () => {} }));
+    expect(html.includes('Administrar galpones')).toBe(perfil === 'administrador');
+    expect(html).toContain('<h1>Galpones</h1>');
+    expect(html).toContain('Cargando galpones');
+  });
+  it('abre la gestión específica directamente en galpones y conserva personal e historial', () => {
+    const html = renderToStaticMarkup(createElement(ModuloAdministracion, { perfil: 'administrador', barnsOnly: true, onNavigate: () => {} }));
+    expect(html).toContain('Galpones e Instalaciones');
+    expect(html).toContain('Nuevo Galpón');
+    expect(html).toContain('Equipo operativo');
+    expect(html).toContain('Historial');
+    expect(html).not.toContain('Usuarios (');
+    expect(html).not.toContain('Auditoría (');
+  });
+  it('no permite abrir la gestión con un perfil operativo', () => {
+    const html = renderToStaticMarkup(createElement(ModuloAdministracion, { perfil: 'operario', barnsOnly: true, onNavigate: () => {} }));
+    expect(html).toContain('Acceso denegado');
+    expect(html).not.toContain('Nuevo Galpón');
+  });
+});
