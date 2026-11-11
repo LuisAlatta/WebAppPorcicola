@@ -88,6 +88,13 @@ test('padrón compacto con filtros desplegables y acciones simétricas', async (
   expect(styles).toHaveLength(3);
   expect(new Set(styles.map(style => `${style.width},${style.height}`)).size).toBe(1);
   expect(new Set(styles.map(style => style.color)).size).toBe(3);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  const pager = page.getByRole('navigation', { name: 'Páginas del padrón', exact: true });
+  expect(await pager.evaluate(element => element.closest('.table-responsive') === null)).toBe(true);
+  const before = await pager.boundingBox();
+  await page.locator('.table-responsive').first().evaluate(element => { element.scrollLeft = element.scrollWidth; });
+  const after = await pager.boundingBox();
+  expect(after?.x).toBe(before?.x);
 });
 
 test('pagina el padrón y vuelve al inicio al cambiar la búsqueda', async ({page}) => {
@@ -277,9 +284,18 @@ test('edita y elimina desde las acciones del padrón con confirmación', async (
     await route.fulfill({ json: { animal: { ...initialAnimal(), isActive: false } } });
   });
   await page.goto('/animales');
+  await page.getByRole('button', { name: 'Ver ficha de RETRY-001', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Ficha del animal RETRY-001', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/animales$/);
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+  await page.getByRole('button', { name: 'Cerrar ficha del animal', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
   await page.getByRole('button', { name: 'Editar animal RETRY-001', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Editar animal RETRY-001', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Guardar cambios de la ficha', exact: true })).toBeVisible();
-  await page.goto('/animales');
+  await expect(page).toHaveURL(/\/animales$/);
+  await page.getByRole('button', { name: 'Cerrar ficha del animal', exact: true }).click();
   await page.getByRole('button', { name: 'Eliminar animal RETRY-001', exact: true }).click();
   await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
   expect(deletions).toBe(0);

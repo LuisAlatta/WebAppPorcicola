@@ -23,6 +23,7 @@ import {
 } from './icons';
 import { ModalDialog } from './ModalDialog';
 import { AnimalToolbar } from './AnimalToolbar';
+import { AnimalWorkspace } from './AnimalWorkspace';
 import { availabilityForStatus } from '../utils/animal-filters';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
 import type { Perfil } from '../types';
@@ -281,6 +282,7 @@ function Metric({
 export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onChangeBarns }: { perfil: Perfil; initialAnimalKey?: string; barnNames?: string[]; onChangeBarns?: () => void }) {
   const soloLectura = perfil === 'veterinario';
   const [section, setSection] = useState<Section>('padron');
+  const [animalModalOpen, setAnimalModalOpen] = useState(false);
   const [fichaTab, setFichaTab] = useState<'resumen' | 'pesajes' | 'trazabilidad' | 'operaciones'>('resumen');
   const [data, setData] = useState<ListPayload | null>(null);
   const [page, setPage] = useState(0);
@@ -475,6 +477,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       setToggleReason('');
       setToggleError(null);
       setSection('ficha');
+      setAnimalModalOpen(true);
       return body.animal;
     } catch {
       setError('No se pudo conectar con el servidor.');
@@ -871,6 +874,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
 
   const animals = data?.animals ?? [];
   const total = data?.total ?? 0;
+  const closeAnimalWorkspace = () => {
+    if (saving || busy) return;
+    setAnimalModalOpen(false);
+    setEditingCode(null);
+    setSection('padron');
+  };
 
   return (
     <div>
@@ -889,7 +898,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       </ModalDialog>}
       <AnimalToolbar barns={barnNames} onChangeBarns={onChangeBarns} onRefresh={() => void loadList()} loading={loading} />
 
-      {error && (
+      {error && !animalModalOpen && (
         <div className="alert alert-error mb-4" role="alert" aria-live="assertive">
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconAlertCircle size={16} />
@@ -898,7 +907,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         </div>
       )}
 
-      {success && (
+      {success && !animalModalOpen && (
         <div className="alert alert-success mb-4" role="status" aria-live="polite">
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconCheck size={16} />
@@ -916,7 +925,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         </div>
       )}
 
-      {section !== 'padron' && <nav className="admin-tabs mb-4" aria-label="Navegación de animales">
+      {section !== 'padron' && !animalModalOpen && <nav className="admin-tabs mb-4" aria-label="Navegación de animales">
         <button
           type="button"
           className="btn btn-sm btn-outline"
@@ -954,7 +963,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         </div>
       )}
 
-      {data && section === 'padron' && (
+      {data && (section === 'padron' || animalModalOpen) && (
         <div className="section-block">
           <div className="card">
             <form className="animal-search-bar" onSubmit={event => { event.preventDefault(); applyFilters(true); }}>
@@ -983,9 +992,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             {filtersOpen && <form id="animal-filters-panel" className="animal-filters-panel" onSubmit={event => { event.preventDefault(); applyFilters(); }}>
             <div className="form-grid">
               <div className="form-group">
-                <label className="form-label" htmlFor="ani-type">Tipo</label>
+                <label className="form-label" htmlFor="ani-filter-type">Tipo</label>
                 <select
-                  id="ani-type"
+                  id="ani-filter-type"
                   className="form-select"
                   value={filters.type}
                   onChange={(event) => setFilter('type', event.target.value)}
@@ -998,9 +1007,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="ani-sex">Sexo</label>
+                <label className="form-label" htmlFor="ani-filter-sex">Sexo</label>
                 <select
-                  id="ani-sex"
+                  id="ani-filter-sex"
                   className="form-select"
                   value={filters.sex}
                   onChange={(event) => setFilter('sex', event.target.value)}
@@ -1013,9 +1022,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="ani-status">Estado productivo</label>
+                <label className="form-label" htmlFor="ani-filter-status">Estado productivo</label>
                 <select
-                  id="ani-status"
+                  id="ani-filter-status"
                   className="form-select"
                   value={filters.status}
                   onChange={(event) => setFilter('status', event.target.value)}
@@ -1028,9 +1037,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="ani-stage">Etapa</label>
+                <label className="form-label" htmlFor="ani-filter-stage">Etapa</label>
                 <select
-                  id="ani-stage"
+                  id="ani-filter-stage"
                   className="form-select"
                   value={filters.stage}
                   onChange={(event) => setFilter('stage', event.target.value)}
@@ -1043,9 +1052,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="ani-barn">Galpón</label>
+                <label className="form-label" htmlFor="ani-filter-barn">Galpón</label>
                 <select
-                  id="ani-barn"
+                  id="ani-filter-barn"
                   className="form-select"
                   value={filters.barnId}
                   onChange={(event) => setFilter('barnId', event.target.value)}
@@ -1058,9 +1067,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="ani-location">Ubicación</label>
+                <label className="form-label" htmlFor="ani-filter-location">Ubicación</label>
                 <select
-                  id="ani-location"
+                  id="ani-filter-location"
                   className="form-select"
                   value={filters.location}
                   onChange={(event) => setFilter('location', event.target.value)}
@@ -1073,9 +1082,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="ani-lot">Lote</label>
+                <label className="form-label" htmlFor="ani-filter-lot">Lote</label>
                 <select
-                  id="ani-lot"
+                  id="ani-filter-lot"
                   className="form-select"
                   value={filters.lot}
                   onChange={(event) => setFilter('lot', event.target.value)}
@@ -1088,9 +1097,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="ani-active">Disponibilidad</label>
+                <label className="form-label" htmlFor="ani-filter-active">Disponibilidad</label>
                 <select
-                  id="ani-active"
+                  id="ani-filter-active"
                   className="form-select"
                   value={filters.active}
                   onChange={(event) => setFilter('active', event.target.value)}
@@ -1268,17 +1277,20 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     ))}
                   </tbody>
                 </table>
-                <nav aria-label="Páginas del padrón" className="inline-flex items-center gap-2 mt-3">
-                  <button type="button" className="btn btn-outline btn-sm" aria-label="Página anterior del padrón" disabled={loading || page === 0} onClick={() => { listRequest.current++; setPage(value => value - 1); }}>Anterior</button>
-                  <span>Página {page + 1} de {Math.max(1, Math.ceil(total / pageSize))} · {total} fichas</span>
-                  <button type="button" className="btn btn-outline btn-sm" aria-label="Página siguiente del padrón" disabled={loading || (page + 1) * pageSize >= total} onClick={() => { listRequest.current++; setPage(value => value + 1); }}>Siguiente</button>
-                </nav>
               </div>
             )}
+            {total > 0 && <nav aria-label="Páginas del padrón" className="animal-pagination">
+              <button type="button" className="btn btn-outline btn-sm" aria-label="Página anterior del padrón" disabled={loading || page === 0} onClick={() => { listRequest.current++; setPage(value => value - 1); }}><IconArrowLeft size={16} /><span>Anterior</span></button>
+              <span className="animal-pagination-info">Página {page + 1} de {Math.max(1, Math.ceil(total / pageSize))}<small>{total} fichas</small></span>
+              <button type="button" className="btn btn-outline btn-sm" aria-label="Página siguiente del padrón" disabled={loading || (page + 1) * pageSize >= total} onClick={() => { listRequest.current++; setPage(value => value + 1); }}><span>Siguiente</span><IconArrowRight size={16} /></button>
+            </nav>}
           </div>
         </div>
       )}
 
+      <AnimalWorkspace modal={animalModalOpen} title={section === 'alta' ? `Editar animal ${editingCode ?? ''}` : `Ficha del animal ${detail?.code ?? ''}`} onClose={closeAnimalWorkspace} busy={saving || busy}>
+      {animalModalOpen && error && <p className="alert alert-error" role="alert">{error}</p>}
+      {animalModalOpen && success && <p className="alert alert-success" role="status">{success}</p>}
       {section === 'alta' && !soloLectura && (
         <div className="card">
           <div className="card-header-clean mb-3 flex-wrap gap-2 justify-between">
@@ -1300,7 +1312,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 if (editingCode && detail) {
                   setSection('ficha');
                 } else {
-                  setSection('padron');
+                  closeAnimalWorkspace();
                 }
               }}
               aria-label="Volver al padrón de animales"
@@ -1795,7 +1807,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
-                onClick={() => setSection('padron')}
+                onClick={closeAnimalWorkspace}
                 aria-label="Volver al padrón general"
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -2855,6 +2867,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
           )}
         </div>
       )}
+      </AnimalWorkspace>
     </div>
   );
 }

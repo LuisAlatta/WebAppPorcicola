@@ -131,15 +131,12 @@ export function Navbar({ vistaActual, perfilActual, usuario, onNavigate, onLogou
             title="Ir al Menú Principal"
             aria-label={`Módulo actual: ${currentMeta.title}. Clic para ir al Menú Principal`}
           >
-            <span className="inline-flex items-center justify-start gap-2 leading-none brand-text text-left">
-              {currentMeta.icon}
-              <span>{currentMeta.title}</span>
-            </span>
+            <span className="navbar-view-icon">{currentMeta.icon}</span>
+            <span className="navbar-titles"><span className="navbar-app-name">Mi Granja PRO</span><span className="navbar-page-title">{currentMeta.title}</span></span>
           </button>
         </div>
         <div className="navbar-controls">
-          <span className="badge-env">{profileNames[perfilActual]}</span>
-          {usuario && <span className="text-xs text-muted user-badge-navbar">{usuario}</span>}
+          <div className="navbar-account"><span className="navbar-role">{profileNames[perfilActual]}</span>{usuario && <span className="navbar-username" title={usuario}>{usuario}</span>}</div>
           <button
             type="button"
             className="btn btn-ghost btn-sm btn-logout"
@@ -147,10 +144,7 @@ export function Navbar({ vistaActual, perfilActual, usuario, onNavigate, onLogou
             title="Cerrar sesión"
             aria-label="Cerrar sesión"
           >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconLogOut size={16} />
-              <span>Salir</span>
-            </span>
+            <IconLogOut size={18} />
           </button>
         </div>
       </div>

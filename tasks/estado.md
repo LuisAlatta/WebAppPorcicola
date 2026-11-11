@@ -10,6 +10,10 @@ Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; i
 
 ## Observaciones del cliente — 11/11/2026
 
+- Experiencia de aplicación: barra superior con producto, módulo y cuenta agrupados; control de desbordamiento horizontal en el documento y ancho mínimo cero en sus contenedores. Las tablas, pestañas y tiras de galpones conservan desplazamiento horizontal propio.
+- Ver/Editar del padrón se abren en un modal amplio con la tabla, filtros y página conservados debajo. Los enlaces directos a fichas siguen funcionando. El modal compartido usa portal fuera de la aplicación, bloquea scroll/interacción del fondo y gestiona foco/Escape para modales anidados. Se distinguen los IDs de filtros y formulario para no cruzar etiquetas cuando ambos existen.
+- La paginación es ahora hermana de la tabla deslizable, con controles de igual ancho a ambos lados del indicador central. TypeScript, lint y 22 pruebas dirigidas correctos; se añadieron comprobaciones de navegador para modal, desbordamiento y paginación, pendientes de ejecución.
+
 - Cabecera del módulo Animales unificada: nombres de galpones en tarjetas con bordes diferenciados, Cambiar galpones y Actualizar en una fila. Se retira el texto descriptivo y las pestañas del padrón; búsqueda, filtros y registro son botones de icono en la misma fila del input, con nombres accesibles y títulos. Se conserva Volver al padrón desde altas/fichas.
 - Filtros: se corrige el cruce implícito entre Solo activas y estados de salida (vendido/muerto/descartado). Cada aplicación fuerza una consulta incluso si los valores no cambian, cierra el panel y muestra estado de actualización/resultados. Se añadieron pruebas de regresión y se verificaron 20 pruebas dirigidas, TypeScript y lint; pruebas de navegador pendientes de ejecución.
 
