@@ -17,10 +17,12 @@ import {
   IconSettings,
   IconActivity,
   IconArrowLeft,
+  IconX,
 } from './icons';
 import { farmToday, newOperationKey } from '../utils/operations';
 import { ModalDialog } from './ModalDialog';
 import { ModuloConfiguracion } from './ModuloConfiguracion';
+import { ModuleTabs } from './ModuleTabs';
 
 interface ModuloAdministracionProps {
   perfil: Perfil;
@@ -115,6 +117,8 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
   const [barns, setBarns] = useState<BarnItem[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [auditLog, setAuditLog] = useState<AuditItem[]>([]);
+  const [auditAction, setAuditAction] = useState('');
+  const visibleAudit = auditAction ? auditLog.filter(item => item.action === auditAction) : auditLog;
   const [loading, setLoading] = useState<boolean>(perfil === 'administrador');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -625,73 +629,16 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
 
       {/* Pestañas de navegación interna */}
       {loading && <p role="status" className="text-muted">Cargando datos de administración…</p>}
-      <div className={`admin-tabs mb-4${barnsOnly ? ' admin-tabs-compact' : ''}`}>
-        {!barnsOnly && <button
-          type="button"
-          className={`btn btn-sm ${activeTab === 'usuarios' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setActiveTab('usuarios')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconUser size={16} />
-            <span>Usuarios ({users.length})</span>
-          </span>
-        </button>}
-
-        <button
-          type="button"
-          className={`btn btn-sm ${activeTab === 'galpones' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setActiveTab('galpones')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconBuilding size={16} />
-            <span>Galpones ({barns.length})</span>
-          </span>
-        </button>
-
-        <button
-          type="button"
-          className={`btn btn-sm ${activeTab === 'equipo' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setActiveTab('equipo')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconClipboard size={16} />
-            <span>Equipo operativo</span>
-          </span>
-        </button>
-
-        <button
-          type="button"
-          className={`btn btn-sm ${activeTab === 'historial' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setActiveTab('historial')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconClock size={16} />
-            <span>Historial ({history.length})</span>
-          </span>
-        </button>
-
-        {!barnsOnly && <button
-          type="button"
-          className={`btn btn-sm ${activeTab === 'auditoria' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setActiveTab('auditoria')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconClipboard size={16} />
-            <span>Auditoría ({auditLog.length})</span>
-          </span>
-        </button>}
-
-        {!barnsOnly && <button
-          type="button"
-          className={`btn btn-sm ${activeTab === 'configuracion' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setActiveTab('configuracion')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconSettings size={16} />
-            <span>Configuración</span>
-          </span>
-        </button>}
-      </div>
+      <ModuleTabs label={barnsOnly ? 'Gestión de galpones' : 'Secciones de administración'} active={activeTab} onChange={setActiveTab} columns={3} tabs={[
+        ...(!barnsOnly ? [{ id: 'usuarios', label: 'Usuarios', count: users.length, icon: <IconUser size={16} /> }] : []),
+        { id: 'galpones', label: 'Galpones', count: barns.length, icon: <IconBuilding size={16} /> },
+        { id: 'equipo', label: 'Equipo operativo', icon: <IconClipboard size={16} /> },
+        { id: 'historial', label: 'Historial', count: history.length, icon: <IconClock size={16} /> },
+        ...(!barnsOnly ? [
+          { id: 'auditoria', label: 'Auditoría', count: auditLog.length, icon: <IconClipboard size={16} /> },
+          { id: 'configuracion', label: 'Configuración', icon: <IconSettings size={16} /> },
+        ] : []),
+      ]} />
 
       {/* 1. PESTAÑA: CUENTAS DE USUARIOS */}
       {activeTab === 'usuarios' && (
@@ -713,39 +660,16 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
           {loading ? (
             <p className="text-muted p-4 text-center">Cargando cuentas...</p>
           ) : (
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Nombre / Usuario</th>
-                    <th>Perfil</th>
-                    <th>Estado</th>
-                    <th>Galpones Asignados</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <ul className="data-card-list data-card-grid" aria-label="Cuentas registradas">
                   {users.map((u) => (
-                    <tr key={u.id}>
-                      <td>
-                        <strong>{u.name}</strong>
-                        <div className="text-xs text-muted font-mono">{u.username}</div>
-                      </td>
-                      <td>
-                        <span className={`badge ${
-                          u.role === 'administrador' ? 'badge-primary' :
-                          u.role === 'responsable' ? 'badge-info' :
-                          u.role === 'veterinario' ? 'badge-success' : 'badge-warning'
-                        }`}>
-                          {u.role.toUpperCase()}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`badge ${u.is_active === 1 ? 'badge-success' : 'badge-danger'}`}>
+                    <li key={u.id}><article className="data-card" data-state={u.is_active === 1 ? 'active' : 'inactive'}>
+                      <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{u.name}</span><span className="data-card-subtitle font-mono">{u.username}</span></div>
+                        <span className={`badge-status ${u.is_active === 1 ? 'badge-success' : 'badge-danger'}`}>
                           {u.is_active === 1 ? 'ACTIVO' : 'INACTIVO'}
                         </span>
-                      </td>
-                      <td>
+                      </header>
+                      <dl className="data-card-meta"><div><dt>Perfil</dt><dd>{u.role === 'administrador' ? 'Administrador' : ROLE_LABEL[u.role]}</dd></div><div><dt>Creación</dt><dd>{formatDateTime(u.created_at)}</dd></div><div><dt>Actualización</dt><dd>{formatDateTime(u.updated_at)}</dd></div></dl>
+                      <div>
                         {u.role === 'administrador' ? (
                           <span className="text-xs text-muted">Alcance de Granja (Todos)</span>
                         ) : u.barns.length > 0 ? (
@@ -759,28 +683,27 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                         ) : (
                           <span className="text-xs text-danger">Sin galpones asignados</span>
                         )}
-                      </td>
-                      <td>
+                      </div>
+                      <div className="data-card-actions">
                         <button
                           type="button"
-                          className="btn btn-ghost btn-sm"
+                          className="btn btn-outline"
                           onClick={() => handleToggleUserStatus(u)}
                           title={u.is_active === 1 ? 'Desactivar cuenta' : 'Activar cuenta'}
                         >
-                          {u.is_active === 1 ? 'Desactivar' : 'Activar'}
+                          <IconUser size={14} /><span>{u.is_active === 1 ? 'Desactivar' : 'Activar'}</span>
                         </button>
-                      </td>
-                    </tr>
+                      </div>
+                    </article></li>
                   ))}
-                </tbody>
-              </table>
-            </div>
+            </ul>
           )}
 
           {/* Modal / Formulario Nueva Cuenta */}
           {showUserModal && (
             <ModalDialog labelledBy="admin-create-user-dialog-title" onDismiss={() => setShowUserModal(false)}>
                 <h4 id="admin-create-user-dialog-title" className="text-lg font-bold mb-3">Crear Nueva Cuenta</h4>
+                {errorMsg && <p role="alert" className="text-danger">{errorMsg}</p>}
                 <form onSubmit={handleCreateUser}>
                   <div className="form-group mb-2">
                     <label className="form-label text-sm">Nombre Completo:</label>
@@ -851,7 +774,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                     </div>
                   )}
 
-                  <div className="flex justify-end gap-2 mt-4">
+                  <div className="form-actions form-actions-sticky mt-4">
                     <button
                       type="button"
                       className="btn btn-outline"
@@ -953,7 +876,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                 <option value="preparacion">En preparación</option><option value="operativo">Operativo</option><option value="inactivo">Inactivo</option>
               </select>
               {barnError && <p role="alert" className="text-danger">{barnError}</p>}
-              <div className="form-actions"><button type="button" className="btn btn-outline" disabled={barnSaving} onClick={() => setStatusBarn(null)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={barnSaving}>{barnSaving ? 'Guardando…' : 'Guardar estado'}</button></div>
+              <div className="form-actions form-actions-sticky"><button type="button" className="btn btn-outline" disabled={barnSaving} onClick={() => setStatusBarn(null)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={barnSaving}>{barnSaving ? 'Guardando…' : 'Guardar estado'}</button></div>
             </form>
           </ModalDialog>}
           {showBarnModal && (
@@ -1013,7 +936,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                     />
                   </div>
 
-                  <div className="flex justify-end gap-2 mt-4">
+                  <div className="form-actions form-actions-sticky mt-4">
                     <button
                       type="button"
                       className="btn btn-outline"
@@ -1038,7 +961,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                 <p className="text-sm mb-4">
                   ¿Está seguro de eliminar el galpón <strong>{barnToDelete.name}</strong>? Esta acción solo es posible si no tiene registros asociados.
                 </p>
-                <div className="flex justify-end gap-2">
+                <div className="form-actions form-actions-sticky">
                   <button
                     type="button"
                     className="btn btn-outline"
@@ -1235,62 +1158,40 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
           {history.length === 0 ? (
             <p className="text-muted text-center p-4">No hay cambios de equipo registrados aún.</p>
           ) : (
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Galpón</th>
-                    <th>Rol Modificado</th>
-                    <th>Asignación Anterior</th>
-                    <th>Nuevo Titular</th>
-                    <th>Vigencia</th>
-                    <th>Motivo</th>
-                    <th>Autor del Cambio</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <ol className="timeline" aria-label="Historial de asignaciones">
                   {history.map((h) => {
                     const isCurrent = h.is_current === 1;
                     return (
-                      <tr key={h.id}>
-                        <td>
-                          <strong>{h.barn_code}</strong> ({h.barn_name})
-                        </td>
-                        <td>
-                          <span className="badge badge-outline">
-                            {ROLE_LABEL[h.role] || h.role}
-                          </span>
-                        </td>
-                        <td>
+                      <li className="timeline-item" key={h.id}>
+                        <span className="timeline-dot" aria-hidden="true" />
+                        <article className="data-card timeline-record">
+                          <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{h.barn_code} ({h.barn_name})</span><span className="data-card-subtitle">{ROLE_LABEL[h.role] || h.role}</span></div><span className={`badge-status ${isCurrent ? 'badge-success' : 'badge-outline'}`}>{isCurrent ? 'Vigente' : 'Histórico'}</span></header>
+                          <dl className="data-card-meta">
+                          <div><dt>Asignación anterior</dt><dd>
                           {h.previous_user_name ? (
                             <span className="text-danger">{h.previous_user_name}</span>
                           ) : (
                             <span className="text-muted">(Sin titular previo)</span>
                           )}
-                        </td>
-                        <td>
+                          </dd></div>
+                          <div><dt>Nuevo titular</dt><dd>
                           <strong className="text-success">{h.new_user_name}</strong>
-                        </td>
-                        <td className="text-xs">
+                          </dd></div>
+                          <div><dt>Vigencia</dt><dd>
                           <div className="font-mono">Desde: {formatDateTime(h.valid_from)}</div>
                           <div className="font-mono text-muted">
                             Hasta: {h.valid_until ? formatDateTime(h.valid_until) : 'Vigente'}
                           </div>
                           <div className="text-muted">Registrado: {formatDateTime(h.created_at)}</div>
-                        </td>
-                        <td className="text-xs">
+                          </dd></div>
+                          <div><dt>Motivo</dt><dd>
                           {h.reason ? h.reason : <span className="text-muted">Sin motivo registrado</span>}
-                        </td>
-                        <td>
+                          </dd></div>
+                          <div><dt>Autor del cambio</dt><dd>
                           <span className="text-xs text-muted">{h.changed_by_name}</span>
-                        </td>
-                        <td>
+                          </dd></div>
+                          </dl>
                           <div className="flex flex-col gap-1 items-start">
-                            <span className={`badge ${isCurrent ? 'badge-success' : 'badge-outline'}`}>
-                              {isCurrent ? 'Vigente' : 'Histórico'}
-                            </span>
                             {h.corrects_history_id !== null && (
                               <span className="badge badge-warning">Corrección de #{h.corrects_history_id}</span>
                             )}
@@ -1298,8 +1199,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                               <span className="text-xs text-muted">Reemplazado por #{h.superseded_by_id}</span>
                             )}
                           </div>
-                        </td>
-                        <td>
+                          <div className="data-card-actions">
                           {isCurrent ? (
                             <button
                               type="button"
@@ -1315,13 +1215,12 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                           ) : (
                             <span className="text-xs text-muted">Solo lectura</span>
                           )}
-                        </td>
-                      </tr>
+                          </div>
+                        </article>
+                      </li>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
+            </ol>
           )}
 
           {/* Modal de corrección con historial */}
@@ -1395,7 +1294,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                     </span>
                   </div>
 
-                  <div className="flex justify-end gap-2 mt-4">
+                  <div className="form-actions form-actions-sticky mt-4">
                     <button
                       type="button"
                       className="btn btn-outline"
@@ -1426,42 +1325,37 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
             Solo el Administrador puede consultarlo (ACC-06).
           </p>
 
-          {auditLog.length === 0 ? (
-            <p className="text-muted text-center p-4">No hay eventos de auditoría registrados aún.</p>
+          <div className="form-group mb-3">
+            <label className="form-label" htmlFor="audit-action">Acción auditada</label>
+            <select id="audit-action" className="form-select" value={auditAction} onChange={event => setAuditAction(event.target.value)}>
+              <option value="">Todas las acciones</option>
+              {Object.entries(ACTION_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </div>
+          {auditAction && <div className="filter-chip-row mb-3"><button type="button" className="filter-chip" onClick={() => setAuditAction('')} aria-label="Quitar filtro de auditoría"><span>{ACTION_LABEL[auditAction as AuditItem['action']]}</span><IconX size={12} /></button></div>}
+          {visibleAudit.length === 0 ? (
+            <p className="text-muted text-center p-4">No hay eventos de auditoría para los filtros seleccionados.</p>
           ) : (
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Registrado</th>
-                    <th>Fecha Efectiva</th>
-                    <th>Acción</th>
-                    <th>Galpón</th>
-                    <th>Autor</th>
-                    <th>Motivo</th>
-                    <th>Detalle</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {auditLog.map((a) => (
-                    <tr key={a.id}>
-                      <td className="font-mono text-xs">{formatDateTime(a.recorded_at)}</td>
-                      <td className="font-mono text-xs">{formatDate(a.effective_date)}</td>
-                      <td>
-                        <span className={`badge ${
+            <ul className="data-card-list data-card-grid" aria-label="Eventos de auditoría">
+                  {visibleAudit.map((a) => (
+                    <li key={a.id}><article className="data-card">
+                      <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{a.entity_type} #{a.entity_id}</span><span className="data-card-subtitle">{formatDateTime(a.recorded_at)}</span></div>
+                        <span className={`badge-status ${
                           a.action === 'correct' ? 'badge-warning' :
                           a.action === 'delete' ? 'badge-danger' : 'badge-outline'
                         }`}>
                           {ACTION_LABEL[a.action] || a.action}
                         </span>
-                      </td>
-                      <td className="text-xs">
+                      </header>
+                      <dl className="data-card-meta">
+                      <div><dt>Fecha efectiva</dt><dd>{formatDate(a.effective_date)}</dd></div>
+                      <div><dt>Galpón</dt><dd>
                         {a.barn_code ? `${a.barn_code} (${a.barn_name || 'Sin nombre'})` : 'No aplica'}
-                      </td>
-                      <td className="text-xs">{a.actor_name}</td>
-                      <td className="text-xs">{a.reason || <span className="text-muted">Sin motivo</span>}</td>
-                      <td className="text-xs">
-                        <details>
+                      </dd></div>
+                      <div><dt>Autor</dt><dd>{a.actor_name}</dd></div>
+                      </dl>
+                      <p className="data-card-note">{a.reason || 'Sin motivo'}</p>
+                        <details className="data-card-disclosure">
                           <summary className="cursor-pointer text-primary">Ver datos</summary>
                           <div className="mt-2">
                             <div className="font-bold">Anterior</div>
@@ -1478,12 +1372,9 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                             </div>
                           </div>
                         </details>
-                      </td>
-                    </tr>
+                    </article></li>
                   ))}
-                </tbody>
-              </table>
-            </div>
+            </ul>
           )}
         </div>
       )}

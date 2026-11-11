@@ -12,9 +12,12 @@ import {
   IconEdit,
   IconClock,
   IconCalendar,
+  IconX,
 } from './icons';
 import { farmToday, newOperationKey } from '../utils/operations';
 import { ModalDialog } from './ModalDialog';
+import { ModuleTabs } from './ModuleTabs';
+import { DataState } from './DataState';
 
 interface CatalogItem {
   id: number;
@@ -186,6 +189,7 @@ export function ModuloConfiguracion() {
   const [locationKey, setLocationKey] = useState<string>(() => newOperationKey('cfg-loc'));
   const [locationError, setLocationError] = useState<string | null>(null);
   const [locationSaving, setLocationSaving] = useState<boolean>(false);
+  const [locationModal, setLocationModal] = useState(false);
 
   const [lotCode, setLotCode] = useState<string>('');
   const [lotName, setLotName] = useState<string>('');
@@ -195,6 +199,7 @@ export function ModuloConfiguracion() {
   const [lotKey, setLotKey] = useState<string>(() => newOperationKey('cfg-lot'));
   const [lotError, setLotError] = useState<string | null>(null);
   const [lotSaving, setLotSaving] = useState<boolean>(false);
+  const [lotModal, setLotModal] = useState(false);
 
   // Retiro con vigencia
   const [retireTarget, setRetireTarget] = useState<RetireTarget | null>(null);
@@ -557,6 +562,7 @@ export function ModuloConfiguracion() {
       setLocationBarnId('');
       setLocationReason('');
       setLocationKey(newOperationKey('cfg-loc'));
+      setLocationModal(false);
       await loadConfig(asOf);
     } catch {
       setLocationError('No se pudo confirmar el guardado. Reintente con el mismo formulario.');
@@ -596,6 +602,7 @@ export function ModuloConfiguracion() {
       setLotStage('');
       setLotReason('');
       setLotKey(newOperationKey('cfg-lot'));
+      setLotModal(false);
       await loadConfig(asOf);
     } catch {
       setLotError('No se pudo confirmar el guardado. Reintente con el mismo formulario.');
@@ -656,37 +663,17 @@ export function ModuloConfiguracion() {
         </div>
       )}
 
-      <div className="admin-tabs mb-4">
-        <button type="button" className={`btn btn-sm ${section === 'parametros' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setSection('parametros')}>
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconSettings size={14} />
-            <span>Parámetros</span>
-          </span>
-        </button>
-        <button type="button" className={`btn btn-sm ${section === 'catalogos' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setSection('catalogos')}>
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconList size={14} />
-            <span>Catálogos</span>
-          </span>
-        </button>
-        <button type="button" className={`btn btn-sm ${section === 'etapas' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setSection('etapas')}>
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconScale size={14} />
-            <span>Etapas y Raciones</span>
-          </span>
-        </button>
-        <button type="button" className={`btn btn-sm ${section === 'estructura' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setSection('estructura')}>
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconBuilding size={14} />
-            <span>Ubicaciones y Lotes</span>
-          </span>
-        </button>
-      </div>
+      <ModuleTabs label="Secciones de configuración" active={section} onChange={setSection} columns={2} tabs={[
+        { id: 'parametros', label: 'Parámetros', icon: <IconSettings size={14} /> },
+        { id: 'catalogos', label: 'Catálogos', icon: <IconList size={14} /> },
+        { id: 'etapas', label: 'Etapas y Raciones', icon: <IconScale size={14} /> },
+        { id: 'estructura', label: 'Ubicaciones y Lotes', icon: <IconBuilding size={14} /> },
+      ]} />
 
       {loading ? (
-        <p className="text-muted text-center p-4">Cargando configuración...</p>
+        <DataState variant="loading" title="Cargando configuración…" />
       ) : !data ? (
-        <p className="text-muted text-center p-4">No hay configuración disponible.</p>
+        <DataState variant="empty" title="No hay configuración disponible." />
       ) : (
         <>
           {section === 'parametros' && (
@@ -697,11 +684,12 @@ export function ModuloConfiguracion() {
                 Cada valor se versiona por fecha. Los informes históricos conservan el valor que estaba vigente.
               </p>
               <form onSubmit={handleSaveSettings}>
-                <div className="form-grid mb-3">
+                <div className="data-card-list data-card-grid mb-3">
                   {SETTING_FIELDS.map((field) => (
-                    <div className="form-group" key={field.key}>
-                      <label className="form-label">{field.label}</label>
+                    <div className="data-card" key={field.key}>
+                      <label className="form-label" htmlFor={`setting-${field.key}`}>{field.label}</label>
                       <input
+                        id={`setting-${field.key}`}
                         type="text"
                         className="form-input"
                         value={settings[field.key] ?? ''}
@@ -730,12 +718,14 @@ export function ModuloConfiguracion() {
                     />
                   </div>
                 </div>
+                <div className="form-actions form-actions-sticky">
                 <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconCheck size={16} />
                     <span>{settingsSaving ? 'Guardando…' : 'Guardar Parámetros'}</span>
                   </span>
                 </button>
+                </div>
               </form>
             </div>
 
@@ -783,26 +773,13 @@ export function ModuloConfiguracion() {
               {!selectedCatalog || selectedCatalog.items.length === 0 ? (
                 <p className="text-muted text-center p-3">No hay valores vigentes para este catálogo en la fecha consultada.</p>
               ) : (
-                <div className="table-responsive mb-4">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Código</th>
-                        <th>Nombre</th>
-                        <th>Orden</th>
-                        <th>Vigente desde</th>
-                        <th>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                <ul className="data-card-list data-card-grid mb-4" aria-label="Valores del catálogo">
                       {selectedCatalog.items.map((item) => (
-                        <tr key={item.id}>
-                          <td className="font-mono text-xs">{item.code}</td>
-                          <td>{item.name}</td>
-                          <td className="font-mono text-xs">{item.sortOrder}</td>
-                          <td className="font-mono text-xs">{item.effectiveFrom}</td>
-                          <td>
-                            <div className="inline-flex items-center gap-2 flex-wrap">
+                        <li key={item.id}><article className="data-card">
+                          <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{item.name}</span><span className="data-card-subtitle font-mono">{item.code}</span></div><span className="badge-status badge-outline">{item.status === 'active' ? 'Activo' : 'Retirado'}</span></header>
+                          <dl className="data-card-meta"><div><dt>Orden</dt><dd>{item.sortOrder}</dd></div><div><dt>Vigente desde</dt><dd>{item.effectiveFrom}</dd></div></dl>
+                            <div className="data-card-actions">
+                              <button type="button" className="btn btn-outline" onClick={() => { setCatCode(item.code); setCatName(item.name); setCatSort(String(item.sortOrder)); setCatDate(farmToday()); setCatReason(''); setCatKey(newOperationKey('cfg-cat')); setCatError(null); document.getElementById('catalog-value-form')?.scrollIntoView({ behavior: 'smooth' }); }}><IconEdit size={14} /><span>Editar</span></button>
                               <button
                                 type="button"
                                 className="btn btn-ghost btn-sm"
@@ -834,12 +811,9 @@ export function ModuloConfiguracion() {
                                 </span>
                               </button>
                             </div>
-                          </td>
-                        </tr>
+                        </article></li>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                </ul>
               )}
 
               <h5 className="font-bold mb-2">Agregar o versionar un valor</h5>
@@ -851,7 +825,7 @@ export function ModuloConfiguracion() {
                   </span>
                 </div>
               )}
-              <form onSubmit={handleCreateCatalog}>
+              <form id="catalog-value-form" onSubmit={handleCreateCatalog}>
                 <div className="form-grid mb-3">
                   <div className="form-group">
                     <label className="form-label">Código</label>
@@ -892,41 +866,20 @@ export function ModuloConfiguracion() {
                 Los límites abiertos se muestran como «Sin dato», distintos de un cero.
               </p>
 
-              <div className="table-responsive mb-4">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Etapa</th>
-                      <th>Peso (kg)</th>
-                      <th>Edad (días)</th>
-                      <th>Duración</th>
-                      <th>Ración</th>
-                      <th>Consumo diario</th>
-                      <th>30 días</th>
-                      <th>Total etapa</th>
-                      <th>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <ul className="data-card-list data-card-grid mb-4" aria-label="Etapas productivas y raciones">
                     {data.stages.map((stage) => (
-                      <tr key={stage.id}>
-                        <td>
-                          <strong>{stage.name}</strong>
-                          <div className="font-mono text-xs text-muted">{stage.code}</div>
-                        </td>
-                        <td className="text-xs">
-                          {displayNumber(stage.initialWeightKg)} a {displayNumber(stage.finalWeightKg)}
-                        </td>
-                        <td className="text-xs">
-                          {displayNumber(stage.initialAgeDays)} a {displayNumber(stage.finalAgeDays)}
-                        </td>
-                        <td className="font-mono text-xs">{displayNumber(stage.durationDays)}</td>
-                        <td className="text-xs">{stage.rationName ?? <span className="text-muted">Sin ración</span>}</td>
-                        <td className="font-mono text-xs">{stage.dailyFeedKg === null ? 'Sin dato' : `${stage.dailyFeedKg} kg`}</td>
-                        <td className="font-mono text-xs">{stage.monthlyFeedKg === null ? 'Sin dato' : `${stage.monthlyFeedKg} kg`}</td>
-                        <td className="font-mono text-xs">{stage.totalFeedKg === null ? 'Sin dato' : `${stage.totalFeedKg} kg`}</td>
-                        <td>
-                          <div className="inline-flex items-center gap-2 flex-wrap">
+                      <li key={stage.id}><article className="data-card">
+                        <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{stage.name}</span><span className="data-card-subtitle font-mono">{stage.code} · Orden {stage.sortOrder}</span></div><span className="badge-status badge-outline">{stage.status === 'active' ? 'Activa' : 'Retirada'}</span></header>
+                        <dl className="data-card-meta">
+                          <div><dt>Peso (kg)</dt><dd>{displayNumber(stage.initialWeightKg)} a {displayNumber(stage.finalWeightKg)}</dd></div>
+                          <div><dt>Edad (días)</dt><dd>{displayNumber(stage.initialAgeDays)} a {displayNumber(stage.finalAgeDays)}</dd></div>
+                          <div><dt>Duración (días)</dt><dd>{displayNumber(stage.durationDays)}</dd></div>
+                          <div><dt>Ración</dt><dd>{stage.rationName ?? 'Sin ración'}</dd></div>
+                          <div><dt>Consumo diario</dt><dd>{stage.dailyFeedKg === null ? 'Sin dato' : `${stage.dailyFeedKg} kg`}</dd></div>
+                          <div><dt>30 días</dt><dd>{stage.monthlyFeedKg === null ? 'Sin dato' : `${stage.monthlyFeedKg} kg`}</dd></div>
+                          <div><dt>Total etapa</dt><dd>{stage.totalFeedKg === null ? 'Sin dato' : `${stage.totalFeedKg} kg`}</dd></div>
+                        </dl>
+                          <div className="data-card-actions">
                             <button type="button" className="btn btn-ghost btn-sm" onClick={() => editStage(stage)}>
                               <span className="inline-flex items-center justify-center gap-2 leading-none">
                                 <IconEdit size={14} />
@@ -946,12 +899,9 @@ export function ModuloConfiguracion() {
                               </span>
                             </button>
                           </div>
-                        </td>
-                      </tr>
+                      </article></li>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+              </ul>
 
               <h5 className="font-bold mb-2">Registrar nueva versión de etapa</h5>
               {stageError && (
@@ -1034,35 +984,19 @@ export function ModuloConfiguracion() {
               </p>
 
               <h5 className="font-bold mb-2">Ubicaciones físicas</h5>
-              <div className="table-responsive mb-3">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Código</th>
-                      <th>Nombre</th>
-                      <th>Tipo</th>
-                      <th>Ubicación padre</th>
-                      <th>Galpón vinculado</th>
-                      <th>Vigente desde</th>
-                      <th>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <div className="form-actions mb-3"><button type="button" className="btn btn-primary" onClick={() => { setLocationCode(''); setLocationName(''); setLocationType('galpon'); setLocationParent(''); setLocationBarnId(''); setLocationDate(farmToday()); setLocationReason(''); setLocationKey(newOperationKey('cfg-loc')); setLocationError(null); setLocationModal(true); }}><IconPlus size={14} /><span>Agregar ubicación</span></button></div>
+              <ul className="data-card-list data-card-grid mb-3" aria-label="Ubicaciones físicas">
                     {data.locations.map((location) => (
-                      <tr key={location.id}>
-                        <td className="font-mono text-xs">{location.code}</td>
-                        <td>{location.name}</td>
-                        <td><span className="badge badge-outline">{LOCATION_TYPE_LABEL[location.locationType] ?? location.locationType}</span></td>
-                        <td className="font-mono text-xs">{location.parentCode ?? 'Sin padre'}</td>
-                        <td>{barns.find((barn) => barn.id === location.barnId)?.name ?? 'Sin vínculo'}</td>
-                        <td className="font-mono text-xs">{location.effectiveFrom}</td>
-                        <td>
-                          <div className="inline-flex items-center gap-2 flex-wrap">
+                      <li key={location.id}><article className="data-card">
+                        <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{location.name}</span><span className="data-card-subtitle font-mono">{location.code}</span></div><span className="badge-status badge-outline">{LOCATION_TYPE_LABEL[location.locationType] ?? location.locationType}</span></header>
+                        <dl className="data-card-meta"><div><dt>Ubicación padre</dt><dd>{location.parentCode ?? 'Sin padre'}</dd></div><div><dt>Galpón vinculado</dt><dd>{barns.find((barn) => barn.id === location.barnId)?.name ?? 'Sin vínculo'}</dd></div><div><dt>Vigente desde</dt><dd>{location.effectiveFrom}</dd></div></dl>
+                          <div className="data-card-actions">
                             <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
                               setLocationCode(location.code); setLocationName(location.name); setLocationType(location.locationType);
                               setLocationParent(location.parentCode ?? ''); setLocationBarnId(location.barnId === null ? '' : String(location.barnId));
                               setLocationDate(farmToday()); setLocationReason(''); setLocationKey(newOperationKey('cfg-loc')); setLocationError(null);
-                            }}>Editar</button>
+                              setLocationModal(true);
+                            }}><IconEdit size={14} /><span>Editar</span></button>
                             <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory({ entity: 'location', code: location.code, label: location.name })}>
                               <span className="inline-flex items-center justify-center gap-2 leading-none">
                                 <IconClock size={14} />
@@ -1076,13 +1010,12 @@ export function ModuloConfiguracion() {
                               </span>
                             </button>
                           </div>
-                        </td>
-                      </tr>
+                      </article></li>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+              </ul>
 
+              {locationModal && <ModalDialog labelledBy="config-location-title" onDismiss={() => setLocationModal(false)} dismissDisabled={locationSaving}>
+              <h3 id="config-location-title" className="text-lg font-bold mb-3">Ubicación física</h3>
               {locationError && (
                 <div className="banner-alert banner-alert-error mb-3" role="alert">
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1094,16 +1027,16 @@ export function ModuloConfiguracion() {
               <form onSubmit={handleSaveLocation} className="mb-4">
                 <div className="form-grid mb-2">
                   <div className="form-group">
-                    <label className="form-label">Código</label>
-                    <input type="text" className="form-input" required value={locationCode} onChange={(e) => setLocationCode(e.target.value)} placeholder="Ej. galpon_c" />
+                    <label className="form-label" htmlFor="config-location-code">Código</label>
+                    <input id="config-location-code" type="text" className="form-input" required value={locationCode} onChange={(e) => setLocationCode(e.target.value)} placeholder="Ej. galpon_c" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Nombre</label>
-                    <input type="text" className="form-input" required value={locationName} onChange={(e) => setLocationName(e.target.value)} placeholder="Ej. Galpón C" />
+                    <label className="form-label" htmlFor="config-location-name">Nombre</label>
+                    <input id="config-location-name" type="text" className="form-input" required value={locationName} onChange={(e) => setLocationName(e.target.value)} placeholder="Ej. Galpón C" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Tipo</label>
-                    <select className="form-select" value={locationType} onChange={(e) => {
+                    <label className="form-label" htmlFor="config-location-type">Tipo</label>
+                    <select id="config-location-type" className="form-select" value={locationType} onChange={(e) => {
                       setLocationType(e.target.value);
                       if (e.target.value === 'galpon') setLocationParent('');
                     }}>
@@ -1132,43 +1065,35 @@ export function ModuloConfiguracion() {
                     )}
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Vigente desde</label>
-                    <input type="date" className="form-input" required value={locationDate} onChange={(e) => setLocationDate(e.target.value)} />
+                    <label className="form-label" htmlFor="config-location-date">Vigente desde</label>
+                    <input id="config-location-date" type="date" className="form-input" required value={locationDate} onChange={(e) => setLocationDate(e.target.value)} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Motivo (auditoría)</label>
-                    <input type="text" className="form-input" value={locationReason} onChange={(e) => setLocationReason(e.target.value)} placeholder="Ej. Nueva área habilitada" />
+                    <label className="form-label" htmlFor="config-location-reason">Motivo (auditoría)</label>
+                    <input id="config-location-reason" type="text" className="form-input" value={locationReason} onChange={(e) => setLocationReason(e.target.value)} placeholder="Ej. Nueva área habilitada" />
                   </div>
                 </div>
+                <div className="form-actions form-actions-sticky">
+                <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" disabled={locationSaving} onClick={() => setLocationModal(false)}><IconX size={14} /><span>Cancelar</span></button>
                 <button type="submit" className="btn btn-primary" disabled={locationSaving}>
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconPlus size={16} />
                     <span>{locationSaving ? 'Guardando…' : 'Guardar Ubicación'}</span>
                   </span>
                 </button>
+                </div>
               </form>
+              </ModalDialog>}
 
               <h5 className="font-bold mb-2">Lotes de manejo</h5>
-              <div className="table-responsive mb-3">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Código</th>
-                      <th>Nombre</th>
-                      <th>Etapa</th>
-                      <th>Vigente desde</th>
-                      <th>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <div className="form-actions mb-3"><button type="button" className="btn btn-primary" onClick={() => { setLotCode(''); setLotName(''); setLotStage(''); setLotDate(farmToday()); setLotReason(''); setLotKey(newOperationKey('cfg-lot')); setLotError(null); setLotModal(true); }}><IconPlus size={14} /><span>Agregar lote</span></button></div>
+              <ul className="data-card-list data-card-grid mb-3" aria-label="Lotes de manejo">
                     {data.lots.map((lot) => (
-                      <tr key={lot.id}>
-                        <td className="font-mono text-xs">{lot.code}</td>
-                        <td>{lot.name}</td>
-                        <td className="font-mono text-xs">{lot.stageCode ?? 'Sin etapa'}</td>
-                        <td className="font-mono text-xs">{lot.effectiveFrom}</td>
-                        <td>
-                          <div className="inline-flex items-center gap-2 flex-wrap">
+                      <li key={lot.id}><article className="data-card">
+                        <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{lot.name}</span><span className="data-card-subtitle font-mono">{lot.code}</span></div></header>
+                        <dl className="data-card-meta"><div><dt>Etapa</dt><dd>{lot.stageCode ?? 'Sin etapa'}</dd></div><div><dt>Vigente desde</dt><dd>{lot.effectiveFrom}</dd></div></dl>
+                          <div className="data-card-actions">
+                            <button type="button" className="btn btn-outline" onClick={() => { setLotCode(lot.code); setLotName(lot.name); setLotStage(lot.stageCode ?? ''); setLotDate(farmToday()); setLotReason(''); setLotKey(newOperationKey('cfg-lot')); setLotError(null); setLotModal(true); }}><IconEdit size={14} /><span>Editar</span></button>
                             <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory({ entity: 'lot', code: lot.code, label: lot.name })}>
                               <span className="inline-flex items-center justify-center gap-2 leading-none">
                                 <IconClock size={14} />
@@ -1182,13 +1107,12 @@ export function ModuloConfiguracion() {
                               </span>
                             </button>
                           </div>
-                        </td>
-                      </tr>
+                      </article></li>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+              </ul>
 
+              {lotModal && <ModalDialog labelledBy="config-lot-title" onDismiss={() => setLotModal(false)} dismissDisabled={lotSaving}>
+              <h3 id="config-lot-title" className="text-lg font-bold mb-3">Lote de manejo</h3>
               {lotError && (
                 <div className="banner-alert banner-alert-error mb-3" role="alert">
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1200,16 +1124,16 @@ export function ModuloConfiguracion() {
               <form onSubmit={handleSaveLot}>
                 <div className="form-grid mb-2">
                   <div className="form-group">
-                    <label className="form-label">Código</label>
-                    <input type="text" className="form-input" required value={lotCode} onChange={(e) => setLotCode(e.target.value)} placeholder="Ej. lote_levante_b" />
+                    <label className="form-label" htmlFor="config-lot-code">Código</label>
+                    <input id="config-lot-code" type="text" className="form-input" required value={lotCode} onChange={(e) => setLotCode(e.target.value)} placeholder="Ej. lote_levante_b" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Nombre</label>
-                    <input type="text" className="form-input" required value={lotName} onChange={(e) => setLotName(e.target.value)} placeholder="Ej. Lote Levante B" />
+                    <label className="form-label" htmlFor="config-lot-name">Nombre</label>
+                    <input id="config-lot-name" type="text" className="form-input" required value={lotName} onChange={(e) => setLotName(e.target.value)} placeholder="Ej. Lote Levante B" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Etapa asociada (opcional)</label>
-                    <select className="form-select" value={lotStage} onChange={(e) => setLotStage(e.target.value)}>
+                    <label className="form-label" htmlFor="config-lot-stage">Etapa asociada (opcional)</label>
+                    <select id="config-lot-stage" className="form-select" value={lotStage} onChange={(e) => setLotStage(e.target.value)}>
                       <option value="">Sin etapa</option>
                       {data.stages.map((stage) => (
                         <option key={stage.code} value={stage.code}>{stage.name}</option>
@@ -1217,21 +1141,25 @@ export function ModuloConfiguracion() {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Vigente desde</label>
-                    <input type="date" className="form-input" required value={lotDate} onChange={(e) => setLotDate(e.target.value)} />
+                    <label className="form-label" htmlFor="config-lot-date">Vigente desde</label>
+                    <input id="config-lot-date" type="date" className="form-input" required value={lotDate} onChange={(e) => setLotDate(e.target.value)} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Motivo (auditoría)</label>
-                    <input type="text" className="form-input" value={lotReason} onChange={(e) => setLotReason(e.target.value)} placeholder="Ej. Nuevo lote de manejo" />
+                    <label className="form-label" htmlFor="config-lot-reason">Motivo (auditoría)</label>
+                    <input id="config-lot-reason" type="text" className="form-input" value={lotReason} onChange={(e) => setLotReason(e.target.value)} placeholder="Ej. Nuevo lote de manejo" />
                   </div>
                 </div>
+                <div className="form-actions form-actions-sticky">
+                <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" disabled={lotSaving} onClick={() => setLotModal(false)}><IconX size={14} /><span>Cancelar</span></button>
                 <button type="submit" className="btn btn-primary" disabled={lotSaving}>
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconPlus size={16} />
                     <span>{lotSaving ? 'Guardando…' : 'Guardar Lote'}</span>
                   </span>
                 </button>
+                </div>
               </form>
+              </ModalDialog>}
             </div>
           )}
         </>
@@ -1274,7 +1202,7 @@ export function ModuloConfiguracion() {
                 placeholder="Ej. Reemplazado por un nuevo valor del catálogo"
               />
             </div>
-            <div className="flex justify-end gap-2 mt-4">
+            <div className="form-actions form-actions-sticky mt-4">
               <button type="button" className="btn btn-outline" onClick={() => setRetireTarget(null)} disabled={retireSaving}>
                 Cancelar
               </button>

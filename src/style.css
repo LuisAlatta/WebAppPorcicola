@@ -2894,6 +2894,7 @@ fieldset legend {
 .timeline-item:last-child::before { display: none; }
 .timeline-dot { flex: 0 0 0.75rem; width: 0.75rem; height: 0.75rem; margin-top: 0.3125rem; border-radius: 999px; background: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-light); }
 .timeline-body { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
+.timeline-record { flex: 1; min-width: 0; }
 .timeline-date { font-size: 0.6875rem; color: var(--color-text-muted); }
 .timeline-title { font-size: 0.875rem; font-weight: 700; overflow-wrap: anywhere; }
 .timeline-detail { font-size: 0.8125rem; color: var(--color-text-secondary, #445e52); overflow-wrap: anywhere; }

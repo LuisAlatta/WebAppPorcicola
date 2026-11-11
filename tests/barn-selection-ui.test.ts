@@ -29,7 +29,8 @@ describe('Acceso a gestión desde Galpones', () => {
   it('ordena la gestión de galpones con barra, pestañas simétricas y estado vacío claro', () => {
     const html = renderToStaticMarkup(createElement(ModuloAdministracion, { perfil: 'administrador', barnsOnly: true, onNavigate: () => {} }));
     expect(html).toContain('admin-toolbar');
-    expect(html).toContain('admin-tabs-compact');
+    expect(html).toContain('--module-tabs-columns:3');
+    expect(html).toContain('aria-label="Gestión de galpones"');
     expect(html).toContain('admin-panel-header');
     expect(html).not.toContain('data-status=');
     expect(html).not.toContain('style="grid-column:span 2"');
