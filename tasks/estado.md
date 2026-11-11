@@ -10,6 +10,9 @@ Verificación del árbol publicado el 9/11: Vitest **145/145** en 32 archivos; i
 
 ## Observaciones del cliente — 11/11/2026
 
+- Cabecera del módulo Animales unificada: nombres de galpones en tarjetas con bordes diferenciados, Cambiar galpones y Actualizar en una fila. Se retira el texto descriptivo y las pestañas del padrón; búsqueda, filtros y registro son botones de icono en la misma fila del input, con nombres accesibles y títulos. Se conserva Volver al padrón desde altas/fichas.
+- Filtros: se corrige el cruce implícito entre Solo activas y estados de salida (vendido/muerto/descartado). Cada aplicación fuerza una consulta incluso si los valores no cambian, cierra el panel y muestra estado de actualización/resultados. Se añadieron pruebas de regresión y se verificaron 20 pruebas dirigidas, TypeScript y lint; pruebas de navegador pendientes de ejecución.
+
 - Acceso directo a Galpones después del login, sin pantalla intermedia de una sola opción; con sesión activa, Inicio sin selección también muestra la lista directamente. Se mantiene la lista autorizada del servidor por usuario/asignación.
 - Solo el administrador ve Administrar galpones dentro del selector. Reutiliza el módulo de administración en modo específico: Galpones, Equipo operativo e Historial. Incluye crear/editar, acceso directo a asignar personal por fila, cambio de estado con confirmación y eliminación segura. Al volver al selector se recargan nombres/galpones y se descartan selecciones que ya no existen o no están disponibles.
 

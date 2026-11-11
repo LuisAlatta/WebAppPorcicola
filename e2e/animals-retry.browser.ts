@@ -60,6 +60,16 @@ test('padrón compacto con filtros desplegables y acciones simétricas', async (
   await mockAnimalApi(page, initialAnimal());
   await page.goto('/animales');
   await expect(page.getByRole('button', { name: 'Ver ficha de RETRY-001', exact: true })).toBeVisible();
+  await expect(page.getByText('Padrón general', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Identificación oficial permanente, genealogía, pesajes periódicos y trazabilidad de cada animal.', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.animal-context-bar .animal-barn-card')).toHaveCount(2);
+  await expect(page.locator('.animal-search-bar button')).toHaveCount(3);
+  const searchRow = await page.locator('.animal-search-bar').evaluate(form => {
+    const elements = [...form.querySelectorAll('input,button')];
+    return elements.map(element => { const rect = element.getBoundingClientRect(); return { center: rect.y + rect.height / 2, text: element.tagName === 'BUTTON' ? element.textContent?.trim() : '' }; });
+  });
+  expect(Math.max(...searchRow.map(item => item.center)) - Math.min(...searchRow.map(item => item.center))).toBeLessThan(2);
+  expect(searchRow.every(item => !item.text)).toBe(true);
   await expect(page.getByText('Animales en el padrón', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Fichas inactivas', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Con peso actual', { exact: true })).toHaveCount(0);
@@ -108,7 +118,7 @@ test('busca una madre fuera de las primeras quinientas fichas', async ({page}) =
     return route.fulfill({status:200,json:{animals:q==='MADRE-999' ? [{...initialAnimal(),id:999,code:'MADRE-999',sex:'hembra'}] : [],total:q ? 1 : 999,options:listOptions}});
   });
   await page.goto('/animales');
-  await page.getByRole('tab',{name:'Registrar animal en el padrón',exact:true}).click();
+  await page.getByRole('button',{name:'Registrar animal en el padrón',exact:true}).click();
   await page.getByLabel('Buscar madre interna',{exact:true}).fill('MADRE-999');
   await page.getByLabel('Madre interna',{exact:true}).selectOption('999');
   await expect(page.getByLabel('Madre interna',{exact:true})).toHaveValue('999');
@@ -125,7 +135,7 @@ test('recupera la página anterior cuando desaparece la última ficha de la pág
   await page.getByRole('button',{name:'Página siguiente del padrón',exact:true}).click();
   await expect(page.getByRole('button',{name:'Ver ficha de ULTIMA-051',exact:true})).toBeVisible();
   removed = true;
-  await page.getByRole('button',{name:'Recargar padrón de animales',exact:true}).click();
+  await page.getByRole('button',{name:'Actualizar',exact:true}).click();
   await expect(page.getByRole('button',{name:'Ver ficha de PRIMERA-001',exact:true})).toBeVisible();
 });
 
@@ -147,6 +157,29 @@ test('el padrón envía los filtros adicionales combinados', async ({ page }) =>
   expect(requests.some(value => new URL(value).searchParams.has('mother'))).toBe(false);
   await page.getByRole('button', { name: 'Aplicar filtros', exact: true }).click();
   await expect.poll(()=>requests.some(value=>{const q=new URL(value).searchParams;return q.get('mother')==='MADRE-01'&&q.get('father')==='PADRE-02'&&q.get('breed')==='Duroc'&&q.get('aptitude')==='engorde'&&q.get('originType')==='inicial'&&q.get('entryStage')==='crecimiento';})).toBe(true);
+});
+
+test('aplica estado de salida sin cruzarlo con solo activas y permite reaplicarlo', async ({ page }) => {
+  await mockAnimalApi(page, initialAnimal());
+  const queries: string[] = [];
+  await page.route('**/api/animals?**', route => {
+    const query = new URL(route.request().url()).searchParams;
+    queries.push(query.toString());
+    const matches = query.get('status') === 'vendido' && query.get('active') !== '1';
+    return route.fulfill({ json: { animals: matches ? [{ ...initialAnimal(), code: 'VENDIDO-001', status: 'vendido', isActive: false }] : [initialAnimal()], total: 1, options: { ...listOptions, statuses: [{ code: 'vendido', name: 'Vendido' }] } } });
+  });
+  await page.goto('/animales');
+  await page.getByRole('button', { name: 'Filtros', exact: true }).click();
+  await page.getByLabel('Estado productivo', { exact: true }).selectOption('vendido');
+  await expect(page.getByLabel('Disponibilidad', { exact: true })).toHaveValue('');
+  await page.getByRole('button', { name: 'Aplicar filtros', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Ver ficha de VENDIDO-001', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Filtros', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  const previous = queries.length;
+  await page.getByRole('button', { name: 'Filtros', exact: true }).click();
+  await page.getByRole('button', { name: 'Aplicar filtros', exact: true }).click();
+  await expect.poll(() => queries.length).toBeGreaterThan(previous);
+  await expect(page.getByRole('button', { name: 'Actualizar', exact: true })).toBeEnabled();
 });
 
 test('descarte desde la ficha no solicita importe y envía su causa',async({page})=>{
@@ -199,14 +232,14 @@ test('filtra los corrales por galpón y limpia el destino anterior al cambiarlo'
     },
   }}));
   await page.goto('/animales');
-  await page.getByRole('tab',{name:'Registrar animal en el padrón',exact:true}).click();
+  await page.getByRole('button',{name:'Registrar animal en el padrón',exact:true}).click();
   await page.locator('#ani-barn').selectOption('1');
   await expect(page.locator('#ani-location option[value="corral_b"]')).toHaveCount(0);
   await page.locator('#ani-location').selectOption('corral_a');
   await page.locator('#ani-barn').selectOption('2');
   await expect(page.locator('#ani-location')).toHaveValue('');
   await expect(page.locator('#ani-location option[value="corral_a"]')).toHaveCount(0);
-  await page.getByRole('tab',{name:'Ir a sección padrón de animales',exact:true}).click();
+  await page.getByRole('button',{name:'Ir a sección padrón de animales',exact:true}).click();
   await page.getByRole('button',{name:'Ver ficha'}).click();
   await page.getByRole('tab',{name:/Gestión y Traslados/}).click();
   await page.getByLabel('Galpón destino').selectOption('1');

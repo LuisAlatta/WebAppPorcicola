@@ -22,6 +22,8 @@ import {
   IconX,
 } from './icons';
 import { ModalDialog } from './ModalDialog';
+import { AnimalToolbar } from './AnimalToolbar';
+import { availabilityForStatus } from '../utils/animal-filters';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
 import type { Perfil } from '../types';
 
@@ -276,12 +278,13 @@ function Metric({
   );
 }
 
-export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; initialAnimalKey?: string }) {
+export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onChangeBarns }: { perfil: Perfil; initialAnimalKey?: string; barnNames?: string[]; onChangeBarns?: () => void }) {
   const soloLectura = perfil === 'veterinario';
   const [section, setSection] = useState<Section>('padron');
   const [fichaTab, setFichaTab] = useState<'resumen' | 'pesajes' | 'trazabilidad' | 'operaciones'>('resumen');
   const [data, setData] = useState<ListPayload | null>(null);
   const [page, setPage] = useState(0);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const listRequest = useRef(0);
   const pageSize = 50;
   const [detail, setDetail] = useState<AnimalDetail | null>(null);
@@ -382,11 +385,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   }, [queryString, page]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadList();
-    }, 250);
+    const timer = window.setTimeout(() => { void loadList(); }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadList]);
+  }, [loadList, refreshVersion]);
 
   useEffect(() => {
     if (!success) return;
@@ -397,18 +398,16 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
   const options = data?.options;
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
-    setFilters((prev) => ({ ...prev, [key]: value, ...(key === 'barnId' ? {location: ''} : {}) }));
+    setFilters((prev) => ({ ...prev, [key]: value, ...(key === 'barnId' ? {location: ''} : {}), ...(key === 'status' ? {active: availabilityForStatus(value, prev.active)} : {}) }));
   };
 
   const applyFilters = (searchOnly = false) => {
     const next = searchOnly ? { ...appliedFilters, q: filters.q.trim() } : { ...filters, q: filters.q.trim() };
-    if (page === 0 && (Object.keys(next) as (keyof Filters)[]).every(key => next[key] === appliedFilters[key])) {
-      void loadList();
-      return;
-    }
     listRequest.current++;
     setPage(0);
     setAppliedFilters(next);
+    setRefreshVersion(version => version + 1);
+    if (!searchOnly) setFiltersOpen(false);
   };
 
   const hasActiveFilters = useMemo(() => {
@@ -888,26 +887,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
           </div>
         </form>
       </ModalDialog>}
-      <div className="module-heading mb-4">
-        <p className="text-xs text-muted">
-          Identificación oficial permanente, genealogía, pesajes periódicos y trazabilidad de cada animal.
-        </p>
-        <div className="inline-flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={() => void loadList()}
-            disabled={loading}
-            title="Recargar padrón de animales"
-            aria-label="Recargar padrón de animales"
-          >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconRefreshCw size={14} className={loading ? 'spinner-icon' : ''} />
-              <span>Actualizar padrón</span>
-            </span>
-          </button>
-        </div>
-      </div>
+      <AnimalToolbar barns={barnNames} onChangeBarns={onChangeBarns} onRefresh={() => void loadList()} loading={loading} />
 
       {error && (
         <div className="alert alert-error mb-4" role="alert" aria-live="assertive">
@@ -936,43 +916,25 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
         </div>
       )}
 
-      <div className="admin-tabs mb-4" role="tablist" aria-label="Secciones del módulo de animales">
+      {section !== 'padron' && <nav className="admin-tabs mb-4" aria-label="Navegación de animales">
         <button
           type="button"
-          role="tab"
-          aria-selected={section === 'padron'}
-          className={`btn btn-sm ${section === 'padron' ? 'btn-primary' : 'btn-outline'}`}
+          className="btn btn-sm btn-outline"
           onClick={() => setSection('padron')}
           aria-label="Ir a sección padrón de animales"
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconList size={14} />
-            <span>Padrón general</span>
+            <span>Volver al padrón</span>
             {total > 0 && (
               <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{total}</span>
             )}
           </span>
         </button>
-        {!soloLectura && (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={section === 'alta'}
-            className={`btn btn-sm ${section === 'alta' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => (editingCode ? setSection('alta') : startCreate())}
-            aria-label={editingCode ? `Editar ficha ${editingCode}` : 'Registrar animal en el padrón'}
-          >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
-              {editingCode ? <IconEdit size={14} /> : <IconPlus size={14} />}
-              <span>{editingCode ? `Editar ficha ${editingCode}` : 'Registrar animal'}</span>
-            </span>
-          </button>
-        )}
         {detail && (
           <button
             type="button"
-            role="tab"
-            aria-selected={section === 'ficha'}
+            aria-current={section === 'ficha' ? 'page' : undefined}
             className={`btn btn-sm ${section === 'ficha' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setSection('ficha')}
             aria-label={`Ver ficha técnica ${detail.code}`}
@@ -983,7 +945,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
             </span>
           </button>
         )}
-      </div>
+      </nav>}
 
       {loading && !data && (
         <div className="card text-sm text-muted inline-flex items-center justify-center gap-2 leading-none p-4" role="status" aria-live="polite">
@@ -997,12 +959,14 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
           <div className="card">
             <form className="animal-search-bar" onSubmit={event => { event.preventDefault(); applyFilters(true); }}>
               <div className="form-group animal-search-field">
-                <label className="form-label" htmlFor="ani-q">Buscar</label>
+                <label className="sr-only" htmlFor="ani-q">Buscar</label>
                 <input id="ani-q" type="search" className="form-input" value={filters.q}
                   onChange={event => setFilter('q', event.target.value)} placeholder="Código o nombre del animal" />
               </div>
-              <button type="submit" className="btn btn-primary inline-flex items-center justify-center gap-2"><IconSearch size={16} /><span>Buscar</span></button>
-              <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" aria-expanded={filtersOpen} aria-controls="animal-filters-panel" onClick={() => setFiltersOpen(open => !open)}><IconFilter size={16} /><span>Filtros</span></button>
+              <button type="submit" className="btn btn-primary animal-icon-button" aria-label="Buscar" title="Buscar" disabled={loading}><IconSearch size={18} /></button>
+              <button type="button" className="btn btn-outline animal-icon-button" aria-label="Filtros" title="Filtros" aria-expanded={filtersOpen} aria-controls="animal-filters-panel" onClick={() => setFiltersOpen(open => !open)}><IconFilter size={18} /></button>
+              {!soloLectura && <button type="button" className="btn btn-outline animal-icon-button" aria-label="Registrar animal en el padrón" title="Registrar animal" onClick={startCreate}><IconPlus size={18} /></button>}
+            </form>
               {hasActiveFilters && (
                 <button
                   type="button"
@@ -1016,7 +980,6 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                   </span>
                 </button>
               )}
-            </form>
             {filtersOpen && <form id="animal-filters-panel" className="animal-filters-panel" onSubmit={event => { event.preventDefault(); applyFilters(); }}>
             <div className="form-grid">
               <div className="form-group">
@@ -1211,7 +1174,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 </select>
               </div>
             </div>
-            <div className="animal-filter-actions"><button type="submit" className="btn btn-primary inline-flex items-center justify-center gap-2"><IconCheck size={16} /><span>Aplicar filtros</span></button></div>
+            <div className="animal-filter-actions"><button type="submit" disabled={loading} className="btn btn-primary inline-flex items-center justify-center gap-2"><IconCheck size={16} /><span>Aplicar filtros</span></button></div>
             </form>}
           </div>
 
@@ -1221,7 +1184,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <IconFilter size={16} className="text-primary" />
                 <span>Padrón de animales</span>
               </span>
-              <span className="text-xs text-muted">{total} ficha{total === 1 ? '' : 's'}</span>
+              <span className="text-xs text-muted" role="status" aria-live="polite">{loading ? 'Actualizando…' : `${total} ficha${total === 1 ? '' : 's'}${hasActiveFilters ? ' · Filtros aplicados' : ''}`}</span>
             </div>
 
             {animals.length === 0 ? (
@@ -1233,19 +1196,6 @@ export function ModuloAnimales({ perfil, initialAnimalKey }: { perfil: Perfil; i
                 <p className="text-sm text-muted">
                   Ajuste la búsqueda o registre el primer animal con su código permanente.
                 </p>
-                {!soloLectura && (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={startCreate}
-                    aria-label="Registrar animal en el padrón"
-                  >
-                    <span className="inline-flex items-center justify-center gap-2 leading-none">
-                      <IconPlus size={14} />
-                      <span>Registrar animal</span>
-                    </span>
-                  </button>
-                )}
               </div>
             ) : (
               <div className="table-responsive">

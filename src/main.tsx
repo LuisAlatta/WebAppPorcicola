@@ -63,6 +63,8 @@ function App() {
   const [logoutError,setLogoutError]=useState('');
   const [barnSelection, setBarnSelection] = useState<{ ids: number[]; names: string[] }>({ ids: [], names: [] });
   const [choosingBarns, setChoosingBarns] = useState(false);
+  const isAnimalView = ['animales', 'listado', 'formulario', 'detalle'].includes(vistaActual);
+  const animalBarnProps = { barnNames: barnSelection.names, onChangeBarns: () => setChoosingBarns(true) };
 
   useEffect(() => {
     migrateRememberedUsername();
@@ -178,9 +180,9 @@ function App() {
         );
       case 'listado':
       case 'formulario':
-        return <Suspense fallback={<div className="module-container">Cargando animales…</div>}><ModuloAnimales perfil={perfilActual} /></Suspense>;
+        return <Suspense fallback={<div className="module-container">Cargando animales…</div>}><ModuloAnimales perfil={perfilActual} {...animalBarnProps} /></Suspense>;
       case 'detalle':
-        return <Suspense fallback={<div className="module-container">Cargando ficha…</div>}><ModuloAnimales perfil={perfilActual} initialAnimalKey={selectedAnimalId} /></Suspense>;
+        return <Suspense fallback={<div className="module-container">Cargando ficha…</div>}><ModuloAnimales perfil={perfilActual} initialAnimalKey={selectedAnimalId} {...animalBarnProps} /></Suspense>;
       case 'inventario':
         return <ModuloInventario perfil={perfilActual} />;
       case 'alimentacion':
@@ -194,7 +196,7 @@ function App() {
       case 'reportes':
         return <Suspense fallback={<div className="module-container">Cargando reportes…</div>}><ModuloReportes perfil={perfilActual} /></Suspense>;
       case 'animales':
-        return <Suspense fallback={<div className="module-container">Cargando animales…</div>}><ModuloAnimales perfil={perfilActual} /></Suspense>;
+        return <Suspense fallback={<div className="module-container">Cargando animales…</div>}><ModuloAnimales perfil={perfilActual} {...animalBarnProps} /></Suspense>;
       case 'reproduccion':
         return <ModuloReproduccion perfil={perfilActual} />;
       case 'configuracion':
@@ -224,7 +226,7 @@ function App() {
       {logoutError && <div className="alert alert-danger" role="alert">{logoutError}</div>}
 
       <main className="main-content">
-        {estaAutenticado && vistaActual !== 'login' && barnSelection.ids.length > 0 && <div className="barn-scope-bar"><span>Galpones: {barnSelection.names.join(', ')}</span><button className="btn btn-outline btn-sm" type="button" onClick={() => setChoosingBarns(true)}>Cambiar galpones</button></div>}
+        {estaAutenticado && vistaActual !== 'login' && barnSelection.ids.length > 0 && !isAnimalView && <div className="barn-scope-bar"><span>Galpones: {barnSelection.names.join(', ')}</span><button className="btn btn-outline btn-sm" type="button" onClick={() => setChoosingBarns(true)}>Cambiar galpones</button></div>}
         {renderVista()}
       </main>
 
