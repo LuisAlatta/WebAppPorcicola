@@ -703,7 +703,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         </button>
       </div>
 
-      {error && !dateCorrection && !countCorrection && !postweaningCycle && !litterEventCycle && cycles.length > 0 && <div className="alert alert-error" role="alert" aria-live="assertive">{error}</div>}
+      {error && !dateCorrection && !countCorrection && !postweaningCycle && !litterEventCycle && (cycles.length > 0 || section === 'registro') && <div className="alert alert-error" role="alert" aria-live="assertive">{error}</div>}
       {notice && <div className="alert alert-success" role="status" aria-live="polite">{notice}</div>}
 
       <ModuleTabs
@@ -1135,9 +1135,9 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       <IconCalendar size={13} />
                       <span>{cycle.dueLabel}</span>
                     </span>
-                    <span className="text-xs text-muted tabular-nums font-mono">
+                    {cycle.cycleStatus === 'open' && <span className="text-xs text-muted tabular-nums font-mono">
                       {cycle.daysRemaining} días
-                    </span>
+                    </span>}
                   </div>
                 </header>
 

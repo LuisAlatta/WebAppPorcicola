@@ -5,12 +5,15 @@ import {
   IconCheck,
   IconCoins,
   IconDownload,
+  IconEye,
   IconPlus,
   IconRefreshCw,
   IconTrash,
   IconX,
 } from './icons';
 import { ModalDialog } from './ModalDialog';
+import { ModuleTabs } from './ModuleTabs';
+import { DataState } from './DataState';
 import { farmToday, newOperationKey, fetchOperation } from '../utils/operations';
 import type { Perfil } from '../types';
 import { generarReportePdf } from '../utils/exportPdf';
@@ -84,6 +87,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
   const [loading, setLoading] = useState<boolean>(true);
   const [barns, setBarns] = useState<Barn[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [detailTarget, setDetailTarget] = useState<Entry | null>(null);
   const [cashRows, setCashRows] = useState<CashRow[]>([]);
   const [cashTotals, setCashTotals] = useState<{ direction: string; currencyCode: string; amountMinor: number }[]>([]);
   const [cashBalances, setCashBalances] = useState<CashBalance[]>([]);
@@ -419,7 +423,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
         </button>
       </div>
 
-      {error && (
+      {error && !settlementTarget && !reversalTarget && (
         <div className="alert alert-danger" role="alert" aria-live="assertive">
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconAlertCircle size={16} />
@@ -436,59 +440,20 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
         </div>
       )}
 
-      {/* Navegación por pestañas SaaS */}
-      <div className="admin-tabs" role="tablist" aria-label="Secciones del módulo financiero">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'libro'}
-          aria-label="Pestaña Libro Financiero: ingresos, egresos y saldos pendientes"
-          className={`btn btn-sm ${section === 'libro' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('libro')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconCoins size={14} />
-            <span>Libro Financiero</span>
-          </span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === 'caja'}
-          aria-label="Pestaña Flujo de Caja: cobros y pagos efectivos"
-          className={`btn btn-sm ${section === 'caja' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSection('caja')}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconBuilding size={14} />
-            <span>Flujo de Caja</span>
-          </span>
-        </button>
-        {canWrite && (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={section === 'registrar'}
-            aria-label="Pestaña Registrar Operación: nuevo ingreso o gasto distribuido"
-            className={`btn btn-sm ${section === 'registrar' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => setSection('registrar')}
-          >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconPlus size={14} />
-              <span>Registrar Operación</span>
-            </span>
-          </button>
-        )}
-      </div>
+      <ModuleTabs
+        label="Secciones del módulo financiero"
+        active={section}
+        onChange={setSection}
+        columns={3}
+        tabs={[
+          { id: 'libro', label: 'Libro Financiero', ariaLabel: 'Pestaña Libro Financiero: ingresos, egresos y saldos pendientes', icon: <IconCoins size={14} /> },
+          { id: 'caja', label: 'Flujo de Caja', ariaLabel: 'Pestaña Flujo de Caja: cobros y pagos efectivos', icon: <IconBuilding size={14} /> },
+          ...(canWrite ? [{ id: 'registrar', label: 'Registrar Operación', ariaLabel: 'Pestaña Registrar Operación: nuevo ingreso o gasto distribuido', icon: <IconPlus size={14} /> }] : []),
+        ]}
+      />
 
       {loading && !entries.length && (
-        <div className="card empty-state-card">
-          <div className="empty-icon-wrap">
-            <IconRefreshCw size={26} className="text-primary spinner-icon" />
-          </div>
-          <p className="font-semibold text-base">Cargando libro financiero y flujo de caja…</p>
-          <p className="text-sm text-muted">Consultando asientos contables y saldos en granja.</p>
-        </div>
+        <DataState variant="loading" title="Cargando libro financiero y flujo de caja…" description="Consultando asientos contables y saldos en granja." />
       )}
 
       {section === 'registrar' && (
@@ -500,7 +465,11 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
               <p className="text-muted">La suma distribuida entre galpones debe coincidir con el importe total.</p>
             </div>
           </div>
-          <form className="form-grid" onSubmit={submit}>
+          <form className="form-stack" onSubmit={submit}>
+            <div className="form-sections">
+            <fieldset className="form-section">
+              <legend>Operación e importe</legend>
+              <div className="form-grid">
             <div className="form-group">
               <label className="form-label">Movimiento</label>
               <select className="form-select" value={form.direction} onChange={e => setForm({ ...form, direction: e.target.value })}>
@@ -561,6 +530,11 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 <option value="EUR">EUR · Euro (€)</option>
               </select>
             </div>
+              </div>
+            </fieldset>
+            <fieldset className="form-section">
+              <legend>Comprobante y auditoría</legend>
+              <div className="form-grid">
             <div className="form-group">
               <label className="form-label">Contraparte (cliente / proveedor)</label>
               <input
@@ -593,10 +567,13 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
               />
             </div>
 
-            <div className="form-span-2">
+              </div>
+            </fieldset>
+            <fieldset className="form-section">
+              <legend>Distribución por galpón</legend>
+            <div>
               <div className="module-heading mb-2">
                 <div>
-                  <h3 className="text-base font-bold">Distribución por galpón</h3>
                   <p className="text-xs text-muted">Asigna montos e insumos a cada galpón involucrado.</p>
                 </div>
                 <button
@@ -712,7 +689,9 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
               />
             </div>
 
-            <div className="form-span-2 flex items-center justify-between flex-wrap gap-3 pt-3 border-t border-subtle">
+            </fieldset>
+            </div>
+            <div className="form-actions form-actions-sticky flex-wrap">
               <p className={totalMinor === allocatedMinor ? 'text-muted tabular-nums m-0' : 'text-danger font-bold tabular-nums m-0'}>
                 Distribuido: {money(allocatedMinor, form.currencyCode)} de {money(totalMinor, form.currencyCode)}
               </p>
@@ -739,10 +718,10 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
       )}
 
       {section === 'libro' && settlementTarget && (
-        <section className="card">
+        <ModalDialog labelledBy="finance-settlement-title" onDismiss={() => setSettlementTarget(null)} dismissDisabled={busy}>
           <div className="card-header">
             <div>
-              <h2>{settlementTarget.direction === 'income' ? 'Registrar cobro' : 'Registrar pago'} · Operación #{settlementTarget.id}</h2>
+              <h2 id="finance-settlement-title">{settlementTarget.direction === 'income' ? 'Registrar cobro' : 'Registrar pago'} · Operación #{settlementTarget.id}</h2>
               <p className="text-muted">
                 Saldo pendiente en {settlementTarget.barnName}: <strong className="tabular-nums">{money(settlementTarget.outstandingMinor, settlementTarget.currencyCode)}</strong>
               </p>
@@ -751,6 +730,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
               type="button"
               className="btn btn-secondary btn-sm"
               aria-label="Cerrar panel de registro de cobro o pago"
+              disabled={busy}
               onClick={() => setSettlementTarget(null)}
             >
               <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -759,6 +739,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
               </span>
             </button>
           </div>
+          <p className="data-card-note mb-3">{settlementTarget.category} · {settlementTarget.concept}</p>
+          {error && <div className="alert alert-error" role="alert">{error}</div>}
           <form className="form-grid" onSubmit={settle}>
             <div className="form-group">
               <label className="form-label">Fecha efectiva</label>
@@ -814,8 +796,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 onChange={e => setSettlementForm({ ...settlementForm, reason: e.target.value })}
               />
             </div>
-            <div className="form-span-2 flex items-center justify-end gap-2 pt-2 border-t border-subtle">
-              <button type="button" className="btn btn-outline" onClick={() => setSettlementTarget(null)}>
+            <div className="form-span-2 form-actions form-actions-sticky">
+              <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setSettlementTarget(null)}>
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconX size={14} />
                   <span>Cancelar</span>
@@ -829,7 +811,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
               </button>
             </div>
           </form>
-        </section>
+        </ModalDialog>
       )}
 
       {section === 'libro' && (
@@ -944,11 +926,11 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
           </div>
 
           {totals.length > 0 && (
-            <div className="filter-row">
+            <div className="data-card-list data-card-grid mb-3">
               {totals.map(item => (
                 <div className="metric-card" key={`${item.direction}-${item.currencyCode}`}>
                   <span>{item.direction === 'income' ? 'Operaciones de ingreso' : 'Operaciones de egreso'} · {item.currencyCode}</span>
-                  <strong className={`tabular-nums ${item.direction === 'income' ? 'text-success' : 'text-danger'}`}>
+                  <strong className={`font-numeric tabular-nums ${item.direction === 'income' ? 'text-success' : 'text-danger'}`}>
                     {money(item.amountMinor, item.currencyCode)}
                   </strong>
                 </div>
@@ -957,63 +939,42 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
           )}
 
           {entries.length > 0 ? (
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Fecha operación</th>
-                    <th className="text-left">Tipo</th>
-                    <th className="text-left">Categoría y concepto</th>
-                    <th className="text-left">Galpón</th>
-                    <th className="text-right">Importe</th>
-                    <th className="text-right">Cobrado / Pagado</th>
-                    <th className="text-right">Pendiente</th>
-                    <th className="text-left">Contraparte</th>
-                    <th className="text-left">Origen</th>
-                    <th className="text-left">Responsable</th>
-                    <th className="text-center">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <ul className="data-card-list data-card-grid" aria-label="Movimientos del libro financiero">
                   {entries.map((row, index) => (
-                    <tr key={`${row.id}-${row.allocationId}`}>
-                      <td className="text-left tabular-nums">{row.operationDate}</td>
-                      <td className="text-left">
+                    <li key={`${row.id}-${row.allocationId}`}>
+                    <article className="data-card" data-state={row.reversedAt ? 'inactive' : 'active'}>
+                      <header className="data-card-head">
+                        <div className="data-card-identity">
+                          <span className="data-card-title">{row.category}</span>
+                          <span className="data-card-subtitle">Operación #{row.id} · {row.operationDate} · {row.barnName}</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
                         <span className={`badge-status ${row.direction === 'income' ? 'badge-success' : 'badge-warning'}`}>
                           {row.direction === 'income' ? 'Ingreso' : 'Egreso'}
                         </span>
-                        {row.reversedAt && <span className="badge-status badge-danger ml-1">Anulada</span>}
-                      </td>
-                      <td className="text-left">
-                        <strong>{row.category}</strong>
-                        <div className="text-xs text-muted">{row.concept}</div>
-                      </td>
-                      <td className="text-left">{row.barnName}</td>
-                      <td className="text-right tabular-nums font-mono font-bold">{money(row.amountMinor, row.currencyCode)}</td>
-                      <td className="text-right tabular-nums font-mono text-muted">{money(row.settledMinor, row.currencyCode)}</td>
-                      <td className="text-right tabular-nums font-mono">
-                        <span className={row.outstandingMinor > 0 ? 'text-danger font-bold' : 'text-muted'}>
-                          {money(row.outstandingMinor, row.currencyCode)}
-                        </span>
-                      </td>
-                      <td className="text-left text-xs">
-                        {row.counterparty ?? '—'}
-                        {row.reference ? <div className="text-muted">Ref: {row.reference}</div> : null}
-                      </td>
-                      <td className="text-left text-xs">
-                        {row.sourceType ? `${row.sourceType} #${row.sourceId}` : 'Manual'}
-                        {row.reversalOfId ? <div className="text-danger">Reversa #{row.reversalOfId}</div> : null}
-                      </td>
-                      <td className="text-left text-xs">{row.responsibleName}</td>
-                      <td className="text-center">
-                        <div className="inline-flex items-center justify-center gap-2">
+                        {row.reversedAt && <span className="badge-status badge-danger">Anulada</span>}
+                        {row.reversalOfId && <span className="badge-status badge-outline">Reversa #{row.reversalOfId}</span>}
+                        </div>
+                      </header>
+                      <p className="data-card-note">{row.concept}</p>
+                      <dl className="data-card-meta">
+                        <div><dt>Importe · {row.currencyCode}</dt><dd className="font-mono tabular-nums">{money(row.amountMinor, row.currencyCode)}</dd></div>
+                        <div><dt>Cobrado / Pagado</dt><dd className="font-mono tabular-nums">{money(row.settledMinor, row.currencyCode)}</dd></div>
+                        <div><dt>Pendiente</dt><dd className={`font-mono tabular-nums ${row.outstandingMinor > 0 ? 'text-danger' : ''}`}>{money(row.outstandingMinor, row.currencyCode)}</dd></div>
+                        <div><dt>Contraparte</dt><dd>{row.counterparty ?? 'Sin registrar'}</dd></div>
+                        <div><dt>Origen</dt><dd>{row.sourceType ? `${row.sourceType} #${row.sourceId}` : 'Manual'}</dd></div>
+                        <div><dt>Responsable</dt><dd>{row.responsibleName}</dd></div>
+                      </dl>
+                        <div className="data-card-actions">
+                          <button type="button" className="btn btn-outline" aria-label={`Ver operación #${row.id} en ${row.barnName}`} onClick={() => setDetailTarget(row)}><IconEye size={14} /><span>Ver</span></button>
                           {canWrite && row.outstandingMinor > 0 && !row.reversedAt && (
                             <button
                               type="button"
-                              className="btn btn-secondary btn-sm"
+                               className="btn btn-primary"
                               aria-label={`${row.direction === 'income' ? 'Registrar cobro' : 'Registrar pago'} de operación #${row.id}`}
                               disabled={busy}
                               onClick={() => {
+                                setError('');
                                 setSettlementTarget(row);
                                 setSettlementForm({
                                   ...settlementForm,
@@ -1035,6 +996,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                               aria-label={`Anular operación #${row.id}`}
                               disabled={busy}
                               onClick={() => {
+                                setError('');
                                 setReversalTarget(row);
                                 setReversalReason('');
                                 setReversalOperationKey(newOperationKey('finance-reversal'));
@@ -1047,13 +1009,11 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                             </button>
                           )}
                         </div>
-                      </td>
-                    </tr>
+                    </article>
+                    </li>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
+            </ul>
+          ) : !loading && !error ? (
             <div className="card empty-state-card mt-3">
               <div className="empty-icon-wrap">
                 <IconCoins size={28} className="text-muted" />
@@ -1074,8 +1034,31 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 </button>
               )}
             </div>
-          )}
+          ) : null}
         </section>
+      )}
+
+      {detailTarget && (
+        <ModalDialog labelledBy="finance-detail-title" onDismiss={() => setDetailTarget(null)}>
+          <h2 id="finance-detail-title" className="text-lg font-bold mb-3">Operación #{detailTarget.id}</h2>
+          <p className="data-card-note mb-3">{detailTarget.concept}</p>
+          <dl className="detail-grid">
+            <div className="detail-item"><dt>Tipo</dt><dd>{detailTarget.direction === 'income' ? 'Ingreso' : 'Egreso'}</dd></div>
+            <div className="detail-item"><dt>Estado</dt><dd>{detailTarget.reversedAt ? 'Anulada' : detailTarget.reversalOfId ? 'Reversión' : 'Vigente'}</dd></div>
+            <div className="detail-item"><dt>Categoría</dt><dd>{detailTarget.category}</dd></div>
+            <div className="detail-item"><dt>Fecha</dt><dd>{detailTarget.operationDate}</dd></div>
+            <div className="detail-item"><dt>Galpón</dt><dd>{detailTarget.barnName}</dd></div>
+            <div className="detail-item"><dt>Importe de esta asignación · {detailTarget.currencyCode}</dt><dd>{money(detailTarget.amountMinor, detailTarget.currencyCode)}</dd></div>
+            <div className="detail-item"><dt>Contraparte</dt><dd>{detailTarget.counterparty ?? 'Sin registrar'}</dd></div>
+            <div className="detail-item"><dt>Referencia</dt><dd>{detailTarget.reference ?? 'Sin registrar'}</dd></div>
+            <div className="detail-item"><dt>Animal</dt><dd>{detailTarget.animalCode ?? 'Sin asignar'}</dd></div>
+            <div className="detail-item"><dt>Lote</dt><dd>{detailTarget.lotCode ?? 'Sin asignar'}</dd></div>
+            <div className="detail-item"><dt>Insumo</dt><dd>{detailTarget.supplyCode ?? 'Sin asignar'}</dd></div>
+            <div className="detail-item"><dt>Cantidad</dt><dd>{detailTarget.quantity ?? 'Sin registrar'}</dd></div>
+            <div className="detail-item"><dt>Responsable</dt><dd>{detailTarget.responsibleName}</dd></div>
+          </dl>
+          <div className="form-actions mt-3"><button type="button" className="btn btn-outline" onClick={() => setDetailTarget(null)}><IconX size={14} /><span>Cerrar</span></button></div>
+        </ModalDialog>
       )}
 
       {reversalTarget && (
@@ -1091,8 +1074,10 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
             Anular Operación Financiera
           </h4>
           <p className="text-sm text-muted mb-3">
-            Se creará un contra-asiento compensatorio auditable que anula la operación <strong>#{reversalTarget.id}</strong> ({reversalTarget.direction === 'income' ? 'Ingreso' : 'Egreso'} · {reversalTarget.category} · {money(reversalTarget.amountMinor, reversalTarget.currencyCode)}).
+            Se creará un contra-asiento compensatorio auditable que anula la operación <strong>#{reversalTarget.id}</strong> ({reversalTarget.direction === 'income' ? 'Ingreso' : 'Egreso'} · {reversalTarget.category} · {money(reversalTarget.entryTotalMinor ?? reversalTarget.amountMinor, reversalTarget.currencyCode)}).
           </p>
+          <p className="note-box mb-3">La reversión afecta a todas las asignaciones de la operación. No elimina su historial ni devuelve automáticamente los cobros o pagos ya registrados.</p>
+          {error && <div className="alert alert-error" role="alert">{error}</div>}
           <form
             onSubmit={e => {
               e.preventDefault();
@@ -1113,7 +1098,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 autoFocus
               />
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="form-actions form-actions-sticky">
               <button
                 type="button"
                 className="btn btn-outline"
@@ -1241,18 +1226,25 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
             </form>
           )}
 
-          <div className="filter-row">
+          <div className="data-card-list data-card-grid mb-3" aria-label="Saldos por moneda">
             {cashBalances.map(item => (
-              <div className="metric-card" key={`saldo-${item.currencyCode}`}>
-                <span>{filter.direction || filter.category ? 'Balance inicial filtrado' : 'Saldo inicial'} · {item.currencyCode}{item.openingBalanceIsCalculated ? ' (derivado)' : ' (registrado)'}</span>
-                <strong className="tabular-nums">{money(item.openingMinor, item.currencyCode)}</strong>
-                <small className="tabular-nums">Cobros {money(item.receiptsMinor, item.currencyCode)} · Pagos {money(item.paymentsMinor, item.currencyCode)} · Final {money(item.closingMinor, item.currencyCode)}</small>
-              </div>
+              <article className="data-card" key={`saldo-${item.currencyCode}`}>
+                <header className="data-card-head">
+                  <span className="data-card-title">Caja · {item.currencyCode}</span>
+                  <span className="badge-status badge-outline">{item.openingBalanceIsCalculated ? 'Derivado' : 'Registrado'}</span>
+                </header>
+                <dl className="data-card-meta">
+                  <div><dt>{filter.direction || filter.category ? 'Balance inicial filtrado' : 'Saldo inicial'}</dt><dd className="font-mono tabular-nums">{money(item.openingMinor, item.currencyCode)}</dd></div>
+                  <div><dt>Entradas</dt><dd className="font-mono tabular-nums text-success">{money(item.receiptsMinor, item.currencyCode)}</dd></div>
+                  <div><dt>Salidas</dt><dd className="font-mono tabular-nums text-danger">{money(item.paymentsMinor, item.currencyCode)}</dd></div>
+                </dl>
+                <p className="data-card-note">Saldo final <strong className="font-mono tabular-nums">{money(item.closingMinor, item.currencyCode)}</strong></p>
+              </article>
             ))}
             {cashTotals.map(item => (
               <div className="metric-card" key={`cash-${item.direction}-${item.currencyCode}`}>
                 <span>{item.direction === 'income' ? 'Cobros del periodo' : 'Pagos del periodo'} · {item.currencyCode}</span>
-                <strong className={`tabular-nums ${item.direction === 'income' ? 'text-success' : 'text-danger'}`}>
+                <strong className={`font-numeric tabular-nums ${item.direction === 'income' ? 'text-success' : 'text-danger'}`}>
                   {money(item.amountMinor, item.currencyCode)}
                 </strong>
               </div>
@@ -1260,42 +1252,31 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
           </div>
 
           {cashRows.length > 0 ? (
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Fecha de caja</th>
-                    <th className="text-left">Movimiento</th>
-                    <th className="text-left">Categoría y concepto</th>
-                    <th className="text-left">Galpón</th>
-                    <th className="text-left">Medio de pago</th>
-                    <th className="text-right">Importe efectivo</th>
-                    <th className="text-left">Registrado por</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <ul className="data-card-list" aria-label="Movimientos efectivos de caja">
                   {cashRows.map((row, index) => (
-                    <tr key={`${row.id}-${index}`}>
-                      <td className="text-left tabular-nums">{row.settlementDate}</td>
-                      <td className="text-left">
+                    <li key={`${row.id}-${index}`}>
+                    <article className="data-card">
+                      <header className="data-card-head">
+                        <div className="data-card-identity">
+                          <span className="data-card-title">{row.category}</span>
+                          <span className="data-card-subtitle">{row.settlementDate} · Operación #{row.financialEntryId} · {row.barnName}</span>
+                        </div>
                         <span className={`badge-status ${row.direction === 'income' ? 'badge-success' : 'badge-warning'}`}>
                           {row.direction === 'income' ? 'Cobro' : 'Pago'}
                         </span>
-                      </td>
-                      <td className="text-left">
-                        <strong>{row.category}</strong> · {row.concept}
-                        <div className="text-xs text-muted">Operación #{row.financialEntryId}{row.counterparty ? ` · ${row.counterparty}` : ''}</div>
-                      </td>
-                      <td className="text-left">{row.barnName}</td>
-                      <td className="text-left text-xs capitalize">{row.paymentMethod}</td>
-                      <td className="text-right tabular-nums font-mono font-bold">{money(row.amountMinor, row.currencyCode)}</td>
-                      <td className="text-left text-xs">{row.responsibleName}</td>
-                    </tr>
+                      </header>
+                      <p className="data-card-note">{row.concept}</p>
+                      <dl className="data-card-meta">
+                        <div><dt>Importe efectivo · {row.currencyCode}</dt><dd className="font-mono tabular-nums">{money(row.amountMinor, row.currencyCode)}</dd></div>
+                        <div><dt>Medio de pago</dt><dd className="capitalize">{row.paymentMethod}</dd></div>
+                        <div><dt>Contraparte</dt><dd>{row.counterparty ?? 'Sin registrar'}</dd></div>
+                        <div><dt>Registrado por</dt><dd>{row.responsibleName}</dd></div>
+                      </dl>
+                    </article>
+                    </li>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
+            </ul>
+          ) : !loading && !error ? (
             <div className="card empty-state-card mt-3">
               <div className="empty-icon-wrap">
                 <IconBuilding size={28} className="text-muted" />
@@ -1314,7 +1295,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 </span>
               </button>
             </div>
-          )}
+          ) : null}
         </section>
       )}
     </main>
