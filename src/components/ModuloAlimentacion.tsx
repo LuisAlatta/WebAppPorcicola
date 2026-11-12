@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  IconAlertCircle,
-  IconAlertTriangle,
   IconBox,
   IconBuilding,
   IconCalendar,
@@ -13,13 +11,28 @@ import {
   IconPlus,
   IconRefreshCw,
   IconScale,
-  IconSearch,
   IconWheat,
   IconX,
 } from './icons';
 import { farmToday, newOperationKey, fetchOperation } from '../utils/operations';
+import { errorMessage } from '../utils/format';
 import { DataState } from './DataState';
 import { ModuleTabs } from './ModuleTabs';
+import {
+  PageHeader,
+  InlineAlert,
+  KpiCard,
+  StatusBadge,
+  type BadgeTone,
+  DataCardList,
+  DataCard,
+  DataCardHead,
+  DataCardMeta,
+  DataCardNote,
+  DataCardActions,
+  SectionCard,
+  SearchField,
+} from './ui';
 import type { Perfil } from '../types';
 
 type Warehouse = {
@@ -173,19 +186,31 @@ const SHIFT_LABELS: Record<string, string> = {
   noche: 'Noche',
 };
 
-const MOVEMENT_TYPE_BADGES: Record<string, string> = {
-  opening: 'badge-tag',
-  purchase: 'badge-status badge-success',
-  return_in: 'badge-status badge-success',
-  delivery: 'badge-status badge-warning',
-  waste: 'badge-status badge-danger',
-  return_supplier: 'badge-status badge-danger',
+const MOVEMENT_TYPE_BADGES: Record<string, BadgeTone> = {
+  opening: 'outline',
+  purchase: 'success',
+  return_in: 'success',
+  delivery: 'warning',
+  waste: 'danger',
+  return_supplier: 'danger',
 };
 
 function coverage(period: string, shortage: number | null): string {
   if (shortage === null) return `${period}: sin datos`;
   if (shortage === 0) return `${period}: suficiente`;
   return `${period}: faltan ${shortage} kg`;
+}
+
+function coverageBadge(coveredDays: number | null) {
+  if (coveredDays === null) return <StatusBadge tone="outline">Sin cobertura</StatusBadge>;
+  return (
+    <StatusBadge
+      tone={coveredDays >= 15 ? 'success' : coveredDays >= 5 ? 'warning' : 'danger'}
+      className="tabular-nums font-mono"
+    >
+      {coveredDays} días
+    </StatusBadge>
+  );
 }
 
 export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
@@ -295,7 +320,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
         destinationBarnId: old.destinationBarnId || String(b.barns?.[0]?.id ?? ''),
       }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error cargando alimentación');
+      setError(errorMessage(e, 'Error cargando alimentación'));
     } finally {
       setLoading(false);
     }
@@ -328,7 +353,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
       setNotice(Number(plan.plannedKg) === 0 ? 'Programación cancelada con su motivo.' : 'Turno programado. El pendiente se completará con entregas reales.');
       setPlan(old => ({ ...old, feedCode: '', plannedKg: '', reason: '' }));
       if (plan.effectiveDate !== planDate) setPlanDate(plan.effectiveDate); else await load();
-    } catch (error) { setError(error instanceof Error ? error.message : 'No se pudo guardar la programación'); }
+    } catch (error) { setError(errorMessage(error, 'No se pudo guardar la programación')); }
     finally { setBusy(false); }
   };
 
@@ -382,7 +407,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
         setSection('stock');
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo guardar');
+      setError(errorMessage(e, 'No se pudo guardar'));
     } finally {
       setBusy(false);
     }
@@ -404,7 +429,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
       setNotice('Almacén creado exitosamente.');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo crear');
+      setError(errorMessage(e, 'No se pudo crear'));
     } finally {
       setBusy(false);
     }
@@ -446,24 +471,11 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
   return (
     <main className="module-container">
       {/* Encabezado del Módulo */}
-      <div className="module-heading mb-4">
-        <p className="text-xs text-muted">
-          Existencias de insumos por almacén, proyección de raciones balanceadas, turnos diarios y conversión alimenticia (FCR).
-        </p>
-        <div className="inline-flex items-center gap-2 flex-wrap">
-          <label className="text-xs text-muted inline-flex items-center gap-1" htmlFor="feed-date-corte">
-            <IconCalendar size={14} />
-            <span>Corte:</span>
-          </label>
-          <input
-            id="feed-date-corte"
-            type="date"
-            className="form-input form-select-sm"
-            max={farmToday()}
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            aria-label="Fecha de corte para cálculos de stock"
-          />
+      <PageHeader
+        title="Alimentación y Nutrición"
+        subtitle="Existencias de insumos por almacén, proyección de raciones balanceadas, turnos diarios y conversión alimenticia (FCR)."
+        cutoff={{ label: 'Corte:', value: date, onChange: setDate, max: farmToday() }}
+        actions={
           <button
             className="btn btn-outline btn-sm"
             onClick={() => void load()}
@@ -477,74 +489,47 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
               <span>{loading ? 'Actualizando…' : 'Actualizar existencias'}</span>
             </span>
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Avisos contextuales */}
-      {error && (
-        <div className="alert alert-danger" role="alert" aria-live="assertive">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconAlertCircle size={16} />
-            <span>{error}</span>
-          </span>
-        </div>
-      )}
+      {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
 
-      {notice && (
-        <div className="alert alert-success" role="status" aria-live="polite">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconCheck size={16} />
-            <span>{notice}</span>
-          </span>
-        </div>
-      )}
+      {notice && <InlineAlert tone="success" onDismiss={() => setNotice('')}>{notice}</InlineAlert>}
 
       {readonly && (
-        <div className="alert alert-warning" role="status" aria-live="polite">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconEye size={16} />
-            <span>El perfil Veterinario puede consultar datos nutricionales y de stock, pero no registrar movimientos.</span>
-          </span>
-        </div>
+        <InlineAlert tone="warning">
+          El perfil Veterinario puede consultar datos nutricionales y de stock, pero no registrar movimientos.
+        </InlineAlert>
       )}
 
       {/* KPIs Principales - Punto Focal con Jerarquía Clara */}
       <section className="stats-grid">
-        <article className="stat-card stat-card-focal">
-          <span className="inline-flex items-center gap-1.5 leading-none">
-            <IconWheat size={14} className="text-primary" />
-            <span>Existencia disponible</span>
-          </span>
-          <strong className="text-primary font-numeric tabular-nums">{stockKg.toLocaleString('es-PE')} kg</strong>
-          <small className="text-xs text-muted">Stock físico al {date}</small>
-        </article>
-
-        <article className="stat-card">
-          <span className="inline-flex items-center gap-1.5 leading-none">
-            <IconPlus size={14} />
-            <span>Recibido acumulado</span>
-          </span>
-          <strong className="font-numeric tabular-nums">{(inventory?.totals.receivedKg ?? 0).toLocaleString('es-PE')} kg</strong>
-          <small className="text-xs text-muted">Total histórico de compras y entradas</small>
-        </article>
-
-        <article className="stat-card">
-          <span className="inline-flex items-center gap-1.5 leading-none">
-            <IconBuilding size={14} />
-            <span>Entregado / consumido</span>
-          </span>
-          <strong className="font-numeric tabular-nums">{(inventory?.totals.withdrawnKg ?? 0).toLocaleString('es-PE')} kg</strong>
-          <small className="text-xs text-muted">Raciones servidas a galpones</small>
-        </article>
-
-        <article className="stat-card">
-          <span className="inline-flex items-center gap-1.5 leading-none">
-            <IconScale size={14} />
-            <span>Costo asignado</span>
-          </span>
-          <strong className="font-numeric tabular-nums">S/ {((inventory?.totals.allocatedCostMinor ?? 0) / 100).toFixed(2)}</strong>
-          <small className="text-xs text-muted">Valorización de alimento consumido</small>
-        </article>
+        <KpiCard
+          label="Existencia disponible"
+          value={`${stockKg.toLocaleString('es-PE')} kg`}
+          detail={`Stock físico al ${date}`}
+          icon={<IconWheat size={14} className="text-primary" />}
+          focal
+        />
+        <KpiCard
+          label="Recibido acumulado"
+          value={`${(inventory?.totals.receivedKg ?? 0).toLocaleString('es-PE')} kg`}
+          detail="Total histórico de compras y entradas"
+          icon={<IconPlus size={14} />}
+        />
+        <KpiCard
+          label="Entregado / consumido"
+          value={`${(inventory?.totals.withdrawnKg ?? 0).toLocaleString('es-PE')} kg`}
+          detail="Raciones servidas a galpones"
+          icon={<IconBuilding size={14} />}
+        />
+        <KpiCard
+          label="Costo asignado"
+          value={`S/ ${((inventory?.totals.allocatedCostMinor ?? 0) / 100).toFixed(2)}`}
+          detail="Valorización de alimento consumido"
+          icon={<IconScale size={14} />}
+        />
       </section>
 
       <ModuleTabs
@@ -562,28 +547,20 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
 
       {/* Estado de Carga General */}
       {loading && !inventory && (
-        <div className="card empty-state-card">
-          <div className="empty-icon-wrap">
-            <IconRefreshCw size={26} className="text-primary spinner-icon" />
-          </div>
-          <p className="font-semibold text-base">Cargando datos de alimentación…</p>
-          <p className="text-sm text-muted">Consultando raciones, coberturas y existencias al {date}.</p>
-        </div>
+        <DataState
+          variant="loading"
+          title="Cargando datos de alimentación…"
+          description={`Consultando raciones, coberturas y existencias al ${date}.`}
+        />
       )}
 
       {/* SECCIÓN 1: Raciones y Cobertura */}
       {inventory && section === 'raciones' && (
         <div className="section-block">
-          <section className="card">
-            <div className="card-header-clean mb-2 flex-wrap gap-2">
-              <div>
-                <h2 className="section-title">Raciones y cobertura estimada por etapa</h2>
-                <span className="text-xs text-muted block mt-0.5">
-                  Pronóstico informativo basado en cabezas y tabla nutricional. Cada etapa se compara con el stock disponible.
-                </span>
-              </div>
-            </div>
-
+          <SectionCard
+            title="Raciones y cobertura estimada por etapa"
+            subtitle="Pronóstico informativo basado en cabezas y tabla nutricional. Cada etapa se compara con el stock disponible."
+          >
             {projection.length === 0 ? (
               <DataState
                 variant="empty"
@@ -593,62 +570,43 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                 action={!readonly ? <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" aria-label="Ir a registrar movimiento de insumo" onClick={() => setSection('registrar')}><IconPlus size={16} /><span>Registrar movimiento</span></button> : undefined}
               />
             ) : (
-              <ul className="data-card-list data-card-grid" aria-label="Raciones y cobertura por etapa">
+              <DataCardList label="Raciones y cobertura por etapa" grid>
                 {projection.map((row) => (
-                  <li key={row.stageCode}>
-                    <article className="data-card">
-                      <header className="data-card-head">
-                        <div className="data-card-identity">
-                          <span className="data-card-title">{row.stageName}</span>
-                          <span className="data-card-subtitle">{row.heads} cabezas · {row.feedName ?? 'Sin alimento vinculado'}</span>
-                        </div>
-                        {row.coveredDays === null ? (
-                          <span className="badge-status badge-outline">Sin cobertura</span>
-                        ) : row.coveredDays >= 15 ? (
-                          <span className="badge-status badge-success tabular-nums font-mono">{row.coveredDays} días</span>
-                        ) : row.coveredDays >= 5 ? (
-                          <span className="badge-status badge-warning tabular-nums font-mono">{row.coveredDays} días</span>
-                        ) : (
-                          <span className="badge-status badge-danger tabular-nums font-mono">{row.coveredDays} días</span>
-                        )}
-                      </header>
-                      <dl className="data-card-meta">
-                        <div><dt>Demanda diaria</dt><dd className="font-mono tabular-nums">{row.dailyKg === null ? <span className="text-muted">Sin dato</span> : `${row.dailyKg} kg`}</dd></div>
-                        <div><dt>Necesidad etapa</dt><dd className="font-mono tabular-nums">{row.stageNeedKg === null ? <span className="text-muted">Sin dato</span> : `${row.stageNeedKg} kg`}</dd></div>
-                        <div><dt>Necesidad mensual</dt><dd className="font-mono tabular-nums">{row.monthlyNeedKg === null ? <span className="text-muted">Sin dato</span> : `${row.monthlyNeedKg} kg`}</dd></div>
-                        <div><dt>Disponible</dt><dd className="font-mono tabular-nums">{row.feedCode ? `${row.availableKg} kg` : <span className="text-muted">Sin ración</span>}</dd></div>
-                      </dl>
-                      {row.requirements.length > 0 && <p className="data-card-note">{row.requirements.join(' · ')}</p>}
-                      <div className="data-card-note font-mono tabular-nums">
-                        <span className="flex flex-col gap-0.5">
-                          <span>{coverage('Día', row.dailyShortageKg)}</span>
-                          <span>{coverage('Etapa', row.stageShortageKg)}</span>
-                          <span>{coverage('Mes', row.monthlyShortageKg)}</span>
-                        </span>
-                      </div>
-                    </article>
-                  </li>
+                  <DataCard key={row.stageCode}>
+                    <DataCardHead
+                      title={row.stageName}
+                      subtitle={`${row.heads} cabezas · ${row.feedName ?? 'Sin alimento vinculado'}`}
+                      badge={coverageBadge(row.coveredDays)}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Demanda diaria', value: row.dailyKg === null ? <span className="text-muted">Sin dato</span> : `${row.dailyKg} kg`, className: 'font-mono tabular-nums' },
+                      { label: 'Necesidad etapa', value: row.stageNeedKg === null ? <span className="text-muted">Sin dato</span> : `${row.stageNeedKg} kg`, className: 'font-mono tabular-nums' },
+                      { label: 'Necesidad mensual', value: row.monthlyNeedKg === null ? <span className="text-muted">Sin dato</span> : `${row.monthlyNeedKg} kg`, className: 'font-mono tabular-nums' },
+                      { label: 'Disponible', value: row.feedCode ? `${row.availableKg} kg` : <span className="text-muted">Sin ración</span>, className: 'font-mono tabular-nums' },
+                    ]} />
+                    {row.requirements.length > 0 && <DataCardNote>{row.requirements.join(' · ')}</DataCardNote>}
+                    <div className="data-card-note font-mono tabular-nums">
+                      <span className="flex flex-col gap-0.5">
+                        <span>{coverage('Día', row.dailyShortageKg)}</span>
+                        <span>{coverage('Etapa', row.stageShortageKg)}</span>
+                        <span>{coverage('Mes', row.monthlyShortageKg)}</span>
+                      </span>
+                    </div>
+                  </DataCard>
                 ))}
-              </ul>
+              </DataCardList>
             )}
-          </section>
+          </SectionCard>
 
-          <section className="card">
-            <div className="card-header-clean mb-2">
-              <div>
-                <h2 className="section-title">Demanda conjunta por tipo de alimento</h2>
-                <span className="text-xs text-muted block mt-0.5">
-                  Suma las etapas que comparten cada insumo antes de contrastar con el stock en almacén.
-                </span>
-              </div>
-            </div>
-
+          <SectionCard
+            title="Demanda conjunta por tipo de alimento"
+            subtitle="Suma las etapas que comparten cada insumo antes de contrastar con el stock en almacén."
+          >
             {projection.some((row) => row.heads > 0 && !row.feedCode) && (
-              <div className="alert alert-warning mb-3">
-                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconAlertTriangle size={16} />
-                  <span>Hay animales en etapas sin alimento vinculado; su requerimiento no está incluido en estos totales.</span>
-                </span>
+              <div className="mb-3">
+                <InlineAlert tone="warning">
+                  Hay animales en etapas sin alimento vinculado; su requerimiento no está incluido en estos totales.
+                </InlineAlert>
               </div>
             )}
 
@@ -660,66 +618,42 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                 icon={<IconWheat size={26} className="text-primary" />}
               />
             ) : (
-              <ul className="data-card-list data-card-grid" aria-label="Demanda conjunta por alimento">
+              <DataCardList label="Demanda conjunta por alimento" grid>
                 {feeds.map((row) => (
-                  <li key={row.feedCode}>
-                    <article className="data-card">
-                      <header className="data-card-head">
-                        <div className="data-card-identity">
-                          <span className="data-card-title">{row.feedName ?? row.feedCode}</span>
-                          <span className="data-card-subtitle">{row.heads} cabezas</span>
-                        </div>
-                        {row.coveredDays === null ? (
-                          <span className="badge-status badge-outline">Sin cobertura</span>
-                        ) : row.coveredDays >= 15 ? (
-                          <span className="badge-status badge-success tabular-nums font-mono">{row.coveredDays} días</span>
-                        ) : row.coveredDays >= 5 ? (
-                          <span className="badge-status badge-warning tabular-nums font-mono">{row.coveredDays} días</span>
-                        ) : (
-                          <span className="badge-status badge-danger tabular-nums font-mono">{row.coveredDays} días</span>
-                        )}
-                      </header>
-                      <dl className="data-card-meta">
-                        <div><dt>Demanda diaria</dt><dd className="font-mono tabular-nums">{row.dailyKg === null ? <span className="text-muted">Sin dato</span> : `${row.dailyKg} kg`}</dd></div>
-                        <div><dt>Necesidad mensual</dt><dd className="font-mono tabular-nums">{row.monthlyNeedKg === null ? <span className="text-muted">Sin dato</span> : `${row.monthlyNeedKg} kg`}</dd></div>
-                        <div><dt>Disponible</dt><dd className="font-mono tabular-nums">{row.availableKg} kg</dd></div>
-                        <div><dt>Faltante mensual</dt><dd className="font-mono tabular-nums">{row.monthlyShortageKg === null ? <span className="text-muted">Sin dato</span> : row.monthlyShortageKg === 0 ? <span className="text-success">Abastecido</span> : <span className="text-danger">{row.monthlyShortageKg} kg</span>}</dd></div>
-                      </dl>
-                    </article>
-                  </li>
+                  <DataCard key={row.feedCode}>
+                    <DataCardHead
+                      title={row.feedName ?? row.feedCode}
+                      subtitle={`${row.heads} cabezas`}
+                      badge={coverageBadge(row.coveredDays)}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Demanda diaria', value: row.dailyKg === null ? <span className="text-muted">Sin dato</span> : `${row.dailyKg} kg`, className: 'font-mono tabular-nums' },
+                      { label: 'Necesidad mensual', value: row.monthlyNeedKg === null ? <span className="text-muted">Sin dato</span> : `${row.monthlyNeedKg} kg`, className: 'font-mono tabular-nums' },
+                      { label: 'Disponible', value: `${row.availableKg} kg`, className: 'font-mono tabular-nums' },
+                      { label: 'Faltante mensual', value: row.monthlyShortageKg === null ? <span className="text-muted">Sin dato</span> : row.monthlyShortageKg === 0 ? <span className="text-success">Abastecido</span> : <span className="text-danger">{row.monthlyShortageKg} kg</span>, className: 'font-mono tabular-nums' },
+                    ]} />
+                  </DataCard>
                 ))}
-              </ul>
+              </DataCardList>
             )}
-          </section>
+          </SectionCard>
         </div>
       )}
 
       {/* SECCIÓN 2: Kardex y Stock de Almacenes */}
       {inventory && section === 'stock' && (
         <div className="section-block">
-          <section className="card">
-            <div className="card-header-clean mb-2 flex-wrap gap-2">
-              <div>
-                <h2 className="section-title">Existencias por lote en almacenes</h2>
-                <span className="text-xs text-muted block mt-0.5">
-                  Balance físico disponible y egresos acumulados por insumo
-                </span>
-              </div>
-
-              <div className="inline-flex items-center gap-2 flex-wrap">
-                <div className="search-input-wrap" style={{ minWidth: 180, maxWidth: 240 }}>
-                  <span className="search-icon">
-                    <IconSearch size={14} />
-                  </span>
-                  <input
-                    type="text"
-                    className="form-input form-select-sm search-input"
-                    placeholder="Buscar alimento o lote..."
-                    value={stockSearch}
-                    onChange={(e) => setStockSearch(e.target.value)}
-                    aria-label="Buscar en stock por alimento o lote"
-                  />
-                </div>
+          <SectionCard
+            title="Existencias por lote en almacenes"
+            subtitle="Balance físico disponible y egresos acumulados por insumo"
+            actions={
+              <>
+                <SearchField
+                  value={stockSearch}
+                  onChange={setStockSearch}
+                  placeholder="Buscar alimento o lote..."
+                  label="Buscar en stock por alimento o lote"
+                />
 
                 {warehouses.length > 0 && (
                   <div className="inline-flex items-center gap-1">
@@ -758,8 +692,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                     </span>
                   </button>
                 )}
-              </div>
-            </div>
+              </>
+            }
+          >
 
             {inventory.inventory.length === 0 ? (
               <DataState
@@ -778,51 +713,35 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                 action={<button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" aria-label="Restablecer filtros de búsqueda de existencias" onClick={() => { setStockSearch(''); setStockWarehouseFilter(''); }}><IconRefreshCw size={16} /><span>Restablecer filtros</span></button>}
               />
             ) : (
-              <ul className="data-card-list data-card-grid" aria-label="Existencias por lote">
+              <DataCardList label="Existencias por lote" grid>
                 {filteredStock.map((row) => (
-                  <li key={`${row.warehouseId}-${row.feedCode}-${row.lotCode}`}>
-                    <article className="data-card">
-                      <header className="data-card-head">
-                        <div className="data-card-identity">
-                          <span className="data-card-title">{feedOptions.find((x) => x.code === row.feedCode)?.name ?? row.feedCode}</span>
-                          <span className="data-card-subtitle">{row.warehouseName} · lote {row.lotCode}</span>
-                        </div>
-                        <span className="badge-status badge-success tabular-nums font-mono">{row.availableKg.toLocaleString('es-PE')} kg</span>
-                      </header>
-                      <dl className="data-card-meta">
-                        <div><dt>Disponible</dt><dd className="font-mono tabular-nums text-success">{row.availableKg.toLocaleString('es-PE')} kg</dd></div>
-                        <div><dt>Retirado</dt><dd className="font-mono tabular-nums text-muted">{row.withdrawnKg.toLocaleString('es-PE')} kg</dd></div>
-                      </dl>
-                    </article>
-                  </li>
+                  <DataCard key={`${row.warehouseId}-${row.feedCode}-${row.lotCode}`}>
+                    <DataCardHead
+                      title={feedOptions.find((x) => x.code === row.feedCode)?.name ?? row.feedCode}
+                      subtitle={`${row.warehouseName} · lote ${row.lotCode}`}
+                      badge={<StatusBadge tone="success" className="tabular-nums font-mono">{row.availableKg.toLocaleString('es-PE')} kg</StatusBadge>}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Disponible', value: `${row.availableKg.toLocaleString('es-PE')} kg`, className: 'font-mono tabular-nums text-success' },
+                      { label: 'Retirado', value: `${row.withdrawnKg.toLocaleString('es-PE')} kg`, className: 'font-mono tabular-nums text-muted' },
+                    ]} />
+                  </DataCard>
                 ))}
-              </ul>
+              </DataCardList>
             )}
-          </section>
+          </SectionCard>
 
-          <section className="card">
-            <div className="card-header-clean mb-2 flex-wrap gap-2">
-              <div>
-                <h2 className="section-title">Movimientos recientes de insumos (Kardex)</h2>
-                <span className="text-xs text-muted block mt-0.5">
-                  Trazabilidad cronológica de compras, raciones entregadas, mermas y devoluciones
-                </span>
-              </div>
-
-              <div className="inline-flex items-center gap-2 flex-wrap">
-                <div className="search-input-wrap" style={{ minWidth: 180, maxWidth: 240 }}>
-                  <span className="search-icon">
-                    <IconSearch size={14} />
-                  </span>
-                  <input
-                    type="text"
-                    className="form-input form-select-sm search-input"
-                    placeholder="Buscar responsable, lote..."
-                    value={movementSearch}
-                    onChange={(e) => setMovementSearch(e.target.value)}
-                    aria-label="Buscar en historial de movimientos"
-                  />
-                </div>
+          <SectionCard
+            title="Movimientos recientes de insumos (Kardex)"
+            subtitle="Trazabilidad cronológica de compras, raciones entregadas, mermas y devoluciones"
+            actions={
+              <>
+                <SearchField
+                  value={movementSearch}
+                  onChange={setMovementSearch}
+                  placeholder="Buscar responsable, lote..."
+                  label="Buscar en historial de movimientos"
+                />
 
                 <div className="inline-flex items-center gap-1">
                   <label className="text-xs text-muted inline-flex items-center gap-1" htmlFor="m-type-filter">
@@ -859,8 +778,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                     </span>
                   </button>
                 )}
-              </div>
-            </div>
+              </>
+            }
+          >
 
             {movements.length === 0 ? (
               <DataState
@@ -879,41 +799,38 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                 action={<button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" aria-label="Restablecer filtros del kardex de insumos" onClick={() => { setMovementSearch(''); setMovementFilterType(''); }}><IconRefreshCw size={16} /><span>Restablecer filtros</span></button>}
               />
             ) : (
-              <ul className="data-card-list" aria-label="Kardex de insumos">
+              <DataCardList label="Kardex de insumos">
                 {filteredMovements.map((m) => {
                   const isPositive = ['purchase', 'return_in', 'opening'].includes(m.movementType);
                   return (
-                    <li key={m.id}>
-                      <article className="data-card" data-state={isPositive ? 'active' : 'inactive'}>
-                        <header className="data-card-head">
-                          <div className="data-card-identity">
-                            <span className="data-card-title font-mono tabular-nums">{m.effectiveDate}</span>
-                            <span className="data-card-subtitle">{m.warehouseCode} · {m.feedCode} · lote {m.lotCode}</span>
-                          </div>
-                          <span className={MOVEMENT_TYPE_BADGES[m.movementType] ?? 'badge-tag'}>{labels[m.movementType] ?? m.movementType}</span>
-                        </header>
-                        <dl className="data-card-meta">
-                          <div><dt>Cantidad</dt><dd className={`font-mono font-bold tabular-nums ${isPositive ? 'text-success' : 'text-danger'}`}>{isPositive ? '+' : '−'}{m.quantityKg} kg</dd></div>
-                          <div><dt>Destino</dt><dd>{m.animalCode ?? m.destinationBarn ?? <span className="text-muted">Sin destino</span>}</dd></div>
-                          <div><dt>Costo y documento</dt><dd className="font-mono tabular-nums">{[`${m.currencyCode} ${m.totalCost.toFixed(2)}`, m.documentReference].filter(Boolean).join(' · ')}</dd></div>
-                          <div><dt>Responsable</dt><dd>{m.actorName}</dd></div>
-                        </dl>
-                      </article>
-                    </li>
+                    <DataCard key={m.id} state={isPositive ? 'active' : 'inactive'}>
+                      <DataCardHead
+                        title={<span className="font-mono tabular-nums">{m.effectiveDate}</span>}
+                        subtitle={`${m.warehouseCode} · ${m.feedCode} · lote ${m.lotCode}`}
+                        badge={<StatusBadge tone={MOVEMENT_TYPE_BADGES[m.movementType] ?? 'outline'}>{labels[m.movementType] ?? m.movementType}</StatusBadge>}
+                      />
+                      <DataCardMeta items={[
+                        { label: 'Cantidad', value: `${isPositive ? '+' : '−'}${m.quantityKg} kg`, className: `font-mono font-bold tabular-nums ${isPositive ? 'text-success' : 'text-danger'}` },
+                        { label: 'Destino', value: m.animalCode ?? m.destinationBarn ?? <span className="text-muted">Sin destino</span> },
+                        { label: 'Costo y documento', value: [`${m.currencyCode} ${m.totalCost.toFixed(2)}`, m.documentReference].filter(Boolean).join(' · '), className: 'font-mono tabular-nums' },
+                        { label: 'Responsable', value: m.actorName },
+                      ]} />
+                    </DataCard>
                   );
                 })}
-              </ul>
+              </DataCardList>
             )}
-          </section>
+          </SectionCard>
         </div>
       )}
 
       {/* SECCIÓN 3: Turnos y Conversión */}
       {inventory && section === 'turnos' && (
         <div className="section-block">
-          <section className="card">
-            <h2 className="section-title">Programar alimentación</h2>
-            <p className="text-sm text-muted">Programar no retira alimento del almacén. Las entregas reales completan el pendiente, aunque procedan de distintos lotes.</p>
+          <SectionCard
+            title="Programar alimentación"
+            subtitle="Programar no retira alimento del almacén. Las entregas reales completan el pendiente, aunque procedan de distintos lotes."
+          >
             {!readonly && <form className="form-stack" onSubmit={savePlan}>
               <div className="form-grid">
                 <div className="form-group">
@@ -957,55 +874,46 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
             </form>}
             <h3 className="section-title mt-4">Programación del {planDate}</h3>
             <div className="form-group"><label className="form-label" htmlFor="plan-filter-date">Consultar programación por fecha</label><input id="plan-filter-date" type="date" className="form-input" value={planDate} onChange={event => { if (event.target.value) setPlanDate(event.target.value); }} /></div>
-            {plans.length === 0 ? <DataState variant="empty" title="No hay turnos programados para esta fecha" description={`Sin programación registrada para el ${planDate}.`} icon={<IconCalendar size={26} className="text-primary" />} /> : <ul className="data-card-list data-card-grid" aria-label={`Programación del ${planDate}`}>
-              {plans.map(item => <li key={item.groupKey}>
-                <article className="data-card">
-                  <header className="data-card-head">
-                    <div className="data-card-identity">
-                      <span className="data-card-title font-mono tabular-nums">{item.effectiveDate}</span>
-                      <span className="data-card-subtitle">{item.barnName} · {projection.find(stage => stage.stageCode === item.stageCode)?.stageName ?? item.stageCode}</span>
-                    </div>
-                    <span className={item.pendingKg > 0 ? 'badge-status badge-warning' : 'badge-status badge-success'}>{item.plannedKg === 0 ? 'Cancelado' : `Pendiente: ${item.pendingKg} kg`}</span>
-                  </header>
-                  <dl className="data-card-meta">
-                    <div><dt>Turno</dt><dd>{SHIFT_LABELS[item.shiftCode] ?? item.shiftCode}</dd></div>
-                    <div><dt>Previsto</dt><dd className="font-mono tabular-nums">{item.plannedKg} kg</dd></div>
-                    <div><dt>Servido</dt><dd className="font-mono tabular-nums">{item.servedKg} kg</dd></div>
-                    <div><dt>Alimento</dt><dd>{feedOptions.find(feed => feed.code === item.feedCode)?.name ?? item.feedCode}</dd></div>
-                  </dl>
-                  {!readonly && <div className="data-card-actions">
-                    <button className="btn btn-outline" type="button" aria-label={`Editar programación de ${item.barnName}, ${SHIFT_LABELS[item.shiftCode] ?? item.shiftCode}`} onClick={() => setPlan({ effectiveDate: item.effectiveDate, shiftCode: item.shiftCode, barnId: String(item.barnId), stageCode: item.stageCode, feedCode: item.feedCode, plannedKg: String(item.plannedKg), reason: '' })}><IconRefreshCw size={14} /><span>Editar</span></button>
-                  </div>}
-                </article>
-              </li>)}
-            </ul>}
-          </section>
-          <section className="card">
-            <div className="card-header-clean mb-2">
-              <div>
-                <h2 className="section-title">Turnos de comederos servidos</h2>
-                <span className="text-xs text-muted block mt-0.5">
-                  Control por turno de raciones previstas vs servidas y sobrantes medidos
+            {plans.length === 0 ? <DataState variant="empty" title="No hay turnos programados para esta fecha" description={`Sin programación registrada para el ${planDate}.`} icon={<IconCalendar size={26} className="text-primary" />} /> : <DataCardList label={`Programación del ${planDate}`} grid>
+              {plans.map(item => <DataCard key={item.groupKey}>
+                <DataCardHead
+                  title={<span className="font-mono tabular-nums">{item.effectiveDate}</span>}
+                  subtitle={`${item.barnName} · ${projection.find(stage => stage.stageCode === item.stageCode)?.stageName ?? item.stageCode}`}
+                  badge={<StatusBadge tone={item.pendingKg > 0 ? 'warning' : 'success'}>{item.plannedKg === 0 ? 'Cancelado' : `Pendiente: ${item.pendingKg} kg`}</StatusBadge>}
+                />
+                <DataCardMeta items={[
+                  { label: 'Turno', value: SHIFT_LABELS[item.shiftCode] ?? item.shiftCode },
+                  { label: 'Previsto', value: `${item.plannedKg} kg`, className: 'font-mono tabular-nums' },
+                  { label: 'Servido', value: `${item.servedKg} kg`, className: 'font-mono tabular-nums' },
+                  { label: 'Alimento', value: feedOptions.find(feed => feed.code === item.feedCode)?.name ?? item.feedCode },
+                ]} />
+                {!readonly && <DataCardActions>
+                  <button className="btn btn-outline" type="button" aria-label={`Editar programación de ${item.barnName}, ${SHIFT_LABELS[item.shiftCode] ?? item.shiftCode}`} onClick={() => setPlan({ effectiveDate: item.effectiveDate, shiftCode: item.shiftCode, barnId: String(item.barnId), stageCode: item.stageCode, feedCode: item.feedCode, plannedKg: String(item.plannedKg), reason: '' })}><IconRefreshCw size={14} /><span>Editar</span></button>
+                </DataCardActions>}
+              </DataCard>)}
+            </DataCardList>}
+          </SectionCard>
+          <SectionCard
+            title="Turnos de comederos servidos"
+            subtitle="Control por turno de raciones previstas vs servidas y sobrantes medidos"
+            actions={!readonly ? (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                aria-label="Registrar nuevo turno de alimentación"
+                onClick={() => {
+                  setKind('delivery');
+                  setTurnMode(true);
+                  setSection('registrar');
+                }}
+              >
+                <span className="inline-flex items-center justify-center gap-2 leading-none">
+                  <IconPlus size={14} />
+                  <span>Nuevo turno</span>
                 </span>
-              </div>
-              {!readonly && (
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  aria-label="Registrar nuevo turno de alimentación"
-                  onClick={() => {
-                    setKind('delivery');
-                    setTurnMode(true);
-                    setSection('registrar');
-                  }}
-                >
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconPlus size={14} />
-                    <span>Nuevo turno</span>
-                  </span>
-                </button>
-              )}
-            </div>
+              </button>
+            ) : undefined}
+          >
 
             {turns.length === 0 ? (
               <DataState
@@ -1016,41 +924,30 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                 action={!readonly ? <button type="button" className="btn btn-primary inline-flex items-center justify-center gap-2" aria-label="Registrar turno de alimentación" onClick={() => { setKind('delivery'); setTurnMode(true); setSection('registrar'); }}><IconPlus size={16} /><span>Registrar turno ahora</span></button> : undefined}
               />
             ) : (
-              <ul className="data-card-list data-card-grid" aria-label="Turnos servidos">
+              <DataCardList label="Turnos servidos" grid>
                 {turns.map((row) => (
-                  <li key={row.id}>
-                    <article className="data-card">
-                      <header className="data-card-head">
-                        <div className="data-card-identity">
-                          <span className="data-card-title font-mono tabular-nums">{row.effectiveDate}</span>
-                          <span className="data-card-subtitle">{row.barnName} · {row.stageCode}</span>
-                        </div>
-                        <span className={row.shiftCode === 'manana' ? 'badge-tag' : row.shiftCode === 'tarde' ? 'badge-info' : 'badge-outline'}>
-                          {SHIFT_LABELS[row.shiftCode] ?? row.shiftCode}
-                        </span>
-                      </header>
-                      <dl className="data-card-meta">
-                        <div><dt>Previsto</dt><dd className="font-mono tabular-nums">{row.plannedKg} kg</dd></div>
-                        <div><dt>Servido</dt><dd className="font-mono tabular-nums text-primary">{row.servedKg} kg</dd></div>
-                        <div><dt>Consumido medido</dt><dd className="font-mono tabular-nums">{row.consumedKg === null ? <span className="text-muted">Sin medición</span> : <span className="text-success">{row.consumedKg} kg</span>}</dd></div>
-                      </dl>
-                      <p className="data-card-note font-mono">{row.feedCode} · lote {row.lotCode}</p>
-                    </article>
-                  </li>
+                  <DataCard key={row.id}>
+                    <DataCardHead
+                      title={<span className="font-mono tabular-nums">{row.effectiveDate}</span>}
+                      subtitle={`${row.barnName} · ${row.stageCode}`}
+                      badge={<StatusBadge tone={row.shiftCode === 'tarde' ? 'info' : 'outline'}>{SHIFT_LABELS[row.shiftCode] ?? row.shiftCode}</StatusBadge>}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Previsto', value: `${row.plannedKg} kg`, className: 'font-mono tabular-nums' },
+                      { label: 'Servido', value: `${row.servedKg} kg`, className: 'font-mono tabular-nums text-primary' },
+                      { label: 'Consumido medido', value: row.consumedKg === null ? <span className="text-muted">Sin medición</span> : <span className="text-success">{row.consumedKg} kg</span>, className: 'font-mono tabular-nums' },
+                    ]} />
+                    <p className="data-card-note font-mono">{row.feedCode} · lote {row.lotCode}</p>
+                  </DataCard>
                 ))}
-              </ul>
+              </DataCardList>
             )}
-          </section>
+          </SectionCard>
 
-          <section className="card">
-            <div className="card-header-clean mb-2">
-              <div>
-                <h2 className="section-title">Conversión alimenticia (FCR) · Últimos 30 días</h2>
-                <span className="text-xs text-muted block mt-0.5">
-                  Índice kg alimento / kg peso ganado. Requiere cubrir toda la población estable, pesajes en ambos extremos del periodo y consumo medido cada día.
-                </span>
-              </div>
-            </div>
+          <SectionCard
+            title="Conversión alimenticia (FCR) · Últimos 30 días"
+            subtitle="Índice kg alimento / kg peso ganado. Requiere cubrir toda la población estable, pesajes en ambos extremos del periodo y consumo medido cada día."
+          >
 
             {conversion.length === 0 ? (
               <DataState
@@ -1060,33 +957,29 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                 icon={<IconScale size={26} className="text-primary" />}
               />
             ) : (
-              <ul className="data-card-list data-card-grid" aria-label="Conversión alimenticia por galpón">
+              <DataCardList label="Conversión alimenticia por galpón" grid>
                 {conversion.map((row) => (
-                  <li key={`${row.barnId}-${row.stageCode}`}>
-                    <article className="data-card">
-                      <header className="data-card-head">
-                        <div className="data-card-identity">
-                          <span className="data-card-title">{row.barnName}</span>
-                          <span className="data-card-subtitle">{row.stageCode} · {row.periodFrom} – {row.periodTo}</span>
-                        </div>
-                        {row.feedConversionRatio === null ? (
-                          <span className="badge-status badge-outline">No disponible</span>
-                        ) : (
-                          <span className="badge-status badge-primary tabular-nums font-mono">{row.feedConversionRatio} kg/kg</span>
-                        )}
-                      </header>
-                      <dl className="data-card-meta">
-                        <div><dt>Animales comparables</dt><dd className="font-mono tabular-nums">{row.comparableAnimals} / {row.populationHeads} · {row.coveragePercent}%</dd></div>
-                        <div><dt>Consumo medido</dt><dd className="font-mono tabular-nums">{row.consumedKg} kg · {row.consumptionDays} / {row.requiredConsumptionDays} días</dd></div>
-                        <div><dt>Ganancia neta</dt><dd className="font-mono tabular-nums">{row.weightGainKg} kg</dd></div>
-                      </dl>
-                      {row.feedConversionRatio === null && row.unavailableReason && <p className="data-card-note">{row.unavailableReason}</p>}
-                    </article>
-                  </li>
+                  <DataCard key={`${row.barnId}-${row.stageCode}`}>
+                    <DataCardHead
+                      title={row.barnName}
+                      subtitle={`${row.stageCode} · ${row.periodFrom} – ${row.periodTo}`}
+                      badge={row.feedConversionRatio === null ? (
+                        <StatusBadge tone="outline">No disponible</StatusBadge>
+                      ) : (
+                        <StatusBadge tone="primary" className="tabular-nums font-mono">{row.feedConversionRatio} kg/kg</StatusBadge>
+                      )}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Animales comparables', value: `${row.comparableAnimals} / ${row.populationHeads} · ${row.coveragePercent}%`, className: 'font-mono tabular-nums' },
+                      { label: 'Consumo medido', value: `${row.consumedKg} kg · ${row.consumptionDays} / ${row.requiredConsumptionDays} días`, className: 'font-mono tabular-nums' },
+                      { label: 'Ganancia neta', value: `${row.weightGainKg} kg`, className: 'font-mono tabular-nums' },
+                    ]} />
+                    {row.feedConversionRatio === null && row.unavailableReason && <DataCardNote>{row.unavailableReason}</DataCardNote>}
+                  </DataCard>
                 ))}
-              </ul>
+              </DataCardList>
             )}
-          </section>
+          </SectionCard>
         </div>
       )}
 
@@ -1094,15 +987,10 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
       {section === 'registrar' && (
         <div className="section-block">
           {!readonly ? (
-            <section className="card">
-              <div className="card-header-clean mb-2">
-                <div>
-                  <h2 className="section-title">Registrar movimiento de insumos</h2>
-                  <span className="text-xs text-muted block mt-0.5">
-                    Libro inmutable de almacén con registro de lote, costos y turnos de entrega
-                  </span>
-                </div>
-              </div>
+            <SectionCard
+              title="Registrar movimiento de insumos"
+              subtitle="Libro inmutable de almacén con registro de lote, costos y turnos de entrega"
+            >
 
               <form className="form-stack" onSubmit={submit}>
                 <div className="form-grid">
@@ -1465,29 +1353,22 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                   </button>
                 </div>
               </form>
-            </section>
+            </SectionCard>
           ) : (
-            <div className="card empty-state-card">
-              <div className="empty-icon-wrap">
-                <IconEye size={26} className="text-muted" />
-              </div>
-              <p className="font-semibold text-base">Modo solo lectura</p>
-              <p className="text-sm text-muted">
-                El perfil Veterinario solo puede consultar raciones y existencias. Un administrador u operario registra movimientos.
-              </p>
-            </div>
+            <DataState
+              variant="empty"
+              title="Modo solo lectura"
+              description="El perfil Veterinario solo puede consultar raciones y existencias. Un administrador u operario registra movimientos."
+              icon={<IconEye size={26} className="text-muted" />}
+            />
           )}
 
           {perfil === 'administrador' && (
-            <section className="card mt-4">
-              <div className="card-header-clean mb-2">
-                <div>
-                  <h2 className="section-title">Administrar almacenes</h2>
-                  <span className="text-xs text-muted block mt-0.5">
-                    Habilitar bodegas o tolvas de acopio de concentrado
-                  </span>
-                </div>
-              </div>
+            <SectionCard
+              className="mt-4"
+              title="Administrar almacenes"
+              subtitle="Habilitar bodegas o tolvas de acopio de concentrado"
+            >
 
               <form className="form-stack" onSubmit={createWarehouse}>
                 <div className="form-grid">
@@ -1541,7 +1422,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                   </button>
                 </div>
               </form>
-            </section>
+            </SectionCard>
           )}
         </div>
       )}

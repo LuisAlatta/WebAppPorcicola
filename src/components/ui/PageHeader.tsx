@@ -5,7 +5,7 @@ interface PageHeaderProps {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
-  cutoff?: { label?: string; value: string; onChange: (value: string) => void };
+  cutoff?: { label?: string; value: string; onChange: (value: string) => void; max?: string };
   onRefresh?: () => void;
   refreshing?: boolean;
 }
@@ -25,6 +25,7 @@ export function PageHeader({ title, subtitle, actions, cutoff, onRefresh, refres
               type="date"
               className="form-input form-select-sm"
               value={cutoff.value}
+              max={cutoff.max}
               onChange={(event) => cutoff.onChange(event.target.value)}
               aria-label={cutoff.label ?? 'Fecha de corte'}
             />
