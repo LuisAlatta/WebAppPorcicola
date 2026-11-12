@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  IconAlertCircle,
-  IconAlertTriangle,
   IconArrowRight,
   IconBell,
   IconCalendar,
@@ -14,7 +12,21 @@ import {
 import { ModalDialog } from './ModalDialog';
 import { ModuleTabs } from './ModuleTabs';
 import { Pagination } from './Pagination';
+import { DataState } from './DataState';
 import { farmToday, fetchOperation } from '../utils/operations';
+import { errorMessage, pluralize } from '../utils/format';
+import {
+  PageHeader,
+  InlineAlert,
+  StatusBadge,
+  SectionCard,
+  DataCardList,
+  DataCard,
+  DataCardHead,
+  DataCardMeta,
+  DataCardNote,
+  DataCardActions,
+} from './ui';
 import type { Perfil } from '../types';
 
 type Barn = { id: number; name: string };
@@ -137,7 +149,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void load().catch(reason => setError(reason instanceof Error ? reason.message : 'Error al cargar alertas'));
+      void load().catch(reason => setError(errorMessage(reason, 'Error al cargar alertas')));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
@@ -160,7 +172,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
       await load();
       setSection('agenda');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Error al guardar el aviso');
+      setError(errorMessage(reason, 'Error al guardar el aviso'));
     } finally {
       setBusy(false);
     }
@@ -185,7 +197,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
       setAttendTarget(null);
       setAttendReason('');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Error al atender el aviso');
+      setError(errorMessage(reason, 'Error al atender el aviso'));
     } finally {
       setBusy(false);
     }
@@ -230,38 +242,29 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
 
   return (
     <main className="module-container">
-      <div className="module-heading mb-4">
-        <p className="text-xs text-muted">
-          Agenda operativa de tareas sanitarias, partos programados y avisos de bioseguridad en granja.
-        </p>
-        <button
-          className="btn btn-outline btn-sm"
-          type="button"
-          aria-label="Actualizar agenda de alertas y notificaciones"
-          onClick={() => void load()}
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconRefreshCw size={14} />
-            <span>Actualizar</span>
-          </span>
-        </button>
-      </div>
+      <PageHeader
+        title="Alertas y Pendientes"
+        subtitle="Agenda operativa de tareas sanitarias, partos programados y avisos de bioseguridad en granja."
+        actions={
+          <button
+            className="btn btn-outline btn-sm"
+            type="button"
+            aria-label="Actualizar agenda de alertas y notificaciones"
+            onClick={() => void load()}
+          >
+            <span className="inline-flex items-center justify-center gap-2 leading-none">
+              <IconRefreshCw size={14} />
+              <span>Actualizar</span>
+            </span>
+          </button>
+        }
+      />
 
       {error && !attendTarget && (
-        <div className="alert alert-danger" role="alert" aria-live="assertive">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconAlertCircle size={16} />
-            <span>{error}</span>
-          </span>
-        </div>
+        <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>
       )}
       {notice && (
-        <div className="alert alert-success" role="status" aria-live="polite">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconCheck size={16} />
-            <span>{notice}</span>
-          </span>
-        </div>
+        <InlineAlert tone="success" onDismiss={() => setNotice('')} autoDismissMs={6000}>{notice}</InlineAlert>
       )}
 
       <ModuleTabs
@@ -278,80 +281,69 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
       />
 
       {section === 'notificaciones' && (
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h2>
-                Notificaciones operativas{' '}
-                <span className={`badge-status ${unreadCount > 0 ? 'badge-warning' : 'badge-outline'} tabular-nums ml-1`}>
-                  {unreadCount} sin leer
-                </span>
-              </h2>
-              <p className="text-muted">Leer una notificación no marca la tarea operativa como atendida.</p>
-            </div>
-          </div>
+        <SectionCard
+          title="Notificaciones operativas"
+          subtitle="Leer una notificación no marca la tarea operativa como atendida."
+          actions={
+            <StatusBadge tone={unreadCount > 0 ? 'warning' : 'outline'} className="tabular-nums">
+              {unreadCount} sin leer
+            </StatusBadge>
+          }
+        >
           {notifications.length === 0 ? (
-            <div className="card empty-state-card">
-              <div className="empty-icon-wrap">
-                <IconBell size={26} className="text-muted" />
-              </div>
-              <p className="font-semibold text-base">Sin notificaciones pendientes</p>
-              <p className="text-sm text-muted">Las notificaciones de tareas vencidas y avisos escalados aparecerán aquí.</p>
-            </div>
+            <DataState
+              variant="empty"
+              title="Sin notificaciones pendientes"
+              description="Las notificaciones de tareas vencidas y avisos escalados aparecerán aquí."
+              icon={<IconBell size={26} className="text-muted" />}
+            />
           ) : (
-            <ul className="data-card-list" aria-label="Notificaciones operativas">
+            <DataCardList label="Notificaciones operativas">
               {notifications.map(item => (
-                <li key={item.id} className="data-card" data-state={item.readAt ? 'inactive' : 'active'}>
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div>
-                      <strong>
-                        {item.priority === 'critical' ? <span className="badge-status badge-danger mr-1">Crítica</span> : null}
-                        {item.title}
-                      </strong>
-                      <p>{item.body}{item.barnName ? ` · ${item.barnName}` : ''}</p>
-                      <small className="tabular-nums text-muted">{item.createdAt}</small>
-                    </div>
-                    <div className="data-card-actions">
-                      <a
-                        href={item.actionUrl}
-                        className="btn btn-outline btn-sm"
-                        aria-label={`Abrir actuación para notificación: ${item.title}`}
+                <DataCard key={item.id} state={item.readAt ? 'inactive' : 'active'}>
+                  <DataCardHead
+                    title={item.title}
+                    badge={item.priority === 'critical' ? <StatusBadge tone="danger">Crítica</StatusBadge> : undefined}
+                  />
+                  <p>{item.body}{item.barnName ? ` · ${item.barnName}` : ''}</p>
+                  <small className="tabular-nums text-muted">{item.createdAt}</small>
+                  <DataCardActions>
+                    <a
+                      href={item.actionUrl}
+                      className="btn btn-outline btn-sm"
+                      aria-label={`Abrir actuación para notificación: ${item.title}`}
+                    >
+                      <span className="inline-flex items-center justify-center gap-2 leading-none text-xs">
+                        <span>Abrir actuación</span>
+                        <IconArrowRight size={12} />
+                      </span>
+                    </a>
+                    {!item.readAt && (
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        type="button"
+                        aria-label={`Marcar notificación como leída: ${item.title}`}
+                        onClick={() => void markRead(item.id)}
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none text-xs">
-                          <span>Abrir actuación</span>
-                          <IconArrowRight size={12} />
+                          <IconCheck size={14} />
+                          <span>Marcar leída</span>
                         </span>
-                      </a>
-                      {!item.readAt && (
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          type="button"
-                          aria-label={`Marcar notificación como leída: ${item.title}`}
-                          onClick={() => void markRead(item.id)}
-                        >
-                          <span className="inline-flex items-center justify-center gap-2 leading-none text-xs">
-                            <IconCheck size={14} />
-                            <span>Marcar leída</span>
-                          </span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </li>
+                      </button>
+                    )}
+                  </DataCardActions>
+                </DataCard>
               ))}
-            </ul>
+            </DataCardList>
           )}
-        </section>
+        </SectionCard>
       )}
 
       {isAdmin && section === 'reglas' && (
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h2>Reglas de escalamiento crítico</h2>
-              <p className="text-muted">El plazo se cuenta desde la fecha prevista vencida. Los avisos críticos mantienen su tarea pendiente.</p>
-            </div>
-          </div>
+        <SectionCard
+          title="Reglas de escalamiento crítico"
+          subtitle="El plazo se cuenta desde la fecha prevista vencida. Los avisos críticos mantienen su tarea pendiente."
+        >
           <form className="form-grid" onSubmit={saveRule}>
             <div className="form-group">
               <label className="form-label">Tipo de alerta</label>
@@ -414,27 +406,34 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
             </div>
           </form>
           {rules.length > 0 && (
-            <ul className="data-card-list data-card-grid mt-3" aria-label="Reglas de escalamiento">
-              {rules.map(rule => (
-                <li key={rule.alertType}><article className="data-card" data-state={rule.isActive ? 'active' : 'inactive'}>
-                  <header className="data-card-head"><span className="data-card-title">{labels[rule.alertType] ?? rule.alertType}</span><span className={`badge-status ${rule.isActive ? 'badge-success' : 'badge-outline'}`}>{rule.isActive ? 'Activa' : 'Inactiva'}</span></header>
-                  <dl className="data-card-meta"><div><dt>Escalar tras</dt><dd>{rule.overdueDays} día(s) vencidos</dd></div><div><dt>Destinatarios</dt><dd>{rule.roles.join(', ')}</dd></div></dl>
-                  <div className="data-card-actions"><button type="button" className="btn btn-outline" onClick={() => setRuleForm({ ...rule, overdueDays: String(rule.overdueDays) })}><IconShield size={14} /><span>Editar regla</span></button></div>
-                </article></li>
-              ))}
-            </ul>
+            <div className="mt-3">
+              <DataCardList label="Reglas de escalamiento" grid>
+                {rules.map(rule => (
+                  <DataCard key={rule.alertType} state={rule.isActive ? 'active' : 'inactive'}>
+                    <DataCardHead
+                      title={labels[rule.alertType] ?? rule.alertType}
+                      badge={<StatusBadge tone={rule.isActive ? 'success' : 'outline'}>{rule.isActive ? 'Activa' : 'Inactiva'}</StatusBadge>}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Escalar tras', value: `${rule.overdueDays} día(s) vencidos` },
+                      { label: 'Destinatarios', value: rule.roles.join(', ') },
+                    ]} />
+                    <DataCardActions>
+                      <button type="button" className="btn btn-outline" onClick={() => setRuleForm({ ...rule, overdueDays: String(rule.overdueDays) })}><IconShield size={14} /><span>Editar regla</span></button>
+                    </DataCardActions>
+                  </DataCard>
+                ))}
+              </DataCardList>
+            </div>
           )}
-        </section>
+        </SectionCard>
       )}
 
       {section === 'crear' && (
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h2>Crear aviso manual de granja</h2>
-              <p className="text-muted">Los avisos manuales quedan registrados en el historial con autor, fecha y motivo.</p>
-            </div>
-          </div>
+        <SectionCard
+          title="Crear aviso manual de granja"
+          subtitle="Los avisos manuales quedan registrados en el historial con autor, fecha y motivo."
+        >
           <form className="form-stack" onSubmit={create}>
             <div className="form-sections">
             <fieldset className="form-section">
@@ -482,28 +481,22 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
               </button>
             </div>
           </form>
-        </section>
+        </SectionCard>
       )}
 
       {section === 'agenda' && (
         <>
           {criticalPendingCount > 0 && (
-            <div className="alert alert-danger mb-4 flex items-center justify-between flex-wrap gap-2" role="alert" aria-live="assertive">
-              <span className="inline-flex items-center justify-center gap-2 leading-none font-bold">
-                <IconAlertTriangle size={18} />
-                <span>Atención prioritaria: {criticalPendingCount} {criticalPendingCount === 1 ? 'aviso crítico pendiente' : 'avisos críticos pendientes'} en la granja</span>
-              </span>
-              <span className="text-xs">Requiere intervención inmediata en galpón</span>
-            </div>
+            <InlineAlert tone="error">
+              <strong>Atención prioritaria: {pluralize(criticalPendingCount, 'aviso crítico pendiente', 'avisos críticos pendientes')} en la granja</strong>
+              <span className="text-xs" style={{ display: 'block' }}>Requiere intervención inmediata en galpón</span>
+            </InlineAlert>
           )}
 
-          <section className="card">
-            <div className="card-header">
-              <div>
-                <h2>Vacunaciones y partos programados</h2>
-                <p className="text-muted">Próximas incluye hoy + 1 hasta hoy + 7 días. Las fechas posteriores permanecen en la agenda general.</p>
-              </div>
-            </div>
+          <SectionCard
+            title="Vacunaciones y partos programados"
+            subtitle="Próximas incluye hoy + 1 hasta hoy + 7 días. Las fechas posteriores permanecen en la agenda general."
+          >
             <div className="report-metrics">
               {groups.map(([key, title]) => (
                 <button
@@ -521,14 +514,12 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                 </button>
               ))}
             </div>
-          </section>
+          </SectionCard>
 
-          <section className="card">
-            <div className="card-header">
-              <div>
-                <h2>Agenda operativa y avisos</h2>
-                <p className="text-muted">Atender un aviso confirma la gestión pero preserva la integridad del evento sanitario o productivo.</p>
-              </div>
+          <SectionCard
+            title="Agenda operativa y avisos"
+            subtitle="Atender un aviso confirma la gestión pero preserva la integridad del evento sanitario o productivo."
+            actions={
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
@@ -539,7 +530,8 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                   <span>Crear aviso manual</span>
                 </span>
               </button>
-            </div>
+            }
+          >
             <div className="filter-row">
               <div className="form-group">
                 <label className="form-label text-xs">Tipo</label>
@@ -574,76 +566,90 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
             </div>
 
             {alerts.length > 0 ? (
-              <ul className="data-card-list data-card-grid" aria-label="Agenda operativa y avisos">
-                    {visibleAlerts.map(alert => (
-                      <li key={alert.key}><article className="data-card" data-state={alert.status === 'pending' ? 'active' : 'inactive'}>
-                        <header className="data-card-head">
-                          <div className="data-card-identity"><span className="data-card-title">{alert.title}</span><span className="data-card-subtitle">{labels[alert.type] ?? alert.type} · {alert.barnName}</span></div>
-                          <span className={`badge-status ${alert.priority === 'critical' ? 'badge-danger' : 'badge-outline'}`}>
-                            {alert.priority === 'critical' ? 'Crítica' : 'Normal'}
-                          </span>
-                        </header>
-                        <dl className="data-card-meta">
-                          <div><dt>Fecha prevista</dt><dd className="font-mono tabular-nums">{alert.dueDate}</dd></div>
-                          <div><dt>Plazo</dt><dd>
-                          <span className={`badge-status ${alert.bucket === 'overdue' ? 'badge-danger' : alert.bucket === 'today' ? 'badge-warning' : 'badge-outline'}`}>
+              <DataCardList label="Agenda operativa y avisos" grid>
+                {visibleAlerts.map(alert => (
+                  <DataCard key={alert.key} state={alert.status === 'pending' ? 'active' : 'inactive'}>
+                    <DataCardHead
+                      title={alert.title}
+                      subtitle={`${labels[alert.type] ?? alert.type} · ${alert.barnName}`}
+                      badge={
+                        <StatusBadge tone={alert.priority === 'critical' ? 'danger' : 'outline'}>
+                          {alert.priority === 'critical' ? 'Crítica' : 'Normal'}
+                        </StatusBadge>
+                      }
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Fecha prevista', value: alert.dueDate, className: 'font-mono tabular-nums' },
+                      {
+                        label: 'Plazo',
+                        value: (
+                          <StatusBadge tone={alert.bucket === 'overdue' ? 'danger' : alert.bucket === 'today' ? 'warning' : 'outline'}>
                             {labels[alert.bucket] ?? alert.bucket}
+                          </StatusBadge>
+                        ),
+                      },
+                      { label: 'Animal / Marrana', value: alert.animalCode ?? 'Sin animal' },
+                      {
+                        label: 'Estado',
+                        value: (
+                          <StatusBadge tone={alert.status === 'pending' ? 'warning' : alert.status === 'attended' ? 'info' : 'success'}>
+                            {labels[alert.status] ?? alert.status}
+                          </StatusBadge>
+                        ),
+                      },
+                    ]} />
+                    <DataCardNote>
+                      {Object.entries(alert.details)
+                        .map(([key, value]) => `${key}: ${String(value)}`)
+                        .join(' · ') || '—'}
+                    </DataCardNote>
+                    {alert.resolutionReason && <DataCardNote>Resolución: {alert.resolutionReason}</DataCardNote>}
+                    <DataCardActions>
+                      <a href={alert.eventLink} className="btn btn-outline"><IconArrowRight size={14} /><span>Ver evento original</span></a>
+                      {alert.status === 'pending' && (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={busy}
+                          onClick={() => {
+                            setError('');
+                            setAttendReason('');
+                            setAttendTarget(alert);
+                          }}
+                        >
+                          <span className="inline-flex items-center justify-center gap-2 leading-none text-xs">
+                            <IconCheck size={14} />
+                            <span>Atender</span>
                           </span>
-                          </dd></div>
-                          <div><dt>Animal / Marrana</dt><dd>{alert.animalCode ?? 'Sin animal'}</dd></div>
-                          <div><dt>Estado</dt><dd><span className={`badge-status ${alert.status === 'pending' ? 'badge-warning' : alert.status === 'attended' ? 'badge-info' : 'badge-success'}`}>{labels[alert.status] ?? alert.status}</span></dd></div>
-                        </dl>
-                        <p className="data-card-note">
-                          {Object.entries(alert.details)
-                            .map(([key, value]) => `${key}: ${String(value)}`)
-                            .join(' · ') || '—'}
-                        </p>
-                        {alert.resolutionReason && <p className="data-card-note">Resolución: {alert.resolutionReason}</p>}
-                          <div className="data-card-actions">
-                            <a href={alert.eventLink} className="btn btn-outline"><IconArrowRight size={14} /><span>Ver evento original</span></a>
-                            {alert.status === 'pending' && (
-                              <button
-                                type="button"
-                                className="btn btn-primary"
-                                disabled={busy}
-                                onClick={() => {
-                                  setError('');
-                                  setAttendReason('');
-                                  setAttendTarget(alert);
-                                }}
-                              >
-                                <span className="inline-flex items-center justify-center gap-2 leading-none text-xs">
-                                  <IconCheck size={14} />
-                                  <span>Atender</span>
-                                </span>
-                              </button>
-                            )}
-                            {alert.priority === 'critical' && (
-                              <button
-                                type="button"
-                                className="btn btn-outline btn-sm"
-                                aria-label={`Ver destinatarios notificados para alerta #${alert.id}`}
-                                onClick={() => void loadRecipients(alert.id)}
-                              >
-                                <span className="inline-flex items-center justify-center gap-2 leading-none text-xs">
-                                  <IconBell size={12} />
-                                  <span>Destinatarios</span>
-                                </span>
-                              </button>
-                            )}
-                          </div>
-                          {recipientHistory[alert.id]?.map(recipient => (
-                            <div key={recipient.id} className="text-xs text-muted mt-1">
-                              {recipient.userName} ({recipient.role}) · {recipient.notifiedAt}
-                              {recipient.readAt ? ` · leída ${recipient.readAt}` : ''}
-                            </div>
-                          ))}
-                      </article></li>
+                        </button>
+                      )}
+                      {alert.priority === 'critical' && (
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          aria-label={`Ver destinatarios notificados para alerta #${alert.id}`}
+                          onClick={() => void loadRecipients(alert.id)}
+                        >
+                          <span className="inline-flex items-center justify-center gap-2 leading-none text-xs">
+                            <IconBell size={12} />
+                            <span>Destinatarios</span>
+                          </span>
+                        </button>
+                      )}
+                    </DataCardActions>
+                    {recipientHistory[alert.id]?.map(recipient => (
+                      <div key={recipient.id} className="text-xs text-muted mt-1">
+                        {recipient.userName} ({recipient.role}) · {recipient.notifiedAt}
+                        {recipient.readAt ? ` · leída ${recipient.readAt}` : ''}
+                      </div>
                     ))}
-              </ul>
+                  </DataCard>
+                ))}
+              </DataCardList>
             ) : (
+              /* Sin DataState: su role="status" chocaría con el aviso de éxito del módulo (e2e usa getByRole('status')) */
               <div className="card empty-state-card mt-3">
-                <div className="empty-icon-wrap">
+                <div className="empty-icon-wrap" aria-hidden="true">
                   <IconCheck size={28} className="text-success" />
                 </div>
                 <p className="font-semibold text-base">Agenda operativa al día</p>
@@ -663,7 +669,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
               </div>
             )}
             <Pagination page={currentPage} pageSize={pageSize} total={alerts.length} loading={busy} onPage={setPage} navLabel="Paginación de la agenda" prevLabel="Página anterior de avisos" nextLabel="Página siguiente de avisos" unit="avisos" />
-          </section>
+          </SectionCard>
         </>
       )}
 
@@ -679,7 +685,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
           <h4 id="alert-attend-dialog-title" className="text-lg font-bold mb-2">
             Marcar Aviso como Atendido
           </h4>
-          {error && <div className="alert alert-error" role="alert">{error}</div>}
+          {error && <InlineAlert tone="error">{error}</InlineAlert>}
           <p className="text-sm text-muted mb-3">
             <strong>{attendTarget.title}</strong>
             {attendTarget.animalCode ? ` · Animal: ${attendTarget.animalCode}` : ''}
