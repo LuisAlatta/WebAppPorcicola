@@ -19,6 +19,7 @@ import {
   KpiCard,
   StatusBadge,
   SectionCard,
+  FormField,
   DataCardList,
   DataCard,
   DataCardHead,
@@ -464,15 +465,13 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
             <fieldset className="form-section">
               <legend>Operación e importe</legend>
               <div className="form-grid">
-            <div className="form-group">
-              <label className="form-label">Movimiento</label>
+            <FormField label="Movimiento">
               <select className="form-select" value={form.direction} onChange={e => setForm({ ...form, direction: e.target.value })}>
                 <option value="expense">Egreso / Gasto operativo</option>
                 <option value="income">Ingreso / Venta</option>
               </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Categoría</label>
+            </FormField>
+            <FormField label="Categoría">
               <input
                 required
                 maxLength={80}
@@ -482,9 +481,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 value={form.category}
                 onChange={e => setForm({ ...form, category: e.target.value })}
               />
-            </div>
-            <div className="form-group form-span-2">
-              <label className="form-label">Concepto descriptivo</label>
+            </FormField>
+            <FormField label="Concepto descriptivo" className="form-span-2">
               <input
                 required
                 maxLength={240}
@@ -493,9 +491,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 value={form.concept}
                 onChange={e => setForm({ ...form, concept: e.target.value })}
               />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Fecha de operación</label>
+            </FormField>
+            <FormField label="Fecha de operación">
               <input
                 required
                 type="date"
@@ -504,9 +501,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 value={form.operationDate}
                 onChange={e => setForm({ ...form, operationDate: e.target.value })}
               />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Importe total</label>
+            </FormField>
+            <FormField label="Importe total">
               <input
                 required
                 inputMode="decimal"
@@ -515,22 +511,20 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 value={form.amount}
                 onChange={e => setForm({ ...form, amount: e.target.value })}
               />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Moneda</label>
+            </FormField>
+            <FormField label="Moneda">
               <select className="form-select" value={form.currencyCode} onChange={e => setForm({ ...form, currencyCode: e.target.value })}>
                 <option value="PEN">PEN · Sol peruano (S/)</option>
                 <option value="USD">USD · Dólar estadounidense ($)</option>
                 <option value="EUR">EUR · Euro (€)</option>
               </select>
-            </div>
+            </FormField>
               </div>
             </fieldset>
             <fieldset className="form-section">
               <legend>Comprobante y auditoría</legend>
               <div className="form-grid">
-            <div className="form-group">
-              <label className="form-label">Contraparte (cliente / proveedor)</label>
+            <FormField label="Contraparte (cliente / proveedor)">
               <input
                 maxLength={160}
                 placeholder="ej. Molinera del Sur S.A.C."
@@ -538,9 +532,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 value={form.counterparty}
                 onChange={e => setForm({ ...form, counterparty: e.target.value })}
               />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Comprobante / Referencia</label>
+            </FormField>
+            <FormField label="Comprobante / Referencia">
               <input
                 maxLength={100}
                 placeholder="ej. Factura F001-00234 o Recibo 452"
@@ -548,9 +541,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 value={form.reference}
                 onChange={e => setForm({ ...form, reference: e.target.value })}
               />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Motivo para auditoría</label>
+            </FormField>
+            <FormField label="Motivo para auditoría">
               <input
                 required
                 maxLength={500}
@@ -559,7 +551,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 value={form.reason}
                 onChange={e => setForm({ ...form, reason: e.target.value })}
               />
-            </div>
+            </FormField>
 
               </div>
             </fieldset>
@@ -603,8 +595,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                     )}
                   </div>
                   <div className="form-grid">
-                    <div className="form-group">
-                      <label className="form-label">Galpón de destino</label>
+                    <FormField label="Galpón de destino">
                       <select
                         className="form-select"
                         value={line.barnId}
@@ -616,9 +607,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                           <option key={barn.id} value={barn.id}>{barn.name}</option>
                         ))}
                       </select>
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Importe distribuido ({form.currencyCode === 'PEN' ? 'S/' : form.currencyCode})</label>
+                    </FormField>
+                    <FormField label={<>Importe distribuido ({form.currencyCode === 'PEN' ? 'S/' : form.currencyCode})</>}>
                       <input
                         required={allocations.length > 1}
                         inputMode="decimal"
@@ -627,36 +617,32 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                         onChange={e => updateAllocation(index, 'amount', e.target.value)}
                         className="form-input font-numeric tabular-nums"
                       />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Animal / Arete (opcional)</label>
+                    </FormField>
+                    <FormField label="Animal / Arete (opcional)">
                       <input
                         placeholder="ej. MAR-012"
                         className="form-input"
                         value={line.animalCode}
                         onChange={e => updateAllocation(index, 'animalCode', e.target.value)}
                       />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Lote porcino (opcional)</label>
+                    </FormField>
+                    <FormField label="Lote porcino (opcional)">
                       <input
                         placeholder="ej. LOT-2025-01"
                         className="form-input"
                         value={line.lotCode}
                         onChange={e => updateAllocation(index, 'lotCode', e.target.value)}
                       />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Insumo / Vacuna (opcional)</label>
+                    </FormField>
+                    <FormField label="Insumo / Vacuna (opcional)">
                       <input
                         placeholder="ej. VAC-001"
                         className="form-input"
                         value={line.supplyCode}
                         onChange={e => updateAllocation(index, 'supplyCode', e.target.value)}
                       />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Cantidad (kg / dosis / un)</label>
+                    </FormField>
+                    <FormField label="Cantidad (kg / dosis / un)">
                       <input
                         type="number"
                         min="0.001"
@@ -666,14 +652,13 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                         onChange={e => updateAllocation(index, 'quantity', e.target.value)}
                         className="form-input font-numeric tabular-nums"
                       />
-                    </div>
+                    </FormField>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="form-group form-span-2">
-              <label className="form-label">Notas adicionales (opcional)</label>
+            <FormField label="Notas adicionales (opcional)" className="form-span-2">
               <textarea
                 maxLength={1000}
                 placeholder="Observaciones de entrega, peso de lote o detalles de recepción..."
@@ -681,7 +666,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 value={form.notes}
                 onChange={e => setForm({ ...form, notes: e.target.value })}
               />
-            </div>
+            </FormField>
 
             </fieldset>
             </div>
@@ -733,8 +718,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
           <p className="data-card-note mb-3">{settlementTarget.category} · {settlementTarget.concept}</p>
           {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
           <form className="form-grid" onSubmit={settle}>
-            <div className="form-group">
-              <label className="form-label">Fecha efectiva</label>
+            <FormField label="Fecha efectiva">
               <input
                 required
                 type="date"
@@ -744,9 +728,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 value={settlementForm.date}
                 onChange={e => setSettlementForm({ ...settlementForm, date: e.target.value })}
               />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Importe ({settlementTarget.currencyCode === 'PEN' ? 'S/' : settlementTarget.currencyCode})</label>
+            </FormField>
+            <FormField label={<>Importe ({settlementTarget.currencyCode === 'PEN' ? 'S/' : settlementTarget.currencyCode})</>}>
               <input
                 required
                 inputMode="decimal"
@@ -755,9 +738,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 value={settlementForm.amount}
                 onChange={e => setSettlementForm({ ...settlementForm, amount: e.target.value })}
               />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Medio de pago</label>
+            </FormField>
+            <FormField label="Medio de pago">
               <select className="form-select" value={settlementForm.method} onChange={e => setSettlementForm({ ...settlementForm, method: e.target.value })}>
                 <option value="transferencia">Transferencia bancaria</option>
                 <option value="efectivo">Efectivo en caja</option>
@@ -765,9 +747,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 <option value="cheque">Cheque</option>
                 <option value="otro">Otro medio</option>
               </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Número de operación / Referencia</label>
+            </FormField>
+            <FormField label="Número de operación / Referencia">
               <input
                 className="form-input"
                 value={settlementForm.reference}
@@ -775,9 +756,8 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 placeholder="ej. OP-839201 BCP"
                 onChange={e => setSettlementForm({ ...settlementForm, reference: e.target.value })}
               />
-            </div>
-            <div className="form-group form-span-2">
-              <label className="form-label">Motivo para auditoría</label>
+            </FormField>
+            <FormField label="Motivo para auditoría" className="form-span-2">
               <input
                 required
                 minLength={5}
@@ -786,7 +766,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 value={settlementForm.reason}
                 onChange={e => setSettlementForm({ ...settlementForm, reason: e.target.value })}
               />
-            </div>
+            </FormField>
             <div className="form-span-2 form-actions form-actions-sticky">
               <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setSettlementTarget(null)}>
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -868,49 +848,43 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
         >
 
           <div className="filter-row">
-            <div className="form-group">
-              <label className="form-label text-xs">Desde</label>
+            <FormField label="Desde" labelClassName="text-xs">
               <input className="form-input form-input-sm tabular-nums" type="date" value={filter.from} onChange={e => setFilter({ ...filter, from: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label className="form-label text-xs">Hasta</label>
+            </FormField>
+            <FormField label="Hasta" labelClassName="text-xs">
               <input className="form-input form-input-sm tabular-nums" type="date" value={filter.to} onChange={e => setFilter({ ...filter, to: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label className="form-label text-xs">Tipo</label>
+            </FormField>
+            <FormField label="Tipo" labelClassName="text-xs">
               <select className="form-select form-select-sm" value={filter.direction} onChange={e => setFilter({ ...filter, direction: e.target.value })}>
                 <option value="">Todos los movimientos</option>
                 <option value="income">Ingresos</option>
                 <option value="expense">Egresos</option>
               </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label text-xs">Moneda</label>
+            </FormField>
+            <FormField label="Moneda" labelClassName="text-xs">
               <select className="form-select form-select-sm" value={filter.currencyCode} onChange={e => setFilter({ ...filter, currencyCode: e.target.value })}>
                 <option value="">Todas</option>
                 <option value="PEN">PEN (S/)</option>
                 <option value="USD">USD ($)</option>
                 <option value="EUR">EUR (€)</option>
               </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label text-xs">Galpón</label>
+            </FormField>
+            <FormField label="Galpón" labelClassName="text-xs">
               <select className="form-select form-select-sm" value={filter.barnId} onChange={e => setFilter({ ...filter, barnId: e.target.value })}>
                 <option value="">Todos los asignados</option>
                 {barns.map(barn => (
                   <option value={barn.id} key={barn.id}>{barn.name}</option>
                 ))}
               </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label text-xs">Categoría</label>
+            </FormField>
+            <FormField label="Categoría" labelClassName="text-xs">
               <input
                 className="form-input form-input-sm"
                 placeholder="Filtrar categoría..."
                 value={filter.category}
                 onChange={e => setFilter({ ...filter, category: e.target.value })}
               />
-            </div>
+            </FormField>
           </div>
 
           {totals.length > 0 && (
@@ -1074,10 +1048,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
               void confirmReverse();
             }}
           >
-            <div className="form-group mb-4">
-              <label className="form-label text-sm" htmlFor="fin-reversal-reason">
-                Motivo de anulación:
-              </label>
+            <FormField label="Motivo de anulación:" htmlFor="fin-reversal-reason" className="mb-4" labelClassName="text-sm">
               <input
                 id="fin-reversal-reason"
                 className="form-input"
@@ -1087,7 +1058,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 required
                 autoFocus
               />
-            </div>
+            </FormField>
             <div className="form-actions form-actions-sticky">
               <button
                 type="button"
@@ -1182,26 +1153,22 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
 
           {isAdmin && (
             <form className="form-grid mb-4" onSubmit={saveOpening}>
-              <div className="form-group">
-                <label className="form-label">Fecha de apertura</label>
+              <FormField label="Fecha de apertura">
                 <input required type="date" max={farmToday()} className="form-input tabular-nums" value={openingForm.date} onChange={e => setOpeningForm({ ...openingForm, date: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Moneda</label>
+              </FormField>
+              <FormField label="Moneda">
                 <select className="form-select" value={openingForm.currencyCode} onChange={e => setOpeningForm({ ...openingForm, currencyCode: e.target.value })}>
                   <option value="PEN">PEN · Sol peruano (S/)</option>
                   <option value="USD">USD · Dólar estadounidense ($)</option>
                   <option value="EUR">EUR · Euro (€)</option>
                 </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Monto inicial en caja</label>
+              </FormField>
+              <FormField label="Monto inicial en caja">
                 <input required inputMode="decimal" placeholder="0.00" className="form-input font-numeric tabular-nums font-bold" value={openingForm.amount} onChange={e => setOpeningForm({ ...openingForm, amount: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Motivo para auditoría</label>
+              </FormField>
+              <FormField label="Motivo para auditoría">
                 <input required minLength={5} placeholder="ej. Apertura de caja chica de granja" className="form-input" value={openingForm.reason} onChange={e => setOpeningForm({ ...openingForm, reason: e.target.value })} />
-              </div>
+              </FormField>
               <div className="form-span-2">
                 <button className="btn btn-secondary" disabled={busy}>
                   <span className="inline-flex items-center justify-center gap-2 leading-none">

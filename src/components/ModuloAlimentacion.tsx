@@ -32,6 +32,7 @@ import {
   DataCardActions,
   SectionCard,
   SearchField,
+  FormField,
 } from './ui';
 import type { Perfil } from '../types';
 
@@ -833,47 +834,40 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
           >
             {!readonly && <form className="form-stack" onSubmit={savePlan}>
               <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label" htmlFor="plan-date">Fecha del turno programado</label>
+                <FormField label="Fecha del turno programado" htmlFor="plan-date">
                   <input id="plan-date" disabled={Boolean(plan.feedCode)} type="date" className="form-input" required value={plan.effectiveDate} onChange={event => setPlan({ ...plan, effectiveDate: event.target.value })} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="plan-shift">Turno programado</label>
+                </FormField>
+                <FormField label="Turno programado" htmlFor="plan-shift">
                   <select id="plan-shift" disabled={Boolean(plan.feedCode)} className="form-select" value={plan.shiftCode} onChange={event => setPlan({ ...plan, shiftCode: event.target.value })}>
                     {Object.entries(SHIFT_LABELS).map(([code, name]) => <option key={code} value={code}>{name}</option>)}
                   </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="plan-barn">Galpón del turno programado</label>
+                </FormField>
+                <FormField label="Galpón del turno programado" htmlFor="plan-barn">
                   <select id="plan-barn" disabled={Boolean(plan.feedCode)} className="form-select" required value={plan.barnId} onChange={event => setPlan({ ...plan, barnId: event.target.value })}>
                     {barns.map(barn => <option key={barn.id} value={barn.id}>{barn.name}</option>)}
                   </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="plan-stage">Etapa del turno programado</label>
+                </FormField>
+                <FormField label="Etapa del turno programado" htmlFor="plan-stage">
                   <select id="plan-stage" disabled={Boolean(plan.feedCode)} className="form-select" required value={plan.stageCode} onChange={event => setPlan({ ...plan, stageCode: event.target.value })}>
                     {plan.feedCode && !projection.some(stage => stage.stageCode === plan.stageCode) && <option value={plan.stageCode}>{plan.stageCode} · etapa original</option>}
                     {projection.map(stage => <option key={stage.stageCode} value={stage.stageCode}>{stage.stageName}</option>)}
                   </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="plan-feed">Alimento previsto</label>
+                </FormField>
+                <FormField label="Alimento previsto" htmlFor="plan-feed">
                   <input id="plan-feed" className="form-input" readOnly value={plan.feedCode ? feedOptions.find(feed => feed.code === plan.feedCode)?.name ?? plan.feedCode : projection.find(stage => stage.stageCode === plan.stageCode)?.feedName ?? 'Configure el alimento de la etapa'} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="plan-kg">Cantidad prevista del turno (kg)</label>
+                </FormField>
+                <FormField label="Cantidad prevista del turno (kg)" htmlFor="plan-kg">
                   <input id="plan-kg" className="form-input" type="number" min="0" step="0.001" required value={plan.plannedKg} onChange={event => setPlan({ ...plan, plannedKg: event.target.value })} />
                   <span className="text-xs text-muted">Para cancelar una programación, indique 0 y explique el motivo.</span>
-                </div>
-                <div className="form-group form-col-span-full">
-                  <label className="form-label" htmlFor="plan-reason">Motivo de la programación</label>
+                </FormField>
+                <FormField label="Motivo de la programación" htmlFor="plan-reason" className="form-col-span-full">
                   <textarea id="plan-reason" className="form-textarea" required minLength={5} maxLength={500} rows={2} value={plan.reason} onChange={event => setPlan({ ...plan, reason: event.target.value })} />
-                </div>
+                </FormField>
               </div>
               <div className="form-actions"><button type="submit" className="btn btn-primary" disabled={busy || !plan.barnId}>{busy ? 'Guardando…' : 'Guardar programación'}</button>{plan.feedCode && <button type="button" className="btn btn-outline" onClick={() => setPlan(old => ({ ...old, feedCode: '', plannedKg: '', reason: '' }))}>Nueva programación</button>}</div>
             </form>}
             <h3 className="section-title mt-4">Programación del {planDate}</h3>
-            <div className="form-group"><label className="form-label" htmlFor="plan-filter-date">Consultar programación por fecha</label><input id="plan-filter-date" type="date" className="form-input" value={planDate} onChange={event => { if (event.target.value) setPlanDate(event.target.value); }} /></div>
+            <FormField label="Consultar programación por fecha" htmlFor="plan-filter-date"><input id="plan-filter-date" type="date" className="form-input" value={planDate} onChange={event => { if (event.target.value) setPlanDate(event.target.value); }} /></FormField>
             {plans.length === 0 ? <DataState variant="empty" title="No hay turnos programados para esta fecha" description={`Sin programación registrada para el ${planDate}.`} icon={<IconCalendar size={26} className="text-primary" />} /> : <DataCardList label={`Programación del ${planDate}`} grid>
               {plans.map(item => <DataCard key={item.groupKey}>
                 <DataCardHead
@@ -994,8 +988,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
 
               <form className="form-stack" onSubmit={submit}>
                 <div className="form-grid">
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="feed-kind">Tipo de movimiento</label>
+                  <FormField label="Tipo de movimiento" htmlFor="feed-kind">
                     <select
                       id="feed-kind"
                       className="form-select"
@@ -1006,10 +999,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                         <option key={k} value={k}>{v}</option>
                       ))}
                     </select>
-                  </div>
+                  </FormField>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="feed-eff-date">Fecha efectiva</label>
+                  <FormField label="Fecha efectiva" htmlFor="feed-eff-date">
                     <input
                       id="feed-eff-date"
                       type="date"
@@ -1019,10 +1011,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                       value={form.effectiveDate}
                       onChange={(e) => setField('effectiveDate', e.target.value)}
                     />
-                  </div>
+                  </FormField>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="feed-warehouse">Almacén</label>
+                  <FormField label="Almacén" htmlFor="feed-warehouse">
                     <select
                       id="feed-warehouse"
                       className="form-select"
@@ -1036,10 +1027,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                         </option>
                       ))}
                     </select>
-                  </div>
+                  </FormField>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="feed-type-code">Tipo de alimento</label>
+                  <FormField label="Tipo de alimento" htmlFor="feed-type-code">
                     <select
                       id="feed-type-code"
                       className="form-select"
@@ -1051,10 +1041,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                         <option key={x.code} value={x.code}>{x.name}</option>
                       ))}
                     </select>
-                  </div>
+                  </FormField>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="feed-lot-code">Lote del insumo</label>
+                  <FormField label="Lote del insumo" htmlFor="feed-lot-code">
                     <input
                       id="feed-lot-code"
                       className="form-input"
@@ -1064,11 +1053,10 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                       value={form.lotCode}
                       onChange={(e) => setField('lotCode', e.target.value)}
                     />
-                  </div>
+                  </FormField>
 
                   {kind === 'return_supplier' && (
-                    <div className="form-group form-col-span-full">
-                      <label className="form-label" htmlFor="feed-reverse-id">Compra original a devolver</label>
+                    <FormField label="Compra original a devolver" htmlFor="feed-reverse-id" className="form-col-span-full">
                       <select
                         id="feed-reverse-id"
                         className="form-select"
@@ -1097,13 +1085,12 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                             </option>
                           ))}
                       </select>
-                    </div>
+                    </FormField>
                   )}
 
                   {['purchase', 'return_in', 'return_supplier'].includes(kind) && (
                     <>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="feed-supplier">Proveedor</label>
+                      <FormField label="Proveedor" htmlFor="feed-supplier">
                         <input
                           id="feed-supplier"
                           className="form-input"
@@ -1112,11 +1099,10 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                           value={form.supplier}
                           onChange={(e) => setField('supplier', e.target.value)}
                         />
-                      </div>
+                      </FormField>
 
                       {kind !== 'return_in' && (
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="feed-doc">Documento de compra</label>
+                        <FormField label="Documento de compra" htmlFor="feed-doc">
                           <input
                             id="feed-doc"
                             className="form-input"
@@ -1125,14 +1111,13 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                             value={form.documentReference}
                             onChange={(e) => setField('documentReference', e.target.value)}
                           />
-                        </div>
+                        </FormField>
                       )}
                     </>
                   )}
 
                   {!(kind === 'delivery' && turnMode) && (
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="feed-qty">Cantidad (kg)</label>
+                    <FormField label="Cantidad (kg)" htmlFor="feed-qty">
                       <input
                         id="feed-qty"
                         type="number"
@@ -1144,11 +1129,10 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                         value={form.quantityKg}
                         onChange={(e) => setField('quantityKg', e.target.value)}
                       />
-                    </div>
+                    </FormField>
                   )}
 
-                  {['opening', 'purchase'].includes(kind) ? <div className="form-group">
-                    <label className="form-label" htmlFor="feed-cost">Costo por kg (S/)</label>
+                  {['opening', 'purchase'].includes(kind) ? <FormField label="Costo por kg (S/)" htmlFor="feed-cost">
                     <input
                       id="feed-cost"
                       type="number"
@@ -1160,7 +1144,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                       value={form.costPerKg}
                       onChange={(e) => setField('costPerKg', e.target.value)}
                     />
-                  </div> : <p className="form-col-span-full text-sm text-muted">
+                  </FormField> : <p className="form-col-span-full text-sm text-muted">
                     {kind === 'return_supplier'
                       ? 'La devolución toma el importe de la compra original.'
                       : 'El costo se calcula con el promedio ponderado del saldo del almacén para este alimento y lote. Los reintegros conservan ese valor.'}
@@ -1169,8 +1153,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
 
                   {kind === 'delivery' && (
                     <>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="feed-dest-barn">Galpón destino</label>
+                      <FormField label="Galpón destino" htmlFor="feed-dest-barn">
                         <select
                           id="feed-dest-barn"
                           className="form-select"
@@ -1182,10 +1165,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                             <option key={x.id} value={x.id}>{x.name}</option>
                           ))}
                         </select>
-                      </div>
+                      </FormField>
 
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="feed-animal-code">Animal específico (opcional)</label>
+                      <FormField label="Animal específico (opcional)" htmlFor="feed-animal-code">
                         <input
                           id="feed-animal-code"
                           className="form-input"
@@ -1194,7 +1176,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                           onChange={(e) => setField('animalCode', e.target.value)}
                           placeholder="Código individual si aplica"
                         />
-                      </div>
+                      </FormField>
 
                       <div className="form-group form-col-span-full">
                         <label className="checkbox-label" htmlFor="feed-turn-mode">
@@ -1212,8 +1194,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
 
                   {kind === 'delivery' && turnMode && (
                     <>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="feed-shift">Turno</label>
+                      <FormField label="Turno" htmlFor="feed-shift">
                         <select
                           id="feed-shift"
                           className="form-select"
@@ -1224,10 +1205,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                           <option value="tarde">Tarde</option>
                           <option value="noche">Noche</option>
                         </select>
-                      </div>
+                      </FormField>
 
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="feed-stage">Etapa</label>
+                      <FormField label="Etapa" htmlFor="feed-stage">
                         <select
                           id="feed-stage"
                           className="form-select"
@@ -1242,10 +1222,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                             <option key={x.stageCode} value={x.stageCode}>{x.stageName}</option>
                           ))}
                         </select>
-                      </div>
+                      </FormField>
 
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="feed-planned">Previsto (kg)</label>
+                      <FormField label="Previsto (kg)" htmlFor="feed-planned">
                         <input
                           id="feed-planned"
                           type="number"
@@ -1257,10 +1236,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                           value={turn.plannedKg}
                           onChange={(e) => setTurn({ ...turn, plannedKg: e.target.value })}
                         />
-                      </div>
+                      </FormField>
 
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="feed-served">Servido real (kg)</label>
+                      <FormField label="Servido real (kg)" htmlFor="feed-served">
                         <input
                           id="feed-served"
                           type="number"
@@ -1272,10 +1250,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                           value={turn.servedKg}
                           onChange={(e) => setTurn({ ...turn, servedKg: e.target.value })}
                         />
-                      </div>
+                      </FormField>
 
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="feed-consumed">Consumido real medido (kg, opcional)</label>
+                      <FormField label="Consumido real medido (kg, opcional)" htmlFor="feed-consumed">
                         <input
                           id="feed-consumed"
                           type="number"
@@ -1286,12 +1263,11 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                           value={turn.consumedKg}
                           onChange={(e) => setTurn({ ...turn, consumedKg: e.target.value })}
                         />
-                      </div>
+                      </FormField>
                     </>
                   )}
 
-                  <div className="form-group form-col-span-full">
-                    <label className="form-label" htmlFor="feed-reason">Motivo u observaciones</label>
+                  <FormField label="Motivo u observaciones" htmlFor="feed-reason" className="form-col-span-full">
                     <textarea
                       id="feed-reason"
                       className="form-textarea"
@@ -1302,7 +1278,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                       value={form.reason}
                       onChange={(e) => setField('reason', e.target.value)}
                     />
-                  </div>
+                  </FormField>
                 </div>
 
                 <div className="form-actions">
@@ -1372,8 +1348,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
 
               <form className="form-stack" onSubmit={createWarehouse}>
                 <div className="form-grid">
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="wh-code">Código</label>
+                  <FormField label="Código" htmlFor="wh-code">
                     <input
                       id="wh-code"
                       className="form-input"
@@ -1382,10 +1357,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                       value={newWarehouse.code}
                       onChange={(e) => setNewWarehouse({ ...newWarehouse, code: e.target.value })}
                     />
-                  </div>
+                  </FormField>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="wh-name">Nombre</label>
+                  <FormField label="Nombre" htmlFor="wh-name">
                     <input
                       id="wh-name"
                       className="form-input"
@@ -1394,10 +1368,9 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                       value={newWarehouse.name}
                       onChange={(e) => setNewWarehouse({ ...newWarehouse, name: e.target.value })}
                     />
-                  </div>
+                  </FormField>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="wh-loc">Ubicación</label>
+                  <FormField label="Ubicación" htmlFor="wh-loc">
                     <input
                       id="wh-loc"
                       className="form-input"
@@ -1405,7 +1378,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                       value={newWarehouse.location}
                       onChange={(e) => setNewWarehouse({ ...newWarehouse, location: e.target.value })}
                     />
-                  </div>
+                  </FormField>
                 </div>
 
                 <div className="form-actions">
