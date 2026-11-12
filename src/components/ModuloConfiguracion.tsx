@@ -6,8 +6,6 @@ import {
   IconBuilding,
   IconPlus,
   IconCheck,
-  IconAlertCircle,
-  IconRefreshCw,
   IconTrash,
   IconEdit,
   IconClock,
@@ -18,6 +16,16 @@ import { farmToday, newOperationKey } from '../utils/operations';
 import { ModalDialog } from './ModalDialog';
 import { ModuleTabs } from './ModuleTabs';
 import { DataState } from './DataState';
+import {
+  PageHeader,
+  InlineAlert,
+  StatusBadge,
+  DataCardList,
+  DataCard,
+  DataCardHead,
+  DataCardMeta,
+  DataCardActions,
+} from './ui';
 
 interface CatalogItem {
   id: number;
@@ -615,52 +623,20 @@ export function ModuloConfiguracion() {
 
   return (
     <div>
-      <div className="module-heading mb-4">
-        <p className="text-xs text-muted">
-          Catálogos, etapas productivas, parámetros operativos y ubicaciones.
-        </p>
-        <div className="inline-flex items-center gap-2 flex-wrap">
-          <label className="text-xs text-muted inline-flex items-center gap-1">
-            <IconCalendar size={14} />
-            <span>Consultar al:</span>
-          </label>
-          <input
-            type="date"
-            className="form-input form-select-sm"
-            style={{ maxWidth: '160px' }}
-            value={asOf}
-            onChange={(e) => setAsOf(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={() => void loadConfig(asOf)}
-            title="Recargar configuración"
-          >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconRefreshCw size={14} />
-              <span>Actualizar</span>
-            </span>
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Configuración"
+        subtitle="Catálogos, etapas productivas, parámetros operativos y ubicaciones."
+        cutoff={{ label: 'Consultar al:', value: asOf, onChange: setAsOf }}
+        onRefresh={() => void loadConfig(asOf)}
+        refreshing={loading}
+      />
 
       {error && (
-        <div className="banner-alert banner-alert-error mb-4" role="alert">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconAlertCircle size={18} />
-            <span>{error}</span>
-          </span>
-        </div>
+        <InlineAlert tone="error" onDismiss={() => setError(null)}>{error}</InlineAlert>
       )}
 
       {success && (
-        <div className="banner-alert banner-alert-success mb-4" role="status">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconCheck size={18} />
-            <span>{success}</span>
-          </span>
-        </div>
+        <InlineAlert tone="success" autoDismissMs={6000} onDismiss={() => setSuccess(null)}>{success}</InlineAlert>
       )}
 
       <ModuleTabs label="Secciones de configuración" active={section} onChange={setSection} columns={2} tabs={[
@@ -771,59 +747,61 @@ export function ModuloConfiguracion() {
               </div>
 
               {!selectedCatalog || selectedCatalog.items.length === 0 ? (
-                <p className="text-muted text-center p-3">No hay valores vigentes para este catálogo en la fecha consultada.</p>
+                <DataState variant="empty" title="No hay valores vigentes para este catálogo en la fecha consultada." />
               ) : (
-                <ul className="data-card-list data-card-grid mb-4" aria-label="Valores del catálogo">
-                      {selectedCatalog.items.map((item) => (
-                        <li key={item.id}><article className="data-card">
-                          <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{item.name}</span><span className="data-card-subtitle font-mono">{item.code}</span></div><span className="badge-status badge-outline">{item.status === 'active' ? 'Activo' : 'Retirado'}</span></header>
-                          <dl className="data-card-meta"><div><dt>Orden</dt><dd>{item.sortOrder}</dd></div><div><dt>Vigente desde</dt><dd>{item.effectiveFrom}</dd></div></dl>
-                            <div className="data-card-actions">
-                              <button type="button" className="btn btn-outline" onClick={() => { setCatCode(item.code); setCatName(item.name); setCatSort(String(item.sortOrder)); setCatDate(farmToday()); setCatReason(''); setCatKey(newOperationKey('cfg-cat')); setCatError(null); document.getElementById('catalog-value-form')?.scrollIntoView({ behavior: 'smooth' }); }}><IconEdit size={14} /><span>Editar</span></button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-sm"
-                                onClick={() => void openHistory({
-                                  entity: 'catalog',
-                                  code: item.code,
-                                  label: `${selectedCatalog.label} · ${item.name}`,
-                                  catalogKey: selectedCatalog.key,
-                                })}
-                              >
-                                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                  <IconClock size={14} />
-                                  <span>Historial</span>
-                                </span>
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-sm text-danger"
-                                onClick={() => openRetire({
-                                  kind: 'catalog',
-                                  code: item.code,
-                                  label: `${selectedCatalog.label} · ${item.name}`,
-                                  catalogKey: selectedCatalog.key,
-                                })}
-                              >
-                                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                  <IconTrash size={14} />
-                                  <span>Retirar</span>
-                                </span>
-                              </button>
-                            </div>
-                        </article></li>
-                      ))}
-                </ul>
+                <DataCardList label="Valores del catálogo" grid className="mb-4">
+                  {selectedCatalog.items.map((item) => (
+                    <DataCard key={item.id}>
+                      <DataCardHead
+                        title={item.name}
+                        subtitle={<span className="font-mono">{item.code}</span>}
+                        badge={<StatusBadge>{item.status === 'active' ? 'Activo' : 'Retirado'}</StatusBadge>}
+                      />
+                      <DataCardMeta items={[
+                        { label: 'Orden', value: item.sortOrder },
+                        { label: 'Vigente desde', value: item.effectiveFrom },
+                      ]} />
+                      <DataCardActions>
+                        <button type="button" className="btn btn-outline" onClick={() => { setCatCode(item.code); setCatName(item.name); setCatSort(String(item.sortOrder)); setCatDate(farmToday()); setCatReason(''); setCatKey(newOperationKey('cfg-cat')); setCatError(null); document.getElementById('catalog-value-form')?.scrollIntoView({ behavior: 'smooth' }); }}><IconEdit size={14} /><span>Editar</span></button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => void openHistory({
+                            entity: 'catalog',
+                            code: item.code,
+                            label: `${selectedCatalog.label} · ${item.name}`,
+                            catalogKey: selectedCatalog.key,
+                          })}
+                        >
+                          <span className="inline-flex items-center justify-center gap-2 leading-none">
+                            <IconClock size={14} />
+                            <span>Historial</span>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm text-danger"
+                          onClick={() => openRetire({
+                            kind: 'catalog',
+                            code: item.code,
+                            label: `${selectedCatalog.label} · ${item.name}`,
+                            catalogKey: selectedCatalog.key,
+                          })}
+                        >
+                          <span className="inline-flex items-center justify-center gap-2 leading-none">
+                            <IconTrash size={14} />
+                            <span>Retirar</span>
+                          </span>
+                        </button>
+                      </DataCardActions>
+                    </DataCard>
+                  ))}
+                </DataCardList>
               )}
 
               <h5 className="font-bold mb-2">Agregar o versionar un valor</h5>
               {catError && (
-                <div className="banner-alert banner-alert-error mb-3" role="alert">
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconAlertCircle size={16} />
-                    <span>{catError}</span>
-                  </span>
-                </div>
+                <InlineAlert tone="error" onDismiss={() => setCatError(null)}>{catError}</InlineAlert>
               )}
               <form id="catalog-value-form" onSubmit={handleCreateCatalog}>
                 <div className="form-grid mb-3">
@@ -866,51 +844,50 @@ export function ModuloConfiguracion() {
                 Los límites abiertos se muestran como «Sin dato», distintos de un cero.
               </p>
 
-              <ul className="data-card-list data-card-grid mb-4" aria-label="Etapas productivas y raciones">
-                    {data.stages.map((stage) => (
-                      <li key={stage.id}><article className="data-card">
-                        <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{stage.name}</span><span className="data-card-subtitle font-mono">{stage.code} · Orden {stage.sortOrder}</span></div><span className="badge-status badge-outline">{stage.status === 'active' ? 'Activa' : 'Retirada'}</span></header>
-                        <dl className="data-card-meta">
-                          <div><dt>Peso (kg)</dt><dd>{displayNumber(stage.initialWeightKg)} a {displayNumber(stage.finalWeightKg)}</dd></div>
-                          <div><dt>Edad (días)</dt><dd>{displayNumber(stage.initialAgeDays)} a {displayNumber(stage.finalAgeDays)}</dd></div>
-                          <div><dt>Duración (días)</dt><dd>{displayNumber(stage.durationDays)}</dd></div>
-                          <div><dt>Ración</dt><dd>{stage.rationName ?? 'Sin ración'}</dd></div>
-                          <div><dt>Consumo diario</dt><dd>{stage.dailyFeedKg === null ? 'Sin dato' : `${stage.dailyFeedKg} kg`}</dd></div>
-                          <div><dt>30 días</dt><dd>{stage.monthlyFeedKg === null ? 'Sin dato' : `${stage.monthlyFeedKg} kg`}</dd></div>
-                          <div><dt>Total etapa</dt><dd>{stage.totalFeedKg === null ? 'Sin dato' : `${stage.totalFeedKg} kg`}</dd></div>
-                        </dl>
-                          <div className="data-card-actions">
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => editStage(stage)}>
-                              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                <IconEdit size={14} />
-                                <span>Editar</span>
-                              </span>
-                            </button>
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory({ entity: 'stage', code: stage.code, label: stage.name })}>
-                              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                <IconClock size={14} />
-                                <span>Historial</span>
-                              </span>
-                            </button>
-                            <button type="button" className="btn btn-ghost btn-sm text-danger" onClick={() => openRetire({ kind: 'stage', code: stage.code, label: stage.name })}>
-                              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                <IconTrash size={14} />
-                                <span>Retirar</span>
-                              </span>
-                            </button>
-                          </div>
-                      </article></li>
-                    ))}
-              </ul>
+              <DataCardList label="Etapas productivas y raciones" grid className="mb-4">
+                {data.stages.map((stage) => (
+                  <DataCard key={stage.id}>
+                    <DataCardHead
+                      title={stage.name}
+                      subtitle={<span className="font-mono">{stage.code} · Orden {stage.sortOrder}</span>}
+                      badge={<StatusBadge>{stage.status === 'active' ? 'Activa' : 'Retirada'}</StatusBadge>}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Peso (kg)', value: <>{displayNumber(stage.initialWeightKg)} a {displayNumber(stage.finalWeightKg)}</> },
+                      { label: 'Edad (días)', value: <>{displayNumber(stage.initialAgeDays)} a {displayNumber(stage.finalAgeDays)}</> },
+                      { label: 'Duración (días)', value: displayNumber(stage.durationDays) },
+                      { label: 'Ración', value: stage.rationName ?? 'Sin ración' },
+                      { label: 'Consumo diario', value: stage.dailyFeedKg === null ? 'Sin dato' : `${stage.dailyFeedKg} kg` },
+                      { label: '30 días', value: stage.monthlyFeedKg === null ? 'Sin dato' : `${stage.monthlyFeedKg} kg` },
+                      { label: 'Total etapa', value: stage.totalFeedKg === null ? 'Sin dato' : `${stage.totalFeedKg} kg` },
+                    ]} />
+                    <DataCardActions>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => editStage(stage)}>
+                        <span className="inline-flex items-center justify-center gap-2 leading-none">
+                          <IconEdit size={14} />
+                          <span>Editar</span>
+                        </span>
+                      </button>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory({ entity: 'stage', code: stage.code, label: stage.name })}>
+                        <span className="inline-flex items-center justify-center gap-2 leading-none">
+                          <IconClock size={14} />
+                          <span>Historial</span>
+                        </span>
+                      </button>
+                      <button type="button" className="btn btn-ghost btn-sm text-danger" onClick={() => openRetire({ kind: 'stage', code: stage.code, label: stage.name })}>
+                        <span className="inline-flex items-center justify-center gap-2 leading-none">
+                          <IconTrash size={14} />
+                          <span>Retirar</span>
+                        </span>
+                      </button>
+                    </DataCardActions>
+                  </DataCard>
+                ))}
+              </DataCardList>
 
               <h5 className="font-bold mb-2">Registrar nueva versión de etapa</h5>
               {stageError && (
-                <div className="banner-alert banner-alert-error mb-3" role="alert">
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconAlertCircle size={16} />
-                    <span>{stageError}</span>
-                  </span>
-                </div>
+                <InlineAlert tone="error" onDismiss={() => setStageError(null)}>{stageError}</InlineAlert>
               )}
               <form onSubmit={handleSaveStage}>
                 <div className="form-grid mb-3">
@@ -985,44 +962,47 @@ export function ModuloConfiguracion() {
 
               <h5 className="font-bold mb-2">Ubicaciones físicas</h5>
               <div className="form-actions mb-3"><button type="button" className="btn btn-primary" onClick={() => { setLocationCode(''); setLocationName(''); setLocationType('galpon'); setLocationParent(''); setLocationBarnId(''); setLocationDate(farmToday()); setLocationReason(''); setLocationKey(newOperationKey('cfg-loc')); setLocationError(null); setLocationModal(true); }}><IconPlus size={14} /><span>Agregar ubicación</span></button></div>
-              <ul className="data-card-list data-card-grid mb-3" aria-label="Ubicaciones físicas">
-                    {data.locations.map((location) => (
-                      <li key={location.id}><article className="data-card">
-                        <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{location.name}</span><span className="data-card-subtitle font-mono">{location.code}</span></div><span className="badge-status badge-outline">{LOCATION_TYPE_LABEL[location.locationType] ?? location.locationType}</span></header>
-                        <dl className="data-card-meta"><div><dt>Ubicación padre</dt><dd>{location.parentCode ?? 'Sin padre'}</dd></div><div><dt>Galpón vinculado</dt><dd>{barns.find((barn) => barn.id === location.barnId)?.name ?? 'Sin vínculo'}</dd></div><div><dt>Vigente desde</dt><dd>{location.effectiveFrom}</dd></div></dl>
-                          <div className="data-card-actions">
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
-                              setLocationCode(location.code); setLocationName(location.name); setLocationType(location.locationType);
-                              setLocationParent(location.parentCode ?? ''); setLocationBarnId(location.barnId === null ? '' : String(location.barnId));
-                              setLocationDate(farmToday()); setLocationReason(''); setLocationKey(newOperationKey('cfg-loc')); setLocationError(null);
-                              setLocationModal(true);
-                            }}><IconEdit size={14} /><span>Editar</span></button>
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory({ entity: 'location', code: location.code, label: location.name })}>
-                              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                <IconClock size={14} />
-                                <span>Historial</span>
-                              </span>
-                            </button>
-                            <button type="button" className="btn btn-ghost btn-sm text-danger" onClick={() => openRetire({ kind: 'location', code: location.code, label: location.name })}>
-                              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                <IconTrash size={14} />
-                                <span>Retirar</span>
-                              </span>
-                            </button>
-                          </div>
-                      </article></li>
-                    ))}
-              </ul>
+              <DataCardList label="Ubicaciones físicas" grid className="mb-3">
+                {data.locations.map((location) => (
+                  <DataCard key={location.id}>
+                    <DataCardHead
+                      title={location.name}
+                      subtitle={<span className="font-mono">{location.code}</span>}
+                      badge={<StatusBadge>{LOCATION_TYPE_LABEL[location.locationType] ?? location.locationType}</StatusBadge>}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Ubicación padre', value: location.parentCode ?? 'Sin padre' },
+                      { label: 'Galpón vinculado', value: barns.find((barn) => barn.id === location.barnId)?.name ?? 'Sin vínculo' },
+                      { label: 'Vigente desde', value: location.effectiveFrom },
+                    ]} />
+                    <DataCardActions>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
+                        setLocationCode(location.code); setLocationName(location.name); setLocationType(location.locationType);
+                        setLocationParent(location.parentCode ?? ''); setLocationBarnId(location.barnId === null ? '' : String(location.barnId));
+                        setLocationDate(farmToday()); setLocationReason(''); setLocationKey(newOperationKey('cfg-loc')); setLocationError(null);
+                        setLocationModal(true);
+                      }}><IconEdit size={14} /><span>Editar</span></button>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory({ entity: 'location', code: location.code, label: location.name })}>
+                        <span className="inline-flex items-center justify-center gap-2 leading-none">
+                          <IconClock size={14} />
+                          <span>Historial</span>
+                        </span>
+                      </button>
+                      <button type="button" className="btn btn-ghost btn-sm text-danger" onClick={() => openRetire({ kind: 'location', code: location.code, label: location.name })}>
+                        <span className="inline-flex items-center justify-center gap-2 leading-none">
+                          <IconTrash size={14} />
+                          <span>Retirar</span>
+                        </span>
+                      </button>
+                    </DataCardActions>
+                  </DataCard>
+                ))}
+              </DataCardList>
 
               {locationModal && <ModalDialog labelledBy="config-location-title" onDismiss={() => setLocationModal(false)} dismissDisabled={locationSaving}>
               <h3 id="config-location-title" className="text-lg font-bold mb-3">Ubicación física</h3>
               {locationError && (
-                <div className="banner-alert banner-alert-error mb-3" role="alert">
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconAlertCircle size={16} />
-                    <span>{locationError}</span>
-                  </span>
-                </div>
+                <InlineAlert tone="error" onDismiss={() => setLocationError(null)}>{locationError}</InlineAlert>
               )}
               <form onSubmit={handleSaveLocation} className="mb-4">
                 <div className="form-grid mb-2">
@@ -1087,39 +1067,40 @@ export function ModuloConfiguracion() {
 
               <h5 className="font-bold mb-2">Lotes de manejo</h5>
               <div className="form-actions mb-3"><button type="button" className="btn btn-primary" onClick={() => { setLotCode(''); setLotName(''); setLotStage(''); setLotDate(farmToday()); setLotReason(''); setLotKey(newOperationKey('cfg-lot')); setLotError(null); setLotModal(true); }}><IconPlus size={14} /><span>Agregar lote</span></button></div>
-              <ul className="data-card-list data-card-grid mb-3" aria-label="Lotes de manejo">
-                    {data.lots.map((lot) => (
-                      <li key={lot.id}><article className="data-card">
-                        <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{lot.name}</span><span className="data-card-subtitle font-mono">{lot.code}</span></div></header>
-                        <dl className="data-card-meta"><div><dt>Etapa</dt><dd>{lot.stageCode ?? 'Sin etapa'}</dd></div><div><dt>Vigente desde</dt><dd>{lot.effectiveFrom}</dd></div></dl>
-                          <div className="data-card-actions">
-                            <button type="button" className="btn btn-outline" onClick={() => { setLotCode(lot.code); setLotName(lot.name); setLotStage(lot.stageCode ?? ''); setLotDate(farmToday()); setLotReason(''); setLotKey(newOperationKey('cfg-lot')); setLotError(null); setLotModal(true); }}><IconEdit size={14} /><span>Editar</span></button>
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory({ entity: 'lot', code: lot.code, label: lot.name })}>
-                              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                <IconClock size={14} />
-                                <span>Historial</span>
-                              </span>
-                            </button>
-                            <button type="button" className="btn btn-ghost btn-sm text-danger" onClick={() => openRetire({ kind: 'lot', code: lot.code, label: lot.name })}>
-                              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                                <IconTrash size={14} />
-                                <span>Retirar</span>
-                              </span>
-                            </button>
-                          </div>
-                      </article></li>
-                    ))}
-              </ul>
+              <DataCardList label="Lotes de manejo" grid className="mb-3">
+                {data.lots.map((lot) => (
+                  <DataCard key={lot.id}>
+                    <DataCardHead
+                      title={lot.name}
+                      subtitle={<span className="font-mono">{lot.code}</span>}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Etapa', value: lot.stageCode ?? 'Sin etapa' },
+                      { label: 'Vigente desde', value: lot.effectiveFrom },
+                    ]} />
+                    <DataCardActions>
+                      <button type="button" className="btn btn-outline" onClick={() => { setLotCode(lot.code); setLotName(lot.name); setLotStage(lot.stageCode ?? ''); setLotDate(farmToday()); setLotReason(''); setLotKey(newOperationKey('cfg-lot')); setLotError(null); setLotModal(true); }}><IconEdit size={14} /><span>Editar</span></button>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory({ entity: 'lot', code: lot.code, label: lot.name })}>
+                        <span className="inline-flex items-center justify-center gap-2 leading-none">
+                          <IconClock size={14} />
+                          <span>Historial</span>
+                        </span>
+                      </button>
+                      <button type="button" className="btn btn-ghost btn-sm text-danger" onClick={() => openRetire({ kind: 'lot', code: lot.code, label: lot.name })}>
+                        <span className="inline-flex items-center justify-center gap-2 leading-none">
+                          <IconTrash size={14} />
+                          <span>Retirar</span>
+                        </span>
+                      </button>
+                    </DataCardActions>
+                  </DataCard>
+                ))}
+              </DataCardList>
 
               {lotModal && <ModalDialog labelledBy="config-lot-title" onDismiss={() => setLotModal(false)} dismissDisabled={lotSaving}>
               <h3 id="config-lot-title" className="text-lg font-bold mb-3">Lote de manejo</h3>
               {lotError && (
-                <div className="banner-alert banner-alert-error mb-3" role="alert">
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconAlertCircle size={16} />
-                    <span>{lotError}</span>
-                  </span>
-                </div>
+                <InlineAlert tone="error" onDismiss={() => setLotError(null)}>{lotError}</InlineAlert>
               )}
               <form onSubmit={handleSaveLot}>
                 <div className="form-grid mb-2">
@@ -1177,12 +1158,7 @@ export function ModuloConfiguracion() {
             Las fechas anteriores conservan este valor en los informes.
           </p>
           {retireError && (
-            <div className="banner-alert banner-alert-error mb-3" role="alert">
-              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                <IconAlertCircle size={16} />
-                <span>{retireError}</span>
-              </span>
-            </div>
+            <InlineAlert tone="error" onDismiss={() => setRetireError(null)}>{retireError}</InlineAlert>
           )}
           <form onSubmit={submitRetire}>
             <div className="form-group mb-2">
@@ -1226,16 +1202,11 @@ export function ModuloConfiguracion() {
             <h4 id="config-history-dialog-title" className="text-lg font-bold mb-2">Historial de versiones</h4>
             <p className="text-xs text-muted mb-3">{historyTarget.label}</p>
             {historyLoading ? (
-              <p className="text-muted text-center p-3">Cargando historial...</p>
+              <DataState variant="loading" title="Cargando historial…" />
             ) : historyError ? (
-              <div className="banner-alert banner-alert-error mb-3" role="alert">
-                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconAlertCircle size={16} />
-                  <span>{historyError}</span>
-                </span>
-              </div>
+              <InlineAlert tone="error" onDismiss={() => setHistoryError(null)}>{historyError}</InlineAlert>
             ) : !historyRows || historyRows.length === 0 ? (
-              <p className="text-muted text-center p-3">No hay versiones registradas.</p>
+              <DataState variant="empty" title="No hay versiones registradas." />
             ) : (
               <pre className="text-xs whitespace-pre-wrap break-all bg-light p-3" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
                 {JSON.stringify(historyRows, null, 2)}

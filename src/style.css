@@ -2992,7 +2992,7 @@ fieldset legend {
 /* Kit UI global (componentes en src/components/ui) */
 .module-heading-actions { display: inline-flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .module-heading-cutoff { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); }
-.alert { align-items: flex-start; }
+.alert { align-items: flex-start; margin-bottom: 1rem; }
 .alert > svg { flex: none; margin-top: 0.1rem; }
 .alert-message { min-width: 0; overflow-wrap: anywhere; }
 .alert-dismiss { flex: none; margin-left: auto; display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: inherit; cursor: pointer; }

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
-export function DataCardList({ label, grid = false, children }: { label: string; grid?: boolean; children: ReactNode }) {
-  return <ul className={`data-card-list${grid ? ' data-card-grid' : ''}`} aria-label={label}>{children}</ul>;
+export function DataCardList({ label, grid = false, className, children }: { label: string; grid?: boolean; className?: string; children: ReactNode }) {
+  return <ul className={`data-card-list${grid ? ' data-card-grid' : ''}${className ? ` ${className}` : ''}`} aria-label={label}>{children}</ul>;
 }
 
 export function DataCard({ state, total = false, className, children }: { state?: string; total?: boolean; className?: string; children: ReactNode }) {
