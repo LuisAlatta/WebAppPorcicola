@@ -43,6 +43,7 @@ import {
   DataCardMeta,
   DataCardNote,
   DataCardActions,
+  DataTable,
 } from './ui';
 import type { Perfil } from '../types';
 
@@ -1327,8 +1328,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   ))}
                 </ul>
               ) : (
-              <div className="table-responsive">
-                <table className="data-table" aria-label="Padrón de animales">
+              <DataTable label="Padrón de animales">
                   <thead>
                     <tr>
                       <th className="text-left">Código</th>
@@ -1396,8 +1396,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
+              </DataTable>
               )
             )}
             <Pagination

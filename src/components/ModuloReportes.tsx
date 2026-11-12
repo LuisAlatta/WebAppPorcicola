@@ -30,6 +30,7 @@ import {
   DataCardActions,
   FilterChipRow,
   FilterChip,
+  DataTable,
 } from './ui';
 
 type Barn = { id: number; name: string };
@@ -918,9 +919,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
               </div>
 
               {groupBy && (
-                <div className="table-responsive mb-4">
-                  <h3>Resumen por {groupBy.split(',').map(key => activeSource?.fields.find(f => f.key === key)?.label ?? (key === 'month' ? 'Mes' : key)).join(' + ')}</h3>
-                  <table className="data-table">
+                <DataTable className="mb-4" heading={<h3>Resumen por {groupBy.split(',').map(key => activeSource?.fields.find(f => f.key === key)?.label ?? (key === 'month' ? 'Mes' : key)).join(' + ')}</h3>}>
                     <thead>
                       <tr>
                         <th className="text-left">Grupo</th>
@@ -953,13 +952,11 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
-                </div>
+                </DataTable>
               )}
 
               {preview.rows.length > 0 ? (
-                <div className="table-responsive">
-                  <table className="data-table">
+                <DataTable>
                     <thead>
                       <tr>
                         {columns.map(key => {
@@ -1000,8 +997,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
-                </div>
+                </DataTable>
               ) : (
                 <div className="mt-3">
                   <DataState
