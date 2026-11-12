@@ -26,6 +26,7 @@ import {
   DataCardMeta,
   DataCardNote,
   DataCardActions,
+  FormField,
 } from './ui';
 import type { Perfil } from '../types';
 
@@ -345,8 +346,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
           subtitle="El plazo se cuenta desde la fecha prevista vencida. Los avisos críticos mantienen su tarea pendiente."
         >
           <form className="form-grid" onSubmit={saveRule}>
-            <div className="form-group">
-              <label className="form-label">Tipo de alerta</label>
+            <FormField label="Tipo de alerta">
               <select className="form-select" value={ruleForm.alertType} onChange={e => setRuleForm({ ...ruleForm, alertType: e.target.value })}>
                 {Object.entries(labels)
                   .filter(([key]) => ['vaccine', 'farrowing', 'weaning', 'treatment', 'feeding', 'manual', 'low_weight', 'sale_suggestion'].includes(key))
@@ -354,9 +354,8 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                     <option key={key} value={key}>{label}</option>
                   ))}
               </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Días vencidos antes de escalar</label>
+            </FormField>
+            <FormField label="Días vencidos antes de escalar">
               <input
                 required
                 type="number"
@@ -366,7 +365,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                 value={ruleForm.overdueDays}
                 onChange={e => setRuleForm({ ...ruleForm, overdueDays: e.target.value })}
               />
-            </div>
+            </FormField>
             <label className="checkbox-label form-span-2">
               <input type="checkbox" checked={ruleForm.isActive} onChange={e => setRuleForm({ ...ruleForm, isActive: e.target.checked })} />
               <span>Regla activa</span>
@@ -439,36 +438,31 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
             <fieldset className="form-section">
               <legend>Tarea y fecha</legend>
               <div className="form-grid">
-            <div className="form-group">
-              <label className="form-label" htmlFor="manual-alert-title">Título o tarea</label>
+            <FormField label="Título o tarea" htmlFor="manual-alert-title">
               <input id="manual-alert-title" required maxLength={240} className="form-input" placeholder="ej. Revisar tolva de galpón de destete" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label className="form-label" htmlFor="manual-alert-due-date">Fecha prevista</label>
+            </FormField>
+            <FormField label="Fecha prevista" htmlFor="manual-alert-due-date">
               <input id="manual-alert-due-date" required type="date" className="form-input tabular-nums" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} />
-            </div>
+            </FormField>
               </div>
             </fieldset>
             <fieldset className="form-section">
               <legend>Destino y motivo</legend>
               <div className="form-grid">
-            <div className="form-group">
-              <label className="form-label" htmlFor="manual-alert-barn">Galpón</label>
+            <FormField label="Galpón" htmlFor="manual-alert-barn">
               <select id="manual-alert-barn" className="form-select" value={form.barnId} onChange={e => setForm({ ...form, barnId: e.target.value })}>
                 <option value="">{isAdmin ? 'Granja general' : 'Seleccionar galpón asignado'}</option>
                 {barns.map(barn => (
                   <option value={barn.id} key={barn.id}>{barn.name}</option>
                 ))}
               </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label" htmlFor="manual-alert-animal">Animal / Arete (opcional)</label>
+            </FormField>
+            <FormField label="Animal / Arete (opcional)" htmlFor="manual-alert-animal">
               <input id="manual-alert-animal" className="form-input" placeholder="ej. MAR-012 o LEC-045" value={form.animalCode} onChange={e => setForm({ ...form, animalCode: e.target.value })} />
-            </div>
-            <div className="form-group form-span-2">
-              <label className="form-label" htmlFor="manual-alert-reason">Motivo de atención</label>
+            </FormField>
+            <FormField label="Motivo de atención" htmlFor="manual-alert-reason" className="form-span-2">
               <input id="manual-alert-reason" required minLength={5} className="form-input" placeholder="ej. Observación reportada en inspección diaria" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} />
-            </div>
+            </FormField>
               </div>
             </fieldset>
             </div>
@@ -533,8 +527,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
             }
           >
             <div className="filter-row">
-              <div className="form-group">
-                <label className="form-label text-xs">Tipo</label>
+              <FormField label="Tipo" labelClassName="text-xs">
                 <select className="form-select form-select-sm" value={filter.type} onChange={e => setFilter({ ...filter, type: e.target.value, bucket: '' })}>
                   <option value="">Todos los tipos</option>
                   {Object.entries(labels)
@@ -543,17 +536,15 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                       <option key={key} value={key}>{label}</option>
                     ))}
                 </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label text-xs">Estado</label>
+              </FormField>
+              <FormField label="Estado" labelClassName="text-xs">
                 <select className="form-select form-select-sm" value={filter.status} onChange={e => setFilter({ ...filter, status: e.target.value })}>
                   <option value="pending">Pendientes</option>
                   <option value="attended">Atendidos</option>
                   <option value="resolved">Resueltos</option>
                 </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label text-xs">Fecha prevista</label>
+              </FormField>
+              <FormField label="Fecha prevista" labelClassName="text-xs">
                 <select className="form-select form-select-sm" value={filter.bucket} onChange={e => setFilter({ ...filter, bucket: e.target.value })}>
                   <option value="">Todas las fechas</option>
                   <option value="overdue">Vencidos</option>
@@ -562,7 +553,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                   <option value="future">Después de 7 días</option>
                   <option value="undated">Sin fecha límite</option>
                 </select>
-              </div>
+              </FormField>
             </div>
 
             {alerts.length > 0 ? (
@@ -697,10 +688,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
               void confirmAttend();
             }}
           >
-            <div className="form-group mb-4">
-              <label className="form-label text-sm" htmlFor="alert-modal-reason">
-                Motivo o detalle de atención en galpón:
-              </label>
+            <FormField label="Motivo o detalle de atención en galpón:" htmlFor="alert-modal-reason" className="mb-4" labelClassName="text-sm">
               <input
                 id="alert-modal-reason"
                 className="form-input"
@@ -710,7 +698,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                 required
                 autoFocus
               />
-            </div>
+            </FormField>
             <div className="form-actions form-actions-sticky">
               <button
                 type="button"

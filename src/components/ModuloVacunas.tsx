@@ -25,6 +25,7 @@ import {
   DataCardMeta,
   DataCardActions,
   FilterChip,
+  FormField,
 } from './ui';
 import type { Perfil } from '../types';
 
@@ -414,8 +415,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
         </div>
       )}
       {filtersOpen && <div id="vaccine-filters-panel" className="grid-4 mb-4">
-        <div className="form-group">
-          <label className="form-label text-xs" htmlFor="vac-filter-from">Programada desde</label>
+        <FormField label="Programada desde" htmlFor="vac-filter-from" labelClassName="text-xs">
           <input
             id="vac-filter-from"
             type="date"
@@ -423,9 +423,8 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             value={filter.from}
             onChange={(e) => setFilter({ ...filter, from: e.target.value })}
           />
-        </div>
-        <div className="form-group">
-          <label className="form-label text-xs" htmlFor="vac-filter-to">Programada hasta</label>
+        </FormField>
+        <FormField label="Programada hasta" htmlFor="vac-filter-to" labelClassName="text-xs">
           <input
             id="vac-filter-to"
             type="date"
@@ -433,9 +432,8 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             value={filter.to}
             onChange={(e) => setFilter({ ...filter, to: e.target.value })}
           />
-        </div>
-        <div className="form-group">
-          <label className="form-label text-xs" htmlFor="vac-filter-type">Tipo de animal</label>
+        </FormField>
+        <FormField label="Tipo de animal" htmlFor="vac-filter-type" labelClassName="text-xs">
           <select
             id="vac-filter-type"
             className="form-select"
@@ -448,9 +446,8 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             <option value="lechon">Lechón</option>
             <option value="reemplazo">Reemplazo</option>
           </select>
-        </div>
-        <div className="form-group">
-          <label className="form-label text-xs" htmlFor="vac-filter-status">Estado</label>
+        </FormField>
+        <FormField label="Estado" htmlFor="vac-filter-status" labelClassName="text-xs">
           <select
             id="vac-filter-status"
             className="form-select"
@@ -462,7 +459,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             <option value="cancelled">Canceladas</option>
             <option value="">Todos</option>
           </select>
-        </div>
+        </FormField>
       </div>}
 
       {/* Agenda de vacunas */}
@@ -593,24 +590,22 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
           </div>
 
           <div className="grid-2">
-            <div className="form-group">
+            <FormField>
               <AnimalPicker label="Animal" searchLabel="Buscar animal para vacuna" activeOnly required value={manual.animalCode ? [manual.animalCode] : []} onChange={values => setManual({ ...manual, animalCode: values[0] ?? '' })} />
-            </div>
+            </FormField>
 
-            <div className="form-group">
-              <label className="form-label text-xs">Nombre de la vacuna</label>
+            <FormField label="Nombre de la vacuna" labelClassName="text-xs">
               <input
                 required
                 className="form-input"
                 value={manual.vaccineName}
                 onChange={(e) => setManual({ ...manual, vaccineName: e.target.value })}
               />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid-2">
-            <div className="form-group">
-              <label className="form-label text-xs">Fecha programada</label>
+            <FormField label="Fecha programada" labelClassName="text-xs">
               <input
                 required
                 type="date"
@@ -618,17 +613,16 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                 value={manual.scheduledDate}
                 onChange={(e) => setManual({ ...manual, scheduledDate: e.target.value })}
               />
-            </div>
+            </FormField>
 
-            <div className="form-group">
-              <label className="form-label text-xs">Motivo</label>
+            <FormField label="Motivo" labelClassName="text-xs">
               <input
                 required
                 className="form-input"
                 value={manual.reason}
                 onChange={(e) => setManual({ ...manual, reason: e.target.value })}
               />
-            </div>
+            </FormField>
           </div>
 
           <div className="form-actions">
@@ -737,8 +731,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             </div>
 
             <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label text-xs">Nombre de la vacuna</label>
+              <FormField label="Nombre de la vacuna" labelClassName="text-xs">
                 <input
                   required
                   maxLength={120}
@@ -746,10 +739,9 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                   value={form.vaccineName}
                   onChange={(e) => setForm({ ...form, vaccineName: e.target.value })}
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label text-xs">Categoría objetivo</label>
+              <FormField label="Categoría objetivo" labelClassName="text-xs">
                 <select
                   className="form-select"
                   value={form.targetCategory}
@@ -761,12 +753,11 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                     </option>
                   ))}
                 </select>
-              </div>
+              </FormField>
             </div>
 
             <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label text-xs">Evento base</label>
+              <FormField label="Evento base" labelClassName="text-xs">
                 <select
                   className="form-select"
                   value={form.baseEvent}
@@ -778,25 +769,28 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                     </option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label text-xs">
-                  Ajuste en días
-                  {form.baseEvent === 'farrowing' ? ' (negativo: antes del parto probable)' : ''}
-                </label>
+              <FormField
+                label={
+                  <>
+                    Ajuste en días
+                    {form.baseEvent === 'farrowing' ? ' (negativo: antes del parto probable)' : ''}
+                  </>
+                }
+                labelClassName="text-xs"
+              >
                 <input
                   type="number"
                   className="form-input"
                   value={form.offsetDays}
                   onChange={(e) => setForm({ ...form, offsetDays: e.target.value })}
                 />
-              </div>
+              </FormField>
             </div>
 
             {form.baseEvent === 'age' && (
-              <div className="form-group">
-                <label className="form-label text-xs">Edad objetivo en días</label>
+              <FormField label="Edad objetivo en días" labelClassName="text-xs">
                 <input
                   required
                   type="number"
@@ -805,13 +799,12 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                   value={form.targetAgeDays}
                   onChange={(e) => setForm({ ...form, targetAgeDays: e.target.value })}
                 />
-              </div>
+              </FormField>
             )}
 
             {form.baseEvent === 'semiannual' && (
               <div className="grid-2">
-                <div className="form-group">
-                  <label className="form-label text-xs">Fecha de referencia</label>
+                <FormField label="Fecha de referencia" labelClassName="text-xs">
                   <input
                     required
                     type="date"
@@ -819,9 +812,8 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                     value={form.referenceDate}
                     onChange={(e) => setForm({ ...form, referenceDate: e.target.value })}
                   />
-                </div>
-                <div className="form-group">
-                  <label className="form-label text-xs">Intervalo en días</label>
+                </FormField>
+                <FormField label="Intervalo en días" labelClassName="text-xs">
                   <input
                     required
                     type="number"
@@ -830,21 +822,20 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                     value={form.recurrenceDays}
                     onChange={(e) => setForm({ ...form, recurrenceDays: e.target.value })}
                   />
-                </div>
+                </FormField>
               </div>
             )}
 
-            <div className="form-group">
-              <label className="form-label text-xs">Motivo</label>
+            <FormField label="Motivo" labelClassName="text-xs">
               <input
                 required
                 className="form-input"
                 value={form.reason}
                 onChange={(e) => setForm({ ...form, reason: e.target.value })}
               />
-            </div>
+            </FormField>
 
-            <div className="form-group">
+            <FormField>
               <label className="inline-flex items-center gap-2 text-xs font-semibold cursor-pointer">
                 <input
                   type="checkbox"
@@ -853,7 +844,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                 />
                 <span>Regla activa</span>
               </label>
-            </div>
+            </FormField>
 
             <div className="form-actions">
               <button
@@ -918,10 +909,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
           </p>
           <form onSubmit={confirmApply}>
             <div className="form-grid mb-4">
-              <div className="form-group">
-                <label className="form-label text-xs" htmlFor="apply-dosage">
-                  Dosis aplicada:
-                </label>
+              <FormField label="Dosis aplicada:" htmlFor="apply-dosage" labelClassName="text-xs">
                 <input
                   id="apply-dosage"
                   type="number"
@@ -932,11 +920,8 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                   onChange={(e) => setApplyForm({ ...applyForm, dosage: e.target.value })}
                   required
                 />
-              </div>
-              <div className="form-group">
-                <label className="form-label text-xs" htmlFor="apply-unit">
-                  Unidad de dosis
-                </label>
+              </FormField>
+              <FormField label="Unidad de dosis" htmlFor="apply-unit" labelClassName="text-xs">
                 <input
                   id="apply-unit"
                   className="form-input"
@@ -945,11 +930,8 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                   onChange={(e) => setApplyForm({ ...applyForm, dosageUnit: e.target.value })}
                   required
                 />
-              </div>
-              <div className="form-group">
-                <label className="form-label text-xs" htmlFor="apply-date">
-                  Fecha aplicada:
-                </label>
+              </FormField>
+              <FormField label="Fecha aplicada:" htmlFor="apply-date" labelClassName="text-xs">
                 <input
                   id="apply-date"
                   type="date"
@@ -959,22 +941,16 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                   onChange={(e) => setApplyForm({ ...applyForm, appliedDate: e.target.value })}
                   required
                 />
-              </div>
-              <div className="form-group">
-                <label className="form-label text-xs" htmlFor="apply-lot">
-                  Lote producto (opcional):
-                </label>
+              </FormField>
+              <FormField label="Lote producto (opcional):" htmlFor="apply-lot" labelClassName="text-xs">
                 <input
                   id="apply-lot"
                   className="form-input"
                   value={applyForm.productLot}
                   onChange={(e) => setApplyForm({ ...applyForm, productLot: e.target.value })}
                 />
-              </div>
-              <div className="form-group">
-                <label className="form-label text-xs" htmlFor="apply-withdrawal">
-                  Retiro hasta (opcional):
-                </label>
+              </FormField>
+              <FormField label="Retiro hasta (opcional):" htmlFor="apply-withdrawal" labelClassName="text-xs">
                 <input
                   id="apply-withdrawal"
                   type="date"
@@ -983,24 +959,20 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                   value={applyForm.withdrawalUntil}
                   onChange={(e) => setApplyForm({ ...applyForm, withdrawalUntil: e.target.value })}
                 />
-              </div>
-              <div className="form-group form-span-2">
-                <label className="form-label text-xs" htmlFor="apply-obs">
-                  Observaciones (opcional):
-                </label>
+              </FormField>
+              <FormField label="Observaciones (opcional):" htmlFor="apply-obs" className="form-span-2" labelClassName="text-xs">
                 <input
                   id="apply-obs"
                   className="form-input"
                   value={applyForm.observations}
                   onChange={(e) => setApplyForm({ ...applyForm, observations: e.target.value })}
                 />
-              </div>
+              </FormField>
               {correctingApplication && (
-                <div className="form-group form-span-2">
-                  <label className="form-label text-xs" htmlFor="apply-correction-reason">Motivo de corrección:</label>
+                <FormField label="Motivo de corrección:" htmlFor="apply-correction-reason" className="form-span-2" labelClassName="text-xs">
                   <input id="apply-correction-reason" className="form-input" required value={applyForm.reason} onChange={(e)=>setApplyForm({...applyForm,reason:e.target.value})}/>
                   <p className="text-xs text-muted">La aplicación anterior se conserva en la auditoría y se sustituye su retiro.</p>
-                </div>
+                </FormField>
               )}
             </div>
             <div className="flex justify-end gap-2">
@@ -1041,10 +1013,9 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             const result=await send(`/api/vaccines/schedules/${annulTarget.id}/annul`,{reason:annulReason,operationKey:annulOperationKey},'Aplicación anulada; la dosis volvió a pendientes y el original se conserva en la auditoría.');
             if(result)setAnnulTarget(null);
           }}>
-            <div className="form-group mb-4">
-              <label className="form-label text-xs" htmlFor="vaccine-annul-reason">Motivo de anulación:</label>
+            <FormField label="Motivo de anulación:" htmlFor="vaccine-annul-reason" className="mb-4" labelClassName="text-xs">
               <input id="vaccine-annul-reason" className="form-input" required autoFocus value={annulReason} onChange={(event)=>setAnnulReason(event.target.value)}/>
-            </div>
+            </FormField>
             <div className="flex justify-end gap-2">
               <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={()=>setAnnulTarget(null)}>Cancelar</button>
               <button type="submit" className="btn btn-danger btn-sm" disabled={busy||!annulReason.trim()} aria-label="Confirmar anulación de aplicación">{busy?'Guardando…':'Anular aplicación'}</button>
@@ -1071,10 +1042,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
           <form onSubmit={confirmChangeSchedule}>
             <div className="form-stack mb-4">
               {!scheduleTarget.cancel && (
-                <div className="form-group">
-                  <label className="form-label text-xs" htmlFor="sched-new-date">
-                    Nueva fecha programada:
-                  </label>
+                <FormField label="Nueva fecha programada:" htmlFor="sched-new-date" labelClassName="text-xs">
                   <input
                     id="sched-new-date"
                     type="date"
@@ -1083,12 +1051,9 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                     onChange={(e) => setScheduleChangeForm({ ...scheduleChangeForm, date: e.target.value })}
                     required
                   />
-                </div>
+                </FormField>
               )}
-              <div className="form-group">
-                <label className="form-label text-xs" htmlFor="sched-reason">
-                  {scheduleTarget.cancel ? 'Motivo de cancelación:' : 'Motivo de reprogramación:'}
-                </label>
+              <FormField label={scheduleTarget.cancel ? 'Motivo de cancelación:' : 'Motivo de reprogramación:'} htmlFor="sched-reason" labelClassName="text-xs">
                 <input
                   id="sched-reason"
                   className="form-input"
@@ -1098,7 +1063,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                   required
                   autoFocus
                 />
-              </div>
+              </FormField>
             </div>
             <div className="flex justify-end gap-2">
               <button
@@ -1157,10 +1122,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             {categoryLabels[deactivateTarget.targetCategory] ?? deactivateTarget.targetCategory}).
           </p>
           <form onSubmit={confirmDeactivate}>
-            <div className="form-group mb-4">
-              <label className="form-label text-xs" htmlFor="deact-rule-reason">
-                Motivo de desactivación:
-              </label>
+            <FormField label="Motivo de desactivación:" htmlFor="deact-rule-reason" className="mb-4" labelClassName="text-xs">
               <input
                 id="deact-rule-reason"
                 className="form-input"
@@ -1170,7 +1132,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                 required
                 autoFocus
               />
-            </div>
+            </FormField>
             <div className="flex justify-end gap-2">
               <button
                 type="button"

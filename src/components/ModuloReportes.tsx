@@ -31,6 +31,7 @@ import {
   FilterChipRow,
   FilterChip,
   DataTable,
+  FormField,
 } from './ui';
 
 type Barn = { id: number; name: string };
@@ -458,14 +459,12 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
         <>
           <section className="card">
             <div className="filter-row items-end">
-              <div className="form-group">
-                <label className="form-label text-xs">Desde</label>
+              <FormField label="Desde" labelClassName="text-xs">
                 <input className="form-input form-input-sm tabular-nums" type="date" value={from} onChange={e => setFrom(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label text-xs">Hasta</label>
+              </FormField>
+              <FormField label="Hasta" labelClassName="text-xs">
                 <input className="form-input form-input-sm tabular-nums" type="date" value={to} onChange={e => setTo(e.target.value)} />
-              </div>
+              </FormField>
               <button
                 className="btn btn-primary"
                 aria-label="Consultar periodo seleccionado en panel"
@@ -608,8 +607,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
             <fieldset className="form-section">
               <legend>Tipo y finalidad</legend>
             <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label" htmlFor="report-source">Fuente de datos</label>
+              <FormField label="Fuente de datos" htmlFor="report-source">
                 <select
                   id="report-source"
                   className="form-select"
@@ -629,39 +627,33 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                     <option key={s.id} value={s.id}>{s.label}</option>
                   ))}
                 </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="report-name">Nombre del reporte</label>
+              </FormField>
+              <FormField label="Nombre del reporte" htmlFor="report-name">
                 <input id="report-name" className="form-input" maxLength={120} placeholder="ej. Control de peso por lote de destete" value={name} onChange={e => setName(e.target.value)} />
-              </div>
-              <div className="form-group form-span-2">
-                <label className="form-label" htmlFor="report-purpose">Finalidad u objetivo</label>
+              </FormField>
+              <FormField label="Finalidad u objetivo" htmlFor="report-purpose" className="form-span-2">
                 <input id="report-purpose" className="form-input" maxLength={500} placeholder="ej. Evaluar ganancia media diaria antes del traslado a engorde" value={purpose} onChange={e => setPurpose(e.target.value)} />
-              </div>
+              </FormField>
             </div>
             </fieldset>
             <fieldset className="form-section">
               <legend>Alcance y organización</legend>
             <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label" htmlFor="report-barn">Galpón</label>
+              <FormField label="Galpón" htmlFor="report-barn">
                 <select id="report-barn" className="form-select" value={selectedBarn} onChange={e => setSelectedBarn(e.target.value)}>
                   <option value="">Todos los asignados</option>
                   {barns.map(barn => (
                     <option key={barn.id} value={barn.id}>{barn.name}</option>
                   ))}
                 </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="report-from">Desde</label>
+              </FormField>
+              <FormField label="Desde" htmlFor="report-from">
                 <input id="report-from" className="form-input tabular-nums" type="date" value={from} onChange={e => setFrom(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="report-to">Hasta</label>
+              </FormField>
+              <FormField label="Hasta" htmlFor="report-to">
                 <input id="report-to" className="form-input tabular-nums" type="date" value={to} onChange={e => setTo(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="report-group-by">Agrupar por</label>
+              </FormField>
+              <FormField label="Agrupar por" htmlFor="report-group-by">
                 <select
                   id="report-group-by"
                   className="form-select"
@@ -677,25 +669,22 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                   ))}
                 </select>
                 <small className="text-muted text-xs mt-1 block">Ctrl o ⌘ permite elegir galpón y mes a la vez.</small>
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="report-order-by">Ordenar por</label>
+              </FormField>
+              <FormField label="Ordenar por" htmlFor="report-order-by">
                 <select id="report-order-by" className="form-select" value={orderBy} onChange={e => setOrderBy(e.target.value)}>
                   <option value="">Orden predeterminado</option>
                   {activeSource?.fields.map(f => (
                     <option key={f.key} value={f.key}>{f.label}</option>
                   ))}
                 </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="report-order-direction">Dirección</label>
+              </FormField>
+              <FormField label="Dirección" htmlFor="report-order-direction">
                 <select id="report-order-direction" className="form-select" value={orderDirection} onChange={e => setOrderDirection(e.target.value as 'asc' | 'desc')}>
                   <option value="asc">Ascendente</option>
                   <option value="desc">Descendente</option>
                 </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="report-filter-field">Filtrar por campo</label>
+              </FormField>
+              <FormField label="Filtrar por campo" htmlFor="report-filter-field">
                 <select
                   id="report-filter-field"
                   className="form-select"
@@ -710,12 +699,11 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                     <option key={f.key} value={f.key}>{f.label}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
               {filterKey && (
-                <div className="form-group">
-                  <label className="form-label" htmlFor="report-filter-value">Valor del filtro</label>
+                <FormField label="Valor del filtro" htmlFor="report-filter-value">
                   <input id="report-filter-value" className="form-input" value={filterValue} onChange={e => setFilterValue(e.target.value)} placeholder="Valor exacto" />
-                </div>
+                </FormField>
               )}
               <div className="form-span-2">
                 <button
