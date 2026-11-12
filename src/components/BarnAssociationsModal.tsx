@@ -248,8 +248,8 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
     if (!result) return;
     const affected = (result.affected as { label: string; count: number }[] | undefined) ?? [];
     const skipped = (result.skipped as { label: string; count: number }[] | undefined) ?? [];
-    const moved = affected.map((item) => `${item.count} ${item.label.toLowerCase()}`).join(', ');
-    const pending = skipped.map((item) => `${item.count} ${item.label.toLowerCase()}`).join(', ');
+    const moved = affected.map((item) => `${item.label.toLowerCase()} (${item.count})`).join(', ');
+    const pending = skipped.map((item) => `${item.label.toLowerCase()} (${item.count})`).join(', ');
     setNotice(
       `${moved ? `${mode === 'detach' ? 'Desvinculado: ' : 'Reasignado: '}${moved}.` : 'No había registros que resolver.'}`
       + (pending ? ` Queda pendiente de traslado: ${pending}.` : ''),
