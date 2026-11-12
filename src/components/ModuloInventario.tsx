@@ -29,6 +29,7 @@ import {
   DataCardMeta,
   SectionCard,
   SearchField,
+  FormField,
 } from './ui';
 import type { Perfil } from '../types';
 
@@ -737,8 +738,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
               {formError && <InlineAlert tone="error">{formError}</InlineAlert>}
 
               <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label" htmlFor="inv-type">Tipo de movimiento</label>
+                <FormField label="Tipo de movimiento" htmlFor="inv-type">
                   <select
                     id="inv-type"
                     className="form-select"
@@ -750,10 +750,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     ))}
                   </select>
                   <p className="form-helper">{MOVEMENT_HINTS[form.movementType]}</p>
-                </div>
+                </FormField>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="inv-date">Fecha del movimiento</label>
+                <FormField label="Fecha del movimiento" htmlFor="inv-date" helper="Acepta correcciones retroactivas si no dejan saldo negativo.">
                   <input
                     id="inv-date"
                     type="date"
@@ -763,11 +762,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     onChange={(event) => setField('effectiveDate', event.target.value)}
                     required
                   />
-                  <p className="form-helper">Acepta correcciones retroactivas si no dejan saldo negativo.</p>
-                </div>
+                </FormField>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="inv-barn">Galpón</label>
+                <FormField label="Galpón" htmlFor="inv-barn">
                   <select
                     id="inv-barn"
                     className="form-select"
@@ -780,10 +777,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                       <option key={barn.id} value={barn.id}>{barn.name}</option>
                     ))}
                   </select>
-                </div>
+                </FormField>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="inv-stage">Etapa</label>
+                <FormField label="Etapa" htmlFor="inv-stage">
                   <select
                     id="inv-stage"
                     className="form-select"
@@ -796,10 +792,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                       <option key={stage.code} value={stage.code}>{stage.name}</option>
                     ))}
                   </select>
-                </div>
+                </FormField>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="inv-location">Ubicación</label>
+                <FormField label="Ubicación" htmlFor="inv-location">
                   <select
                     id="inv-location"
                     className="form-select"
@@ -811,10 +806,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                       <option key={location.code} value={location.code}>{location.name}</option>
                     ))}
                   </select>
-                </div>
+                </FormField>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="inv-lot">Lote</label>
+                <FormField label="Lote" htmlFor="inv-lot">
                   <select
                     id="inv-lot"
                     className="form-select"
@@ -826,10 +820,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                       <option key={lot.code} value={lot.code}>{lot.name}</option>
                     ))}
                   </select>
-                </div>
+                </FormField>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="inv-sex">Sexo</label>
+                <FormField label="Sexo" htmlFor="inv-sex">
                   <select
                     id="inv-sex"
                     className="form-select"
@@ -840,12 +833,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     <option value="hembra">Hembras</option>
                     <option value="pendiente">Pendiente de sexado</option>
                   </select>
-                </div>
+                </FormField>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="inv-quantity">
-                    Cantidad {form.movementType === 'adjustment' ? '(use negativo para restar)' : ''}
-                  </label>
+                <FormField label={<>Cantidad {form.movementType === 'adjustment' ? '(use negativo para restar)' : ''}</>} htmlFor="inv-quantity">
                   <input
                     id="inv-quantity"
                     type="number"
@@ -856,13 +846,10 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     placeholder="Cabezas"
                     required
                   />
-                </div>
+                </FormField>
 
                 {requiresCause && (
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="inv-cause">
-                      {form.movementType === 'death' ? 'Causa de muerte' : 'Causa de salida'}
-                    </label>
+                  <FormField label={form.movementType === 'death' ? 'Causa de muerte' : 'Causa de salida'} htmlFor="inv-cause">
                     <select
                       id="inv-cause"
                       className="form-select"
@@ -877,30 +864,25 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                         <option key={cause.code} value={cause.code}>{cause.name}</option>
                       ))}
                     </select>
-                  </div>
+                  </FormField>
                 )}
 
                 {form.movementType === 'sale' && <>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="inv-sale-amount">Importe total de la venta</label>
+                  <FormField label="Importe total de la venta" htmlFor="inv-sale-amount">
                     <input id="inv-sale-amount" type="number" min="0.01" step="0.01" className="form-input" value={form.saleAmount} onChange={(event) => setField('saleAmount', event.target.value)} required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="inv-sale-currency">Moneda</label>
+                  </FormField>
+                  <FormField label="Moneda" htmlFor="inv-sale-currency">
                     <select id="inv-sale-currency" className="form-select" value={form.currencyCode} onChange={(event) => setField('currencyCode', event.target.value)} required><option value="PEN">PEN · Soles</option><option value="USD">USD · Dólares</option></select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="inv-sale-buyer">Comprador</label>
+                  </FormField>
+                  <FormField label="Comprador" htmlFor="inv-sale-buyer">
                     <input id="inv-sale-buyer" className="form-input" maxLength={160} value={form.counterparty} onChange={(event) => setField('counterparty', event.target.value)} placeholder="Opcional" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="inv-sale-reference">Referencia o comprobante</label>
+                  </FormField>
+                  <FormField label="Referencia o comprobante" htmlFor="inv-sale-reference">
                     <input id="inv-sale-reference" className="form-input" maxLength={100} value={form.documentReference} onChange={(event) => setField('documentReference', event.target.value)} placeholder="Opcional" />
-                  </div>
+                  </FormField>
                 </>}
 
-                <div className="form-group form-col-span-full">
-                  <label className="form-label" htmlFor="inv-notes">Notas</label>
+                <FormField className="form-col-span-full" label="Notas" htmlFor="inv-notes">
                   <textarea
                     id="inv-notes"
                     className="form-textarea"
@@ -909,10 +891,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     onChange={(event) => setField('notes', event.target.value)}
                     placeholder="Detalle opcional: proveedor, corral, observaciones sanitarias"
                   />
-                </div>
+                </FormField>
 
-                <div className="form-group form-col-span-full">
-                  <label className="form-label" htmlFor="inv-reason">Motivo del registro</label>
+                <FormField className="form-col-span-full" label="Motivo del registro" htmlFor="inv-reason" helper="Queda en la auditoría con su usuario y la fecha efectiva.">
                   <input
                     id="inv-reason"
                     type="text"
@@ -922,8 +903,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     placeholder="Ej. Cierre de conteo físico del galpón A"
                     required
                   />
-                  <p className="form-helper">Queda en la auditoría con su usuario y la fecha efectiva.</p>
-                </div>
+                </FormField>
               </div>
 
               <div className="form-actions">
@@ -969,8 +949,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
             <form onSubmit={inventoryOperationMode === 'transfer' ? submitTransfer : submitReconciliation} className="form-stack">
               {formError && <InlineAlert tone="error">{formError}</InlineAlert>}
               <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label" htmlFor="t10-mode">Operación</label>
+                <FormField label="Operación" htmlFor="t10-mode">
                   <select
                     id="t10-mode"
                     className="form-select"
@@ -980,10 +959,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     <option value="transfer">Trasladar entre galpones</option>
                     <option value="reconcile">Conciliar conteo físico</option>
                   </select>
-                </div>
+                </FormField>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="t10-date">Fecha efectiva</label>
+                <FormField label="Fecha efectiva" htmlFor="t10-date">
                   <input
                     id="t10-date"
                     type="date"
@@ -993,10 +971,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     onChange={(event) => setField('effectiveDate', event.target.value)}
                     required
                   />
-                </div>
+                </FormField>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="t10-source">Galpón</label>
+                <FormField label="Galpón" htmlFor="t10-source">
                   <select
                     id="t10-source"
                     className="form-select"
@@ -1008,11 +985,10 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                       <option key={barn.id} value={barn.id}>{barn.name}</option>
                     ))}
                   </select>
-                </div>
+                </FormField>
 
                 {inventoryOperationMode === 'transfer' && (
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="t10-dest">Galpón destino</label>
+                  <FormField label="Galpón destino" htmlFor="t10-dest">
                     <select
                       id="t10-dest"
                       className="form-select"
@@ -1025,11 +1001,10 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                         <option key={barn.id} value={barn.id}>{barn.name}</option>
                       ))}
                     </select>
-                  </div>
+                  </FormField>
                 )}
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="t10-stage">Etapa</label>
+                <FormField label="Etapa" htmlFor="t10-stage">
                   <select
                     id="t10-stage"
                     className="form-select"
@@ -1041,11 +1016,10 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                       <option key={stage.code} value={stage.code}>{stage.name}</option>
                     ))}
                   </select>
-                </div>
+                </FormField>
 
                 {inventoryOperationMode === 'transfer' && (
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="t10-destination-stage">Etapa de destino</label>
+                  <FormField label="Etapa de destino" htmlFor="t10-destination-stage">
                     <select
                       id="t10-destination-stage"
                       className="form-select"
@@ -1056,11 +1030,10 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                         <option key={stage.code} value={stage.code}>{stage.name}</option>
                       ))}
                     </select>
-                  </div>
+                  </FormField>
                 )}
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="t10-sex">Sexo</label>
+                <FormField label="Sexo" htmlFor="t10-sex">
                   <select
                     id="t10-sex"
                     className="form-select"
@@ -1071,12 +1044,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                       <option key={key} value={key}>{label}</option>
                     ))}
                   </select>
-                </div>
+                </FormField>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="t10-quantity">
-                    {inventoryOperationMode === 'transfer' ? 'Cabezas a trasladar' : 'Cabezas contadas'}
-                  </label>
+                <FormField label={inventoryOperationMode === 'transfer' ? 'Cabezas a trasladar' : 'Cabezas contadas'} htmlFor="t10-quantity">
                   <input
                     id="t10-quantity"
                     type="number"
@@ -1087,12 +1057,11 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     onChange={(event) => setField('quantity', event.target.value)}
                     required
                   />
-                </div>
+                </FormField>
 
                 {inventoryOperationMode === 'transfer' ? (
                   <>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="t10-source-location">Ubicación de origen</label>
+                    <FormField label="Ubicación de origen" htmlFor="t10-source-location">
                       <select
                         id="t10-source-location"
                         className="form-select"
@@ -1104,10 +1073,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                           <option key={location.code} value={location.code}>{location.name}</option>
                         ))}
                       </select>
-                    </div>
+                    </FormField>
 
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="t10-dest-location">Ubicación de destino</label>
+                    <FormField label="Ubicación de destino" htmlFor="t10-dest-location">
                       <select
                         id="t10-dest-location"
                         className="form-select"
@@ -1119,10 +1087,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                           <option key={location.code} value={location.code}>{location.name}</option>
                         ))}
                       </select>
-                    </div>
+                    </FormField>
 
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="t10-source-lot">Lote de origen</label>
+                    <FormField label="Lote de origen" htmlFor="t10-source-lot">
                       <select
                         id="t10-source-lot"
                         className="form-select"
@@ -1134,10 +1101,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                           <option key={lot.code} value={lot.code}>{lot.name}</option>
                         ))}
                       </select>
-                    </div>
+                    </FormField>
 
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="t10-dest-lot">Lote de destino</label>
+                    <FormField label="Lote de destino" htmlFor="t10-dest-lot">
                       <select
                         id="t10-dest-lot"
                         className="form-select"
@@ -1149,12 +1115,11 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                           <option key={lot.code} value={lot.code}>{lot.name}</option>
                         ))}
                       </select>
-                    </div>
+                    </FormField>
                   </>
                 ) : (
                   <>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="t10-location">Ubicación</label>
+                    <FormField label="Ubicación" htmlFor="t10-location">
                       <select
                         id="t10-location"
                         className="form-select"
@@ -1166,10 +1131,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                           <option key={location.code} value={location.code}>{location.name}</option>
                         ))}
                       </select>
-                    </div>
+                    </FormField>
 
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="t10-lot">Lote</label>
+                    <FormField label="Lote" htmlFor="t10-lot">
                       <select
                         id="t10-lot"
                         className="form-select"
@@ -1181,12 +1145,11 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                           <option key={lot.code} value={lot.code}>{lot.name}</option>
                         ))}
                       </select>
-                    </div>
+                    </FormField>
                   </>
                 )}
 
-                <div className="form-group form-col-span-full">
-                  <label className="form-label" htmlFor="t10-reason">Motivo y aprobación</label>
+                <FormField className="form-col-span-full" label="Motivo y aprobación" htmlFor="t10-reason">
                   <input
                     id="t10-reason"
                     className="form-input"
@@ -1196,7 +1159,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     maxLength={300}
                     placeholder="Detalle la justificación del traslado o conteo físico"
                   />
-                </div>
+                </FormField>
               </div>
               <div className="form-actions">
                 <button
@@ -1223,8 +1186,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
             <form className="form-stack" onSubmit={(event) => void submitCorrection(event)}>
               {formError && <InlineAlert tone="error">{formError}</InlineAlert>}
               <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label" htmlFor="t10-correction-id">ID del movimiento</label>
+                <FormField label="ID del movimiento" htmlFor="t10-correction-id">
                   <input
                     id="t10-correction-id"
                     type="number"
@@ -1238,9 +1200,8 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     }}
                     required
                   />
-                </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="t10-correction-quantity">Cantidad correcta</label>
+                </FormField>
+                <FormField label="Cantidad correcta" htmlFor="t10-correction-quantity">
                   <input
                     id="t10-correction-quantity"
                     type="number"
@@ -1253,9 +1214,8 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     }}
                     required
                   />
-                </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="t10-correction-reason">Motivo</label>
+                </FormField>
+                <FormField label="Motivo" htmlFor="t10-correction-reason">
                   <input
                     id="t10-correction-reason"
                     className="form-input"
@@ -1263,7 +1223,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     onChange={(event) => setCorrectionForm((prev) => ({ ...prev, reason: event.target.value }))}
                     required
                   />
-                </div>
+                </FormField>
               </div>
               <div className="form-actions">
                 <button

@@ -25,6 +25,7 @@ import {
   DataCardHead,
   DataCardMeta,
   DataCardActions,
+  FormField,
 } from './ui';
 
 interface CatalogItem {
@@ -674,15 +675,10 @@ export function ModuloConfiguracion() {
                       />
                     </div>
                   ))}
-                  <div className="form-group">
-                    <label className="form-label inline-flex items-center gap-1">
-                      <IconCalendar size={14} />
-                      <span>Vigente desde:</span>
-                    </label>
+                  <FormField labelClassName="inline-flex items-center gap-1" label={<><IconCalendar size={14} /><span>Vigente desde:</span></>}>
                     <input type="date" className="form-input" required value={settingsDate} onChange={(e) => setSettingsDate(e.target.value)} />
-                  </div>
-                  <div className="form-group form-col-span-full">
-                    <label className="form-label">Motivo del cambio (queda en auditoría):</label>
+                  </FormField>
+                  <FormField className="form-col-span-full" label="Motivo del cambio (queda en auditoría):">
                     <input
                       type="text"
                       className="form-input"
@@ -692,7 +688,7 @@ export function ModuloConfiguracion() {
                       onChange={(e) => setSettingsReason(e.target.value)}
                       placeholder="Ej. Actualización del nombre comercial de la granja"
                     />
-                  </div>
+                  </FormField>
                 </div>
                 <div className="form-actions form-actions-sticky">
                 <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
@@ -805,26 +801,21 @@ export function ModuloConfiguracion() {
               )}
               <form id="catalog-value-form" onSubmit={handleCreateCatalog}>
                 <div className="form-grid mb-3">
-                  <div className="form-group">
-                    <label className="form-label">Código</label>
+                  <FormField label="Código">
                     <input type="text" className="form-input" required value={catCode} onChange={(e) => setCatCode(e.target.value)} placeholder="Ej. gestacion_tardia" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Nombre visible</label>
+                  </FormField>
+                  <FormField label="Nombre visible">
                     <input type="text" className="form-input" required value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="Ej. Gestación tardía" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Orden</label>
+                  </FormField>
+                  <FormField label="Orden">
                     <input type="number" className="form-input" min={0} value={catSort} onChange={(e) => setCatSort(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Vigente desde</label>
+                  </FormField>
+                  <FormField label="Vigente desde">
                     <input type="date" className="form-input" required value={catDate} onChange={(e) => setCatDate(e.target.value)} />
-                  </div>
-                  <div className="form-group form-col-span-full">
-                    <label className="form-label">Motivo (auditoría)</label>
+                  </FormField>
+                  <FormField className="form-col-span-full" label="Motivo (auditoría)">
                     <input type="text" className="form-input" value={catReason} onChange={(e) => setCatReason(e.target.value)} placeholder="Ej. Nuevo valor solicitado por producción" />
-                  </div>
+                  </FormField>
                 </div>
                 <button type="submit" className="btn btn-primary" disabled={catSaving}>
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -891,57 +882,42 @@ export function ModuloConfiguracion() {
               )}
               <form onSubmit={handleSaveStage}>
                 <div className="form-grid mb-3">
-                  <div className="form-group">
-                    <label className="form-label">Código</label>
+                  <FormField label="Código">
                     <input type="text" className="form-input" required value={stageCode} onChange={(e) => setStageCode(e.target.value)} placeholder="Ej. preinicio" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Nombre</label>
+                  </FormField>
+                  <FormField label="Nombre">
                     <input type="text" className="form-input" required value={stageName} onChange={(e) => setStageName(e.target.value)} placeholder="Ej. Preinicio" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Orden</label>
+                  </FormField>
+                  <FormField label="Orden">
                     <input type="number" className="form-input" min={0} value={stageSort} onChange={(e) => setStageSort(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Peso inicial (kg, vacío = abierto)</label>
+                  </FormField>
+                  <FormField label="Peso inicial (kg, vacío = abierto)">
                     <input type="number" step="0.01" min={0} className="form-input" value={stageInitialWeight} onChange={(e) => setStageInitialWeight(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Peso final (kg, vacío = abierto)</label>
+                  </FormField>
+                  <FormField label="Peso final (kg, vacío = abierto)">
                     <input type="number" step="0.01" min={0} className="form-input" value={stageFinalWeight} onChange={(e) => setStageFinalWeight(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Edad inicial (días)</label>
+                  </FormField>
+                  <FormField label="Edad inicial (días)">
                     <input type="number" min={0} className="form-input" value={stageInitialAge} onChange={(e) => setStageInitialAge(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Edad final (días)</label>
+                  </FormField>
+                  <FormField label="Edad final (días)">
                     <input type="number" min={0} className="form-input" value={stageFinalAge} onChange={(e) => setStageFinalAge(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Duración (días)</label>
+                  </FormField>
+                  <FormField label="Duración (días)">
                     <input type="number" min={1} className="form-input" value={stageDuration} onChange={(e) => setStageDuration(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Ración asociada</label>
+                  </FormField>
+                  <FormField label="Ración asociada">
                     <input type="text" className="form-input" value={stageRation} onChange={(e) => setStageRation(e.target.value)} placeholder="Ej. Alimento preinicio" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Consumo diario (kg/cabeza)</label>
+                  </FormField>
+                  <FormField label="Consumo diario (kg/cabeza)">
                     <input type="number" step="0.01" min={0} className="form-input" value={stageDailyFeed} onChange={(e) => setStageDailyFeed(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label inline-flex items-center gap-1">
-                      <IconCalendar size={14} />
-                      <span>Vigente desde</span>
-                    </label>
+                  </FormField>
+                  <FormField labelClassName="inline-flex items-center gap-1" label={<><IconCalendar size={14} /><span>Vigente desde</span></>}>
                     <input type="date" className="form-input" required value={stageDate} onChange={(e) => setStageDate(e.target.value)} />
-                  </div>
-                  <div className="form-group form-col-span-full">
-                    <label className="form-label">Motivo (auditoría)</label>
+                  </FormField>
+                  <FormField className="form-col-span-full" label="Motivo (auditoría)">
                     <input type="text" className="form-input" required minLength={5} value={stageReason} onChange={(e) => setStageReason(e.target.value)} placeholder="Ej. Ajuste de dieta y duración por indicación veterinaria" />
-                  </div>
+                  </FormField>
                 </div>
                 <button type="submit" className="btn btn-primary" disabled={stageSaving}>
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1006,16 +982,13 @@ export function ModuloConfiguracion() {
               )}
               <form onSubmit={handleSaveLocation} className="mb-4">
                 <div className="form-grid mb-2">
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="config-location-code">Código</label>
+                  <FormField label="Código" htmlFor="config-location-code">
                     <input id="config-location-code" type="text" className="form-input" required value={locationCode} onChange={(e) => setLocationCode(e.target.value)} placeholder="Ej. galpon_c" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="config-location-name">Nombre</label>
+                  </FormField>
+                  <FormField label="Nombre" htmlFor="config-location-name">
                     <input id="config-location-name" type="text" className="form-input" required value={locationName} onChange={(e) => setLocationName(e.target.value)} placeholder="Ej. Galpón C" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="config-location-type">Tipo</label>
+                  </FormField>
+                  <FormField label="Tipo" htmlFor="config-location-type">
                     <select id="config-location-type" className="form-select" value={locationType} onChange={(e) => {
                       setLocationType(e.target.value);
                       if (e.target.value === 'galpon') setLocationParent('');
@@ -1025,16 +998,14 @@ export function ModuloConfiguracion() {
                       <option value="area">Área</option>
                       <option value="otro">Otro</option>
                     </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="location-parent">Ubicación padre{locationType === 'corral' ? '' : ' (opcional)'}</label>
+                  </FormField>
+                  <FormField label={<>Ubicación padre{locationType === 'corral' ? '' : ' (opcional)'}</>} htmlFor="location-parent">
                     <select id="location-parent" className="form-select" required={locationType === 'corral'} disabled={locationType === 'galpon'} value={locationParent} onChange={(e) => setLocationParent(e.target.value)}>
                       <option value="">Sin padre (ubicación raíz)</option>
                       {validLocationParents.map((location) => <option key={location.code} value={location.code}>{location.name} · {location.code}</option>)}
                     </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="location-barn">Galpón vinculado</label>
+                  </FormField>
+                  <FormField label="Galpón vinculado" htmlFor="location-barn">
                     {locationParent ? (
                       <p className="text-sm">{barns.find((barn) => barn.id === locationChoices.find((location) => location.code === locationParent)?.barnId)?.name ?? 'Seleccione un padre vigente'} · heredado del padre</p>
                     ) : (
@@ -1043,15 +1014,13 @@ export function ModuloConfiguracion() {
                         {barns.filter((barn) => barn.status !== 'inactivo').map((barn) => <option key={barn.id} value={barn.id}>{barn.name}</option>)}
                       </select>
                     )}
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="config-location-date">Vigente desde</label>
+                  </FormField>
+                  <FormField label="Vigente desde" htmlFor="config-location-date">
                     <input id="config-location-date" type="date" className="form-input" required value={locationDate} onChange={(e) => setLocationDate(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="config-location-reason">Motivo (auditoría)</label>
+                  </FormField>
+                  <FormField label="Motivo (auditoría)" htmlFor="config-location-reason">
                     <input id="config-location-reason" type="text" className="form-input" value={locationReason} onChange={(e) => setLocationReason(e.target.value)} placeholder="Ej. Nueva área habilitada" />
-                  </div>
+                  </FormField>
                 </div>
                 <div className="form-actions form-actions-sticky">
                 <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" disabled={locationSaving} onClick={() => setLocationModal(false)}><IconX size={14} /><span>Cancelar</span></button>
@@ -1104,31 +1073,26 @@ export function ModuloConfiguracion() {
               )}
               <form onSubmit={handleSaveLot}>
                 <div className="form-grid mb-2">
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="config-lot-code">Código</label>
+                  <FormField label="Código" htmlFor="config-lot-code">
                     <input id="config-lot-code" type="text" className="form-input" required value={lotCode} onChange={(e) => setLotCode(e.target.value)} placeholder="Ej. lote_levante_b" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="config-lot-name">Nombre</label>
+                  </FormField>
+                  <FormField label="Nombre" htmlFor="config-lot-name">
                     <input id="config-lot-name" type="text" className="form-input" required value={lotName} onChange={(e) => setLotName(e.target.value)} placeholder="Ej. Lote Levante B" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="config-lot-stage">Etapa asociada (opcional)</label>
+                  </FormField>
+                  <FormField label="Etapa asociada (opcional)" htmlFor="config-lot-stage">
                     <select id="config-lot-stage" className="form-select" value={lotStage} onChange={(e) => setLotStage(e.target.value)}>
                       <option value="">Sin etapa</option>
                       {data.stages.map((stage) => (
                         <option key={stage.code} value={stage.code}>{stage.name}</option>
                       ))}
                     </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="config-lot-date">Vigente desde</label>
+                  </FormField>
+                  <FormField label="Vigente desde" htmlFor="config-lot-date">
                     <input id="config-lot-date" type="date" className="form-input" required value={lotDate} onChange={(e) => setLotDate(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="config-lot-reason">Motivo (auditoría)</label>
+                  </FormField>
+                  <FormField label="Motivo (auditoría)" htmlFor="config-lot-reason">
                     <input id="config-lot-reason" type="text" className="form-input" value={lotReason} onChange={(e) => setLotReason(e.target.value)} placeholder="Ej. Nuevo lote de manejo" />
-                  </div>
+                  </FormField>
                 </div>
                 <div className="form-actions form-actions-sticky">
                 <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" disabled={lotSaving} onClick={() => setLotModal(false)}><IconX size={14} /><span>Cancelar</span></button>
@@ -1161,12 +1125,10 @@ export function ModuloConfiguracion() {
             <InlineAlert tone="error" onDismiss={() => setRetireError(null)}>{retireError}</InlineAlert>
           )}
           <form onSubmit={submitRetire}>
-            <div className="form-group mb-2">
-              <label className="form-label text-sm" htmlFor="config-retire-date">Vigente hasta (nueva fecha efectiva):</label>
+            <FormField className="mb-2" labelClassName="text-sm" label="Vigente hasta (nueva fecha efectiva):" htmlFor="config-retire-date">
               <input id="config-retire-date" type="date" className="form-input" required value={retireDate} onChange={(e) => setRetireDate(e.target.value)} />
-            </div>
-            <div className="form-group mb-3">
-              <label className="form-label text-sm" htmlFor="config-retire-reason">Motivo del retiro:</label>
+            </FormField>
+            <FormField className="mb-3" labelClassName="text-sm" label="Motivo del retiro:" htmlFor="config-retire-reason">
               <input
                 id="config-retire-reason"
                 type="text"
@@ -1177,7 +1139,7 @@ export function ModuloConfiguracion() {
                 onChange={(e) => setRetireReason(e.target.value)}
                 placeholder="Ej. Reemplazado por un nuevo valor del catálogo"
               />
-            </div>
+            </FormField>
             <div className="form-actions form-actions-sticky mt-4">
               <button type="button" className="btn btn-outline" onClick={() => setRetireTarget(null)} disabled={retireSaving}>
                 Cancelar
