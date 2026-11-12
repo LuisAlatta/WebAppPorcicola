@@ -286,6 +286,10 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
   const migratePhrase = oneOrMany(migrateCount, 'dato histórico', 'datos históricos');
   const migrateVerb = migrateCount === 1 ? 'pasa' : 'pasan';
   const destinationName = barns.find((item) => item.id === target)?.name ?? '';
+  const missing: string[] = [];
+  if (!hasTarget) missing.push('el galpón destino');
+  if (!hasReason) missing.push('el motivo (mínimo 5 caracteres)');
+  const showRequirements = !loading && !!data && !data.canDelete && missing.length > 0;
   const evacuateSummary = [
     headsLabel ? `${headsLabel} ${headsVerb} a ${destinationName}` : null,
     migrateCount > 0 ? `${migratePhrase} ${migrateVerb} a ese galpón` : null,
@@ -365,6 +369,8 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
                 <select
                   id="barn-assoc-target"
                   className="form-select"
+                  required
+                  aria-describedby={showRequirements ? 'barn-assoc-requirements' : undefined}
                   value={targetBarnId}
                   onChange={(event) => setTargetBarnId(event.target.value === '' ? '' : Number(event.target.value))}
                 >
@@ -379,11 +385,20 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
                 <input
                   id="barn-assoc-reason"
                   className="form-control"
+                  required
+                  minLength={5}
+                  aria-describedby={showRequirements ? 'barn-assoc-requirements' : undefined}
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
                   placeholder="Ej. el galpón se abrió por error y sus registros son de otro"
                 />
               </div>
+              {showRequirements && (
+                <p id="barn-assoc-requirements" className="barn-assoc-requirements">
+                  <IconAlertTriangle size={14} />
+                  <span>Para vaciar y eliminar falta {missing.join(' y ')}.</span>
+                </p>
+              )}
             </div>
 
             {detailOpen && (
