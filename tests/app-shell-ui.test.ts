@@ -2,7 +2,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Navbar } from '../src/components/Navbar';
-import { AnimalWorkspace, AnimalLoadingSkeleton } from '../src/components/AnimalWorkspace';
+import { AnimalWorkspace } from '../src/components/AnimalWorkspace';
+import { DataState } from '../src/components/DataState';
 
 describe('Barra superior de aplicación', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -21,10 +22,10 @@ describe('Barra superior de aplicación', () => {
     expect(html).toBe('Contenido de la ficha');
   });
   it('la carga de la ficha tiene mensaje accesible y skeleton', () => {
-    const html = renderToStaticMarkup(createElement(AnimalLoadingSkeleton));
+    const html = renderToStaticMarkup(createElement(DataState, { variant: 'loading', title: 'Cargando ficha del animal…' }));
     expect(html).toContain('role="status"');
     expect(html).toContain('Cargando ficha del animal');
-    expect(html).toContain('animal-loading-skeleton');
+    expect(html).toContain('data-skeleton');
     expect(html).toContain('aria-hidden="true"');
   });
 });

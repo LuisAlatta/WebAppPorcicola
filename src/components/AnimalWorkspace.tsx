@@ -1,13 +1,7 @@
 import type { ReactNode } from 'react';
 import { ModalDialog } from './ModalDialog';
-import { IconX, IconRefreshCw } from './icons';
-
-export function AnimalLoadingSkeleton() {
-  return <div className="animal-loading-state" role="status" aria-live="polite">
-    <p className="inline-flex items-center gap-2"><IconRefreshCw size={18} className="spinner-icon" /><span>Cargando ficha del animal…</span></p>
-    <div className="animal-loading-skeleton" aria-hidden="true"><div /><div /><div /></div>
-  </div>;
-}
+import { DataState } from './DataState';
+import { IconX } from './icons';
 
 export function AnimalWorkspace({ modal, title, onClose, busy, children, loading = false }: {
   modal: boolean;
@@ -23,6 +17,6 @@ export function AnimalWorkspace({ modal, title, onClose, busy, children, loading
       <h2 id="animal-workspace-title">{title}</h2>
       <button type="button" className="btn btn-outline animal-icon-button" aria-label="Cerrar ficha del animal" title="Cerrar" onClick={onClose} disabled={busy}><IconX size={20} /></button>
     </div>
-    <div className="animal-dialog-body" aria-busy={loading}>{loading ? <AnimalLoadingSkeleton /> : children}</div>
+    <div className="animal-dialog-body" aria-busy={loading}>{loading ? <DataState variant="loading" title="Cargando ficha del animal…" /> : children}</div>
   </ModalDialog>;
 }

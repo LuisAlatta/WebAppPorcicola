@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { IconBuilding, IconSettings, IconArrowRight, IconArrowLeft, IconCheck } from './icons';
+import { errorMessage, pluralize } from '../utils/format';
 import type { Perfil } from '../types';
 import { ModuloAdministracion } from './ModuloAdministracion';
 
@@ -18,7 +19,7 @@ export function SelectorGalpones({ perfil, selected, onContinue }: { perfil: Per
         const data = await response.json() as { barns?: { id: number; name: string }[]; error?: string };
         if (!response.ok || !data.barns) throw new Error(data.error ?? 'No se pudieron cargar los galpones');
         if (!cancelled) { setBarns(data.barns); setIds(current => current.filter(id => data.barns!.some(barn => barn.id === id))); }
-      } catch (err) { if (!cancelled) setError(err instanceof Error ? err.message : 'No se pudieron cargar los galpones'); }
+      } catch (err) { if (!cancelled) setError(errorMessage(err, 'No se pudieron cargar los galpones')); }
       finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
@@ -47,7 +48,7 @@ export function SelectorGalpones({ perfil, selected, onContinue }: { perfil: Per
       </div>
     </>}
     <div className="barn-selection-footer">
-    <p role="status" aria-live="polite">{loading ? 'Preparando la selección' : !ids.length ? 'Selecciona al menos un galpón para continuar' : `${ids.length} ${ids.length === 1 ? 'galpón seleccionado' : 'galpones seleccionados'}`}</p>
+    <p role="status" aria-live="polite">{loading ? 'Preparando la selección' : !ids.length ? 'Selecciona al menos un galpón para continuar' : pluralize(ids.length, 'galpón seleccionado', 'galpones seleccionados')}</p>
     <button type="button" className="btn btn-primary barn-continue-button" disabled={loading || !!error || !ids.length}
       onClick={() => onContinue(ids, barns.filter(barn => ids.includes(barn.id)).map(barn => barn.name))}>
       <span>Siguiente</span><IconArrowRight size={16} />

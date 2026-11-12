@@ -15,9 +15,11 @@ interface InlineAlertProps {
   children: ReactNode;
   onDismiss?: () => void;
   autoDismissMs?: number;
+  id?: string;
+  className?: string;
 }
 
-export function InlineAlert({ tone, children, onDismiss, autoDismissMs }: InlineAlertProps) {
+export function InlineAlert({ tone, children, onDismiss, autoDismissMs, id, className }: InlineAlertProps) {
   useEffect(() => {
     if (!autoDismissMs || !onDismiss) return;
     const timer = window.setTimeout(onDismiss, autoDismissMs);
@@ -27,7 +29,8 @@ export function InlineAlert({ tone, children, onDismiss, autoDismissMs }: Inline
   const Icon = TONE_ICON[tone];
   return (
     <div
-      className={`alert alert-${tone}`}
+      id={id}
+      className={`alert alert-${tone}${className ? ` ${className}` : ''}`}
       role={tone === 'error' ? 'alert' : 'status'}
       aria-live={tone === 'error' ? 'assertive' : 'polite'}
     >

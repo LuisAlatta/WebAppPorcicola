@@ -18,6 +18,7 @@ import { ModuloSanidad } from './components/ModuloSanidad';
 import { ModuloAlertas } from './components/ModuloAlertas';
 import { SessionState } from './components/SessionState';
 import { DataState } from './components/DataState';
+import { BarnScopeBar, InlineAlert } from './components/ui';
 const ModuloFinanzas = lazy(() => import('./components/ModuloFinanzas').then(module => ({default:module.ModuloFinanzas})));
 const ModuloAnimales = lazy(() => import('./components/ModuloAnimales').then(module => ({default:module.ModuloAnimales})));
 const ModuloReportes = lazy(() => import('./components/ModuloReportes').then(module => ({default:module.ModuloReportes})));
@@ -233,10 +234,10 @@ function App() {
         />
       )}
       <PwaControls />
-      {logoutError && <div className="alert alert-danger" role="alert">{logoutError}</div>}
+      {logoutError && <InlineAlert tone="error" onDismiss={() => setLogoutError('')}>{logoutError}</InlineAlert>}
 
       <main className="main-content">
-        {estaAutenticado && vistaActual !== 'login' && barnSelection.ids.length > 0 && !isAnimalView && <div className="barn-scope-bar"><span>Galpones: {barnSelection.names.join(', ')}</span><button className="btn btn-outline btn-sm" type="button" onClick={() => setChoosingBarns(true)}>Cambiar galpones</button></div>}
+        {estaAutenticado && vistaActual !== 'login' && barnSelection.ids.length > 0 && !isAnimalView && <BarnScopeBar names={barnSelection.names} onChangeBarns={() => setChoosingBarns(true)} />}
         {renderVista()}
       </main>
 

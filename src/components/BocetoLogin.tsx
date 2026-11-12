@@ -7,13 +7,14 @@ import {
   IconLock,
   IconEye,
   IconEyeOff,
-  IconAlertCircle,
   IconShield,
   IconLogIn,
   IconRefreshCw,
   IconStethoscope,
 } from './icons';
 import { PwaInstallButton } from './PwaInstallButton';
+import { InlineAlert } from './ui';
+import { errorMessage } from '../utils/format';
 
 export interface DemoAccount {
   role: Perfil;
@@ -202,9 +203,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
       onLogin(data.user.role, data.user.username);
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'No se pudo conectar con el servidor. Vuelve a intentar cuando tengas conexión.',
+        errorMessage(err, 'No se pudo conectar con el servidor. Vuelve a intentar cuando tengas conexión.'),
       );
     } finally {
       setLoading(false);
@@ -321,10 +320,9 @@ export function BocetoLogin({ onLogin }: LoginProps) {
           </div>
 
           {error && (
-            <div id="login-error" className="alert alert-danger login-alert" role="alert">
-              <IconAlertCircle size={18} className="flex-shrink-0" />
-              <span>{error}</span>
-            </div>
+            <InlineAlert id="login-error" className="login-alert" tone="error">
+              {error}
+            </InlineAlert>
           )}
 
           <button
