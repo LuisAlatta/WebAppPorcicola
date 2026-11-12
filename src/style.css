@@ -2991,7 +2991,11 @@ fieldset legend {
 .barn-assoc-condensed { margin: 0; padding: 0.4rem 0.75rem; font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); background: var(--color-bg); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); overflow-wrap: anywhere; }
 @media (min-width: 720px) { .barn-assoc-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); } }
 @media (max-width: 560px) {
-  .barn-assoc-actions { flex-direction: column; align-items: stretch; }
-  .barn-assoc-actions > .table-actions { flex-wrap: wrap; }
-  .barn-assoc-actions .btn { flex: 1 1 auto; }
+  .barn-assoc-actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.5rem; }
+  .barn-assoc-actions > .table-actions { display: contents; }
+  .barn-assoc-actions .btn { min-height: 2.5rem; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+  .barn-assoc-actions .table-actions .btn:not(.btn-danger) { flex: 1 1 calc(50% - 0.25rem); }
+  .barn-assoc-actions .btn-danger { flex: 1 1 100%; order: 1; min-height: 2.75rem; font-size: 0.9rem; }
+  .barn-assoc-actions > .btn { flex: 1 1 100%; order: 2; background: transparent; border-color: transparent; color: var(--color-text-muted); }
+  .barn-assoc-actions > .btn:hover:not(:disabled) { background: var(--color-primary-light); border-color: transparent; color: var(--color-primary); transform: none; box-shadow: none; }
 }
