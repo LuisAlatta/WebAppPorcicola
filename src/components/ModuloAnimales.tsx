@@ -44,6 +44,7 @@ import {
   DataCardNote,
   DataCardActions,
   DataTable,
+  FormField,
 } from './ui';
 import type { Perfil } from '../types';
 
@@ -936,8 +937,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
           </header>
           <div className="modal-body">
             <p className="text-sm">La ficha se retirará del padrón activo. Se conservará su historial y podrá reactivarse desde el filtro de fichas inactivas. Esto no registra una venta ni una muerte y no descuenta cabezas del inventario.</p>
-            <div className="form-group">
-              <label className="form-label" htmlFor="animal-delete-reason">Motivo de eliminación</label>
+            <FormField label="Motivo de eliminación" htmlFor="animal-delete-reason" helper="Queda registrado en la auditoría con tu usuario.">
               <input
                 id="animal-delete-reason"
                 className="form-input"
@@ -947,8 +947,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 disabled={busy}
                 onChange={event => setDeleteReason(event.target.value)}
               />
-              <p className="form-helper">Queda registrado en la auditoría con tu usuario.</p>
-            </div>
+            </FormField>
             {deleteError && <InlineAlert tone="error">{deleteError}</InlineAlert>}
             {busy && <p className="animal-action-loading inline-flex items-center gap-2" role="status"><IconRefreshCw size={18} className="spinner-icon" /><span>Eliminando animal… Espera un momento.</span></p>}
           </div>
@@ -1061,8 +1060,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             )}
             {filtersOpen && <form id="animal-filters-panel" className="animal-filters-panel" onSubmit={event => { event.preventDefault(); applyFilters(); }}>
             <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-filter-type">Tipo</label>
+              <FormField label="Tipo" htmlFor="ani-filter-type">
                 <select
                   id="ani-filter-type"
                   className="form-select"
@@ -1074,10 +1072,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={type.code} value={type.code}>{type.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-filter-sex">Sexo</label>
+              <FormField label="Sexo" htmlFor="ani-filter-sex">
                 <select
                   id="ani-filter-sex"
                   className="form-select"
@@ -1089,10 +1086,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={sex.code} value={sex.code}>{sex.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-filter-status">Estado productivo</label>
+              <FormField label="Estado productivo" htmlFor="ani-filter-status">
                 <select
                   id="ani-filter-status"
                   className="form-select"
@@ -1104,10 +1100,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={status.code} value={status.code}>{status.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-filter-stage">Etapa</label>
+              <FormField label="Etapa" htmlFor="ani-filter-stage">
                 <select
                   id="ani-filter-stage"
                   className="form-select"
@@ -1119,10 +1114,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={stage.code} value={stage.code}>{stage.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-filter-barn">Galpón</label>
+              <FormField label="Galpón" htmlFor="ani-filter-barn">
                 <select
                   id="ani-filter-barn"
                   className="form-select"
@@ -1134,10 +1128,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={barn.id} value={barn.id}>{barn.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-filter-location">Ubicación</label>
+              <FormField label="Ubicación" htmlFor="ani-filter-location">
                 <select
                   id="ani-filter-location"
                   className="form-select"
@@ -1149,10 +1142,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={location.code} value={location.code}>{location.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-filter-lot">Lote</label>
+              <FormField label="Lote" htmlFor="ani-filter-lot">
                 <select
                   id="ani-filter-lot"
                   className="form-select"
@@ -1164,10 +1156,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={lot.code} value={lot.code}>{lot.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-filter-active">Disponibilidad</label>
+              <FormField label="Disponibilidad" htmlFor="ani-filter-active">
                 <select
                   id="ani-filter-active"
                   className="form-select"
@@ -1178,9 +1169,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   <option value="1">Solo activas</option>
                   <option value="0">Solo inactivas</option>
                 </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="filter-mother">Madre</label>
+              </FormField>
+              <FormField label="Madre" htmlFor="filter-mother">
                 <input
                   id="filter-mother"
                   className="form-input"
@@ -1188,9 +1178,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   onChange={(event) => setFilter('mother', event.target.value)}
                   placeholder="Código, alias o referencia"
                 />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="filter-father">Padre</label>
+              </FormField>
+              <FormField label="Padre" htmlFor="filter-father">
                 <input
                   id="filter-father"
                   className="form-input"
@@ -1198,9 +1187,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   onChange={(event) => setFilter('father', event.target.value)}
                   placeholder="Código, alias o referencia"
                 />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="filter-breed">Raza</label>
+              </FormField>
+              <FormField label="Raza" htmlFor="filter-breed">
                 <input
                   id="filter-breed"
                   className="form-input"
@@ -1208,9 +1196,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   onChange={(event) => setFilter('breed', event.target.value)}
                   placeholder="Ej. Landrace"
                 />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="filter-aptitude">Aptitud</label>
+              </FormField>
+              <FormField label="Aptitud" htmlFor="filter-aptitude">
                 <select
                   id="filter-aptitude"
                   className="form-select"
@@ -1222,9 +1209,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={item.code} value={item.code}>{item.name}</option>
                   ))}
                 </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="filter-origin">Procedencia</label>
+              </FormField>
+              <FormField label="Procedencia" htmlFor="filter-origin">
                 <select
                   id="filter-origin"
                   className="form-select"
@@ -1237,9 +1223,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   <option value="interna">Interna</option>
                   <option value="inicial">Inventario inicial</option>
                 </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="filter-entry-stage">Etapa de ingreso</label>
+              </FormField>
+              <FormField label="Etapa de ingreso" htmlFor="filter-entry-stage">
                 <select
                   id="filter-entry-stage"
                   className="form-select"
@@ -1251,7 +1236,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={item.code} value={item.code}>{item.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
             </div>
             <div className="animal-filter-actions"><button type="submit" disabled={loading} className="btn btn-primary inline-flex items-center justify-center gap-2"><IconCheck size={16} /><span>Aplicar filtros</span></button></div>
             </form>}
@@ -1442,8 +1427,14 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             <fieldset className="form-section">
               <legend>Identificación</legend>
               <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-code">Código permanente</label>
+              <FormField
+                label="Código permanente"
+                htmlFor="ani-code"
+                error={fieldErrors.code}
+                errorId="ani-code-error"
+                helper="Se conserva tal cual, incluidos los ceros a la izquierda."
+                helperId="ani-code-helper"
+              >
                 <input
                   id="ani-code"
                   type="text"
@@ -1456,17 +1447,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   aria-describedby={fieldErrors.code ? 'ani-code-error ani-code-helper' : 'ani-code-helper'}
                   required
                 />
-                {fieldErrors.code && (
-                  <p id="ani-code-error" className="field-error-message" role="alert">
-                    <IconAlertCircle size={14} />
-                    <span>{fieldErrors.code}</span>
-                  </p>
-                )}
-                <p id="ani-code-helper" className="form-helper">Se conserva tal cual, incluidos los ceros a la izquierda.</p>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-alias">Nombre o alias</label>
+              <FormField label="Nombre o alias" htmlFor="ani-alias">
                 <input
                   id="ani-alias"
                   type="text"
@@ -1475,10 +1458,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   onChange={(event) => setField('alias', event.target.value)}
                   placeholder="Opcional"
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-form-type">Tipo</label>
+              <FormField label="Tipo" htmlFor="ani-form-type">
                 <select
                   id="ani-form-type"
                   className="form-select"
@@ -1489,10 +1471,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={type.code} value={type.code}>{type.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-form-sex">Sexo</label>
+              <FormField label="Sexo" htmlFor="ani-form-sex">
                 <select
                   id="ani-form-sex"
                   className="form-select"
@@ -1503,10 +1484,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={sex.code} value={sex.code}>{sex.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-breed">Raza</label>
+              <FormField label="Raza" htmlFor="ani-breed">
                 <input
                   id="ani-breed"
                   type="text"
@@ -1515,10 +1495,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   onChange={(event) => setField('breed', event.target.value)}
                   placeholder="Opcional"
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-aptitude">Aptitud</label>
+              <FormField label="Aptitud" htmlFor="ani-aptitude">
                 <select
                   id="ani-aptitude"
                   className="form-select"
@@ -1530,15 +1509,14 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <option key={item.code} value={item.code}>{item.name}</option>
                   ))}
                 </select>
-              </div>
+              </FormField>
               </div>
             </fieldset>
 
             <fieldset className="form-section">
               <legend>Datos zootécnicos</legend>
               <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-birth">Fecha de nacimiento</label>
+              <FormField label="Fecha de nacimiento" htmlFor="ani-birth" helper="Déjela vacía si se desconoce.">
                 <input
                   id="ani-birth"
                   type="date"
@@ -1547,11 +1525,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   max={farmToday()}
                   onChange={(event) => setField('birthDate', event.target.value)}
                 />
-                <p className="form-helper">Déjela vacía si se desconoce.</p>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-birth-weight">Peso al nacer (kg)</label>
+              <FormField label="Peso al nacer (kg)" htmlFor="ani-birth-weight">
                 <input
                   id="ani-birth-weight"
                   type="number"
@@ -1562,10 +1538,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   onChange={(event) => setField('birthWeightKg', event.target.value)}
                   placeholder="Opcional"
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-weaning">Fecha de destete</label>
+              <FormField label="Fecha de destete" htmlFor="ani-weaning" error={fieldErrors.weaningDate} errorId="ani-weaning-error">
                 <input
                   id="ani-weaning"
                   type="date"
@@ -1576,16 +1551,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   aria-invalid={Boolean(fieldErrors.weaningDate)}
                   aria-describedby={fieldErrors.weaningDate ? 'ani-weaning-error' : undefined}
                 />
-                {fieldErrors.weaningDate && (
-                  <p id="ani-weaning-error" className="field-error-message" role="alert">
-                    <IconAlertCircle size={14} />
-                    <span>{fieldErrors.weaningDate}</span>
-                  </p>
-                )}
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-weaning-weight">Peso al destete (kg)</label>
+              <FormField label="Peso al destete (kg)" htmlFor="ani-weaning-weight">
                 <input
                   id="ani-weaning-weight"
                   type="number"
@@ -1596,7 +1564,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   onChange={(event) => setField('weaningWeightKg', event.target.value)}
                   placeholder="Requiere la fecha de destete"
                 />
-              </div>
+              </FormField>
               </div>
             </fieldset>
 
@@ -1605,8 +1573,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               <div className="form-grid">
               {!editingCode && (
                 <>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="ani-origin">Procedencia</label>
+                  <FormField label="Procedencia" htmlFor="ani-origin">
                     <select
                       id="ani-origin"
                       className="form-select"
@@ -1618,12 +1585,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                       ))}
                     </select>
                     <p className="form-helper">{ORIGIN_HINTS[form.originType]}</p>
-                  </div>
+                  </FormField>
 
                   {form.originType === 'compra' && (
                     <>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="ani-purchase-amount">Importe pagado / de compra</label>
+                      <FormField label="Importe pagado / de compra" htmlFor="ani-purchase-amount" error={fieldErrors.purchaseAmount} errorId="ani-purchase-amount-error">
                         <input
                           id="ani-purchase-amount"
                           type="number"
@@ -1637,15 +1603,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           aria-describedby={fieldErrors.purchaseAmount ? 'ani-purchase-amount-error' : undefined}
                           required
                         />
-                        {fieldErrors.purchaseAmount && (
-                          <p id="ani-purchase-amount-error" className="field-error-message" role="alert">
-                            <IconAlertCircle size={14} />
-                            <span>{fieldErrors.purchaseAmount}</span>
-                          </p>
-                        )}
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="ani-purchase-currency">Moneda</label>
+                      </FormField>
+                      <FormField label="Moneda" htmlFor="ani-purchase-currency">
                         <select
                           id="ani-purchase-currency"
                           className="form-select"
@@ -1656,9 +1615,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           <option value="USD">USD · Dólar</option>
                           <option value="EUR">EUR · Euro</option>
                         </select>
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="ani-purchase-seller">Proveedor</label>
+                      </FormField>
+                      <FormField label="Proveedor" htmlFor="ani-purchase-seller">
                         <input
                           id="ani-purchase-seller"
                           className="form-input"
@@ -1666,9 +1624,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           placeholder="Nombre del proveedor o granja"
                           onChange={(event) => setField('purchaseCounterparty', event.target.value)}
                         />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="ani-purchase-reference">Documento de compra</label>
+                      </FormField>
+                      <FormField label="Documento de compra" htmlFor="ani-purchase-reference">
                         <input
                           id="ani-purchase-reference"
                           className="form-input"
@@ -1676,12 +1633,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           placeholder="Ej. Factura F001-4567"
                           onChange={(event) => setField('purchaseDocumentReference', event.target.value)}
                         />
-                      </div>
+                      </FormField>
                     </>
                   )}
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="ani-origin-detail">Detalle de procedencia</label>
+                  <FormField label="Detalle de procedencia" htmlFor="ani-origin-detail">
                     <input
                       id="ani-origin-detail"
                       type="text"
@@ -1690,10 +1646,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                       onChange={(event) => setField('originDetail', event.target.value)}
                       placeholder="Proveedor, granja de origen u observación"
                     />
-                  </div>
+                  </FormField>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="ani-entry-date">Fecha de ingreso</label>
+                  <FormField label="Fecha de ingreso" htmlFor="ani-entry-date">
                     <input
                       id="ani-entry-date"
                       type="date"
@@ -1703,10 +1658,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                       onChange={(event) => setField('entryDate', event.target.value)}
                       required
                     />
-                  </div>
+                  </FormField>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="ani-barn">Galpón</label>
+                  <FormField label="Galpón" htmlFor="ani-barn" error={fieldErrors.barnId} errorId="ani-barn-error">
                     <select
                       id="ani-barn"
                       className={`form-select ${fieldErrors.barnId ? 'input-error' : ''}`}
@@ -1721,16 +1675,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         <option key={barn.id} value={barn.id}>{barn.name}</option>
                       ))}
                     </select>
-                    {fieldErrors.barnId && (
-                      <p id="ani-barn-error" className="field-error-message" role="alert">
-                        <IconAlertCircle size={14} />
-                        <span>{fieldErrors.barnId}</span>
-                      </p>
-                    )}
-                  </div>
+                  </FormField>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="ani-entry-stage">Etapa de ingreso</label>
+                  <FormField label="Etapa de ingreso" htmlFor="ani-entry-stage" error={fieldErrors.entryStageCode} errorId="ani-entry-stage-error">
                     <select
                       id="ani-entry-stage"
                       className={`form-select ${fieldErrors.entryStageCode ? 'input-error' : ''}`}
@@ -1745,16 +1692,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         <option key={stage.code} value={stage.code}>{stage.name}</option>
                       ))}
                     </select>
-                    {fieldErrors.entryStageCode && (
-                      <p id="ani-entry-stage-error" className="field-error-message" role="alert">
-                        <IconAlertCircle size={14} />
-                        <span>{fieldErrors.entryStageCode}</span>
-                      </p>
-                    )}
-                  </div>
+                  </FormField>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="ani-location">Ubicación</label>
+                  <FormField label="Ubicación" htmlFor="ani-location">
                     <select
                       id="ani-location"
                       className="form-select"
@@ -1766,10 +1706,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         <option key={location.code} value={location.code}>{location.name}</option>
                       ))}
                     </select>
-                  </div>
+                  </FormField>
 
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="ani-lot">Lote</label>
+                  <FormField label="Lote" htmlFor="ani-lot">
                     <select
                       id="ani-lot"
                       className="form-select"
@@ -1781,7 +1720,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         <option key={lot.code} value={lot.code}>{lot.name}</option>
                       ))}
                     </select>
-                  </div>
+                  </FormField>
                 </>
               )}
               </div>
@@ -1790,7 +1729,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             <fieldset className="form-section">
               <legend>Genealogía</legend>
               <div className="form-grid">
-              <div className="form-group">
+              <FormField>
                 <AnimalPicker label="Madre interna" searchLabel="Buscar madre interna" sex="hembra" useIdValue value={form.motherId ? [form.motherId] : []} onChange={values => setField('motherId', values[0] ?? '')} emptyLabel="Desconocido o externo" />
                 {fieldErrors.mother && (
                   <p className="field-error-message" role="alert">
@@ -1798,10 +1737,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <span>{fieldErrors.mother}</span>
                   </p>
                 )}
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-mother-external">Madre externa</label>
+              <FormField label="Madre externa" htmlFor="ani-mother-external">
                 <input
                   id="ani-mother-external"
                   type="text"
@@ -1812,9 +1750,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   disabled={form.motherId !== ''}
                   aria-invalid={Boolean(fieldErrors.mother)}
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
+              <FormField>
                 <AnimalPicker label="Padre interno" searchLabel="Buscar padre interno" sex="macho" useIdValue value={form.fatherId ? [form.fatherId] : []} onChange={values => setField('fatherId', values[0] ?? '')} emptyLabel="Desconocido o externo" />
                 {fieldErrors.father && (
                   <p className="field-error-message" role="alert">
@@ -1822,10 +1760,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <span>{fieldErrors.father}</span>
                   </p>
                 )}
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="ani-father-external">Padre externo</label>
+              <FormField label="Padre externo" htmlFor="ani-father-external">
                 <input
                   id="ani-father-external"
                   type="text"
@@ -1836,15 +1773,14 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   disabled={form.fatherId !== ''}
                   aria-invalid={Boolean(fieldErrors.father)}
                 />
-              </div>
+              </FormField>
               </div>
             </fieldset>
 
             <fieldset className="form-section">
               <legend>Observaciones y auditoría</legend>
               <div className="form-grid">
-              <div className="form-group form-col-span-full">
-                <label className="form-label" htmlFor="ani-observations">Observaciones</label>
+              <FormField label="Observaciones" htmlFor="ani-observations" className="form-col-span-full">
                 <textarea
                   id="ani-observations"
                   className="form-textarea"
@@ -1853,10 +1789,17 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   onChange={(event) => setField('observations', event.target.value)}
                   placeholder="Detalle opcional de la ficha"
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group form-col-span-full">
-                <label className="form-label" htmlFor="ani-reason">Motivo</label>
+              <FormField
+                label="Motivo"
+                htmlFor="ani-reason"
+                className="form-col-span-full"
+                error={fieldErrors.reason}
+                errorId="ani-reason-error"
+                helper="Queda en la auditoría con su usuario y la fecha efectiva."
+                helperId="ani-reason-helper"
+              >
                 <input
                   id="ani-reason"
                   type="text"
@@ -1868,14 +1811,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   aria-describedby={fieldErrors.reason ? 'ani-reason-error ani-reason-helper' : 'ani-reason-helper'}
                   required
                 />
-                {fieldErrors.reason && (
-                  <p id="ani-reason-error" className="field-error-message" role="alert">
-                    <IconAlertCircle size={14} />
-                    <span>{fieldErrors.reason}</span>
-                  </p>
-                )}
-                <p id="ani-reason-helper" className="form-helper">Queda en la auditoría con su usuario y la fecha efectiva.</p>
-              </div>
+              </FormField>
               </div>
             </fieldset>
             </div>
@@ -2047,8 +1983,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               {!soloLectura && detail.exitDate === null && (
                 <form onSubmit={handleWeightSave} className="form-stack mb-4">
                   <div className="grid-3">
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="ani-weight-date">Fecha</label>
+                    <FormField label="Fecha" htmlFor="ani-weight-date">
                       <input
                         id="ani-weight-date"
                         className="form-input"
@@ -2058,9 +1993,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         onChange={(event) => setWeightForm((prev) => ({ ...prev, weighedOn: event.target.value }))}
                         required
                       />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="ani-weight-time">Hora</label>
+                    </FormField>
+                    <FormField label="Hora" htmlFor="ani-weight-time">
                       <input
                         id="ani-weight-time"
                         className="form-input"
@@ -2069,9 +2003,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         onChange={(event) => setWeightForm((prev) => ({ ...prev, weighedTime: event.target.value }))}
                         required
                       />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="ani-weight-kg">Peso (kg)</label>
+                    </FormField>
+                    <FormField label="Peso (kg)" htmlFor="ani-weight-kg">
                       <input
                         id="ani-weight-kg"
                         className="form-input font-numeric tabular-nums font-bold"
@@ -2084,11 +2017,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         onChange={(event) => setWeightForm((prev) => ({ ...prev, weightKg: event.target.value }))}
                         required
                       />
-                    </div>
+                    </FormField>
                   </div>
                   <div className="grid-2">
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="ani-weight-stage">Etapa</label>
+                    <FormField label="Etapa" htmlFor="ani-weight-stage">
                       <select
                         id="ani-weight-stage"
                         className="form-select"
@@ -2100,9 +2032,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         ))}
                       </select>
                       <small className="text-muted">Si elige otra etapa, se actualizarán la ficha y el inventario desde la fecha del pesaje.</small>
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="ani-weight-note">Nota</label>
+                    </FormField>
+                    <FormField label="Nota" htmlFor="ani-weight-note">
                       <input
                         id="ani-weight-note"
                         className="form-input"
@@ -2111,7 +2042,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         onChange={(event) => setWeightForm((prev) => ({ ...prev, note: event.target.value }))}
                         maxLength={300}
                       />
-                    </div>
+                    </FormField>
                   </div>
                   <div className="form-actions">
                     <button
@@ -2184,8 +2115,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         {weightCorrection?.id === weight.id && (
                           <form onSubmit={handleWeightCorrection} className="form-stack weight-correction-form">
                             <div className="grid-2">
-                              <div className="form-group">
-                                <label className="form-label" htmlFor={`weight-corr-kg-${weight.id}`}>Peso corregido (kg)</label>
+                              <FormField label="Peso corregido (kg)" htmlFor={`weight-corr-kg-${weight.id}`}>
                                 <input
                                   id={`weight-corr-kg-${weight.id}`}
                                   className="form-input font-numeric tabular-nums font-bold"
@@ -2199,9 +2129,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                                   }
                                   required
                                 />
-                              </div>
-                              <div className="form-group">
-                                <label className="form-label" htmlFor={`weight-corr-reason-${weight.id}`}>Motivo de corrección</label>
+                              </FormField>
+                              <FormField label="Motivo de corrección" htmlFor={`weight-corr-reason-${weight.id}`}>
                                 <input
                                   id={`weight-corr-reason-${weight.id}`}
                                   className="form-input"
@@ -2213,7 +2142,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                                   required
                                   maxLength={300}
                                 />
-                              </div>
+                              </FormField>
                             </div>
                             <div className="form-actions">
                               <button type="submit" className="btn btn-primary btn-sm" disabled={busy} aria-label="Guardar corrección">
@@ -2320,8 +2249,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                       {tagError && (
                         <InlineAlert tone="error">{tagError}</InlineAlert>
                       )}
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="ani-new-tag">Nuevo arete oficial</label>
+                      <FormField label="Nuevo arete oficial" htmlFor="ani-new-tag">
                         <input
                           id="ani-new-tag"
                           type="text"
@@ -2331,9 +2259,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           onChange={(event) => setTagForm((prev) => ({ ...prev, tag: event.target.value }))}
                           required
                         />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="ani-tag-date">Fecha del cambio</label>
+                      </FormField>
+                      <FormField label="Fecha del cambio" htmlFor="ani-tag-date">
                         <input
                           id="ani-tag-date"
                           type="date"
@@ -2343,9 +2270,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           onChange={(event) => setTagForm((prev) => ({ ...prev, effectiveDate: event.target.value }))}
                           required
                         />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="ani-tag-reason">Motivo</label>
+                      </FormField>
+                      <FormField label="Motivo" htmlFor="ani-tag-reason">
                         <input
                           id="ani-tag-reason"
                           type="text"
@@ -2355,7 +2281,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           onChange={(event) => setTagForm((prev) => ({ ...prev, reason: event.target.value }))}
                           required
                         />
-                      </div>
+                      </FormField>
                       <div className="form-actions">
                         <button
                           type="submit"
@@ -2386,8 +2312,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                       {toggleError && (
                         <InlineAlert tone="error">{toggleError}</InlineAlert>
                       )}
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="ani-toggle-reason">Motivo</label>
+                      <FormField label="Motivo" htmlFor="ani-toggle-reason">
                         <input
                           id="ani-toggle-reason"
                           type="text"
@@ -2396,7 +2321,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           onChange={(event) => setToggleReason(event.target.value)}
                           placeholder={detail.isActive ? 'Ej. Animal reservado para otra evaluación' : 'Ej. La ficha vuelve al padrón'}
                         />
-                      </div>
+                      </FormField>
                       <div className="form-actions">
                         {detail.isActive ? (
                           <button
@@ -2442,8 +2367,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         <InlineAlert tone="error" className="mb-3">{physicalActionError}</InlineAlert>
                       )}
                       <div className="form-grid">
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="ani-transfer-barn">Galpón destino</label>
+                        <FormField label="Galpón destino" htmlFor="ani-transfer-barn">
                           <select
                             id="ani-transfer-barn"
                             className="form-select"
@@ -2456,9 +2380,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                               <option key={barn.id} value={barn.id}>{barn.name}</option>
                             ))}
                           </select>
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="ani-transfer-stage">Etapa de destino</label>
+                        </FormField>
+                        <FormField label="Etapa de destino" htmlFor="ani-transfer-stage">
                           <select
                             id="ani-transfer-stage"
                             className="form-select"
@@ -2469,9 +2392,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                               <option key={stage.code} value={stage.code}>{stage.name}</option>
                             ))}
                           </select>
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="ani-transfer-location">Ubicación</label>
+                        </FormField>
+                        <FormField label="Ubicación" htmlFor="ani-transfer-location">
                           <select
                             id="ani-transfer-location"
                             className="form-select"
@@ -2483,9 +2405,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                               <option key={item.code} value={item.code}>{item.name}</option>
                             ))}
                           </select>
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="ani-transfer-lot">Lote</label>
+                        </FormField>
+                        <FormField label="Lote" htmlFor="ani-transfer-lot">
                           <select
                             id="ani-transfer-lot"
                             className="form-select"
@@ -2497,9 +2418,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                               <option key={item.code} value={item.code}>{item.name}</option>
                             ))}
                           </select>
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="ani-transfer-date">Fecha efectiva</label>
+                        </FormField>
+                        <FormField label="Fecha efectiva" htmlFor="ani-transfer-date">
                           <input
                             id="ani-transfer-date"
                             type="date"
@@ -2509,9 +2429,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                             onChange={(event) => setTransferForm((prev) => ({ ...prev, effectiveDate: event.target.value }))}
                             required
                           />
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="ani-transfer-reason">Motivo</label>
+                        </FormField>
+                        <FormField label="Motivo" htmlFor="ani-transfer-reason">
                           <input
                             id="ani-transfer-reason"
                             className="form-input"
@@ -2520,7 +2439,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                             onChange={(event) => setTransferForm((prev) => ({ ...prev, reason: event.target.value }))}
                             required
                           />
-                        </div>
+                        </FormField>
                       </div>
                       <div className="form-actions">
                         <button
@@ -2551,8 +2470,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         <InlineAlert tone="error" className="mb-3">{physicalActionError}</InlineAlert>
                       )}
                       <div className="form-grid">
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="ani-exit-type">Tipo de salida</label>
+                        <FormField label="Tipo de salida" htmlFor="ani-exit-type">
                           <select
                             id="ani-exit-type"
                             className="form-select"
@@ -2578,9 +2496,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                             )}
                             <option value="death">Muerte</option>
                           </select>
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="ani-exit-cause">Causa</label>
+                        </FormField>
+                        <FormField label="Causa" htmlFor="ani-exit-cause">
                           <select
                             id="ani-exit-cause"
                             className="form-select"
@@ -2593,9 +2510,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                               <option key={item.code} value={item.code}>{item.name}</option>
                             ))}
                           </select>
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="ani-exit-date">Fecha efectiva</label>
+                        </FormField>
+                        <FormField label="Fecha efectiva" htmlFor="ani-exit-date">
                           <input
                             id="ani-exit-date"
                             type="date"
@@ -2605,11 +2521,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                             onChange={(event) => setExitForm((prev) => ({ ...prev, effectiveDate: event.target.value }))}
                             required
                           />
-                        </div>
+                        </FormField>
                         {exitForm.exitType === 'sale' && !exitForm.purchaseReturn && (
                           <>
-                            <div className="form-group">
-                              <label className="form-label" htmlFor="ani-exit-amount">Importe de venta</label>
+                            <FormField label="Importe de venta" htmlFor="ani-exit-amount">
                               <input
                                 id="ani-exit-amount"
                                 type="number"
@@ -2621,9 +2536,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                                 onChange={(event) => setExitForm((prev) => ({ ...prev, saleAmount: event.target.value }))}
                                 required
                               />
-                            </div>
-                            <div className="form-group">
-                              <label className="form-label" htmlFor="ani-exit-currency">Moneda</label>
+                            </FormField>
+                            <FormField label="Moneda" htmlFor="ani-exit-currency">
                               <select
                                 id="ani-exit-currency"
                                 className="form-select"
@@ -2634,9 +2548,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                                 <option value="USD">USD · Dólar ($)</option>
                                 <option value="EUR">EUR · Euro (€)</option>
                               </select>
-                            </div>
-                            <div className="form-group">
-                              <label className="form-label" htmlFor="ani-exit-buyer">Cliente</label>
+                            </FormField>
+                            <FormField label="Cliente" htmlFor="ani-exit-buyer">
                               <input
                                 id="ani-exit-buyer"
                                 className="form-input"
@@ -2644,9 +2557,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                                 value={exitForm.counterparty}
                                 onChange={(event) => setExitForm((prev) => ({ ...prev, counterparty: event.target.value }))}
                               />
-                            </div>
-                            <div className="form-group">
-                              <label className="form-label" htmlFor="ani-exit-document">Documento</label>
+                            </FormField>
+                            <FormField label="Documento" htmlFor="ani-exit-document">
                               <input
                                 id="ani-exit-document"
                                 className="form-input"
@@ -2654,7 +2566,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                                 value={exitForm.documentReference}
                                 onChange={(event) => setExitForm((prev) => ({ ...prev, documentReference: event.target.value }))}
                               />
-                            </div>
+                            </FormField>
                           </>
                         )}
                         {exitForm.purchaseReturn ? (
@@ -2662,8 +2574,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                             Se revertirán el pago original y la existencia comprada; no se permite una segunda devolución.
                           </p>
                         ) : null}
-                        <div className="form-group form-col-span-full">
-                          <label className="form-label" htmlFor="ani-exit-reason">Motivo</label>
+                        <FormField label="Motivo" htmlFor="ani-exit-reason" className="form-col-span-full">
                           <input
                             id="ani-exit-reason"
                             className="form-input"
@@ -2672,7 +2583,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                             onChange={(event) => setExitForm((prev) => ({ ...prev, reason: event.target.value }))}
                             required
                           />
-                        </div>
+                        </FormField>
                       </div>
                       <div className="form-actions">
                         <button
@@ -2746,8 +2657,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 <p className="text-sm text-muted">
                   Se cancelará el registro de salida del animal <strong>{detail.code}</strong>, se reintegrará 1 cabeza al inventario del galpón y se generará el contra-asiento financiero auditable.
                 </p>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="modal-sale-return-reason">Motivo de la devolución</label>
+                <FormField label="Motivo de la devolución" htmlFor="modal-sale-return-reason">
                   <input
                     id="modal-sale-return-reason"
                     className="form-input"
@@ -2757,7 +2667,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     required
                     autoFocus
                   />
-                </div>
+                </FormField>
               </div>
               <footer className="modal-actions">
                 <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setSaleReturnModalOpen(false)} aria-label="Cancelar devolución">
