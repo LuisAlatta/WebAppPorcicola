@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  IconAlertCircle,
   IconArrowRight,
   IconBarChart,
   IconCheck,
@@ -13,9 +12,25 @@ import type { Perfil } from '../types';
 import { generarReportePdf } from '../utils/exportPdf';
 import { generarReporteXlsx } from '../utils/exportXlsx';
 import { fetchOperation } from '../utils/operations';
+import { errorMessage, money } from '../utils/format';
 import { InformesProductivos } from './InformesProductivos';
 import { ModuleTabs } from './ModuleTabs';
 import { DataState } from './DataState';
+import {
+  PageHeader,
+  InlineAlert,
+  KpiCard,
+  StatusBadge,
+  SectionCard,
+  DataCardList,
+  DataCard,
+  DataCardHead,
+  DataCardMeta,
+  DataCardNote,
+  DataCardActions,
+  FilterChipRow,
+  FilterChip,
+} from './ui';
 
 type Barn = { id: number; name: string };
 type Field = { key: string; label: string; dataType: 'text' | 'date' | 'number' | 'money' | 'percent'; unit?: string; filterable: boolean };
@@ -161,7 +176,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
         if (first) setSource(first.id);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error cargando reportes');
+      setError(errorMessage(e, 'Error cargando reportes'));
     }
   }, [from, to, source]);
 
@@ -200,7 +215,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
       setPreview(data);
       setNotice(`Vista actualizada desde D1 · ${data.asOf}. ${data.truncated ? 'Se muestran hasta 500 filas.' : ''}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error generando reporte');
+      setError(errorMessage(e, 'Error generando reporte'));
     } finally {
       setBusy(false);
     }
@@ -234,7 +249,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
       setEditing(null);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al guardar');
+      setError(errorMessage(e, 'Error al guardar'));
     } finally {
       setBusy(false);
     }
@@ -244,7 +259,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
     const rows = dashboard?.sales ?? [];
     return rows.map(item => ({
       ...item,
-      value: (item.amountMinor / 100).toLocaleString('es-PE', { style: 'currency', currency: item.currency }),
+      value: money(item.amountMinor, item.currency),
     }));
   }, [dashboard]);
 
@@ -317,7 +332,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
       setNotice('Informe duplicado.');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al duplicar');
+      setError(errorMessage(e, 'Error al duplicar'));
     }
   };
 
@@ -389,7 +404,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
       }
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') return;
-      setError(share ? 'No se pudo compartir el archivo. Usa Descargar PDF o Descargar Excel.' : e instanceof Error ? e.message : 'Error al exportar');
+      setError(share ? 'No se pudo compartir el archivo. Usa Descargar PDF o Descargar Excel.' : errorMessage(e, 'Error al exportar'));
     } finally {
       setBusy(false);
     }
@@ -402,39 +417,26 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
 
   return (
     <main className="module-container">
-      <div className="module-heading mb-4">
-        <p className="text-xs text-muted">
-          Indicadores de producción porcina, balance económico y reportes exportables en soles (PEN S/).
-        </p>
-        <button
-          className="btn btn-outline btn-sm"
-          aria-label="Actualizar datos y catálogos de reportes"
-          onClick={() => void load()}
-          type="button"
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconRefreshCw size={14} />
-            <span>Actualizar datos</span>
-          </span>
-        </button>
-      </div>
+      <PageHeader
+        title="Reportes y Estadísticas"
+        subtitle="Indicadores de producción porcina, balance económico y reportes exportables en soles (PEN S/)."
+        actions={
+          <button
+            className="btn btn-outline btn-sm"
+            aria-label="Actualizar datos y catálogos de reportes"
+            onClick={() => void load()}
+            type="button"
+          >
+            <span className="inline-flex items-center justify-center gap-2 leading-none">
+              <IconRefreshCw size={14} />
+              <span>Actualizar datos</span>
+            </span>
+          </button>
+        }
+      />
 
-      {error && (
-        <div className="alert alert-danger" role="alert" aria-live="assertive">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconAlertCircle size={16} />
-            <span>{error}</span>
-          </span>
-        </div>
-      )}
-      {notice && (
-        <div className="alert alert-success" role="status" aria-live="polite">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconCheck size={16} />
-            <span>{notice}</span>
-          </span>
-        </div>
-      )}
+      {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
+      {notice && <InlineAlert tone="success" onDismiss={() => setNotice('')} autoDismissMs={6000}>{notice}</InlineAlert>}
 
       <ModuleTabs
         label="Secciones de reportes"
@@ -479,6 +481,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
             </p>
           </section>
 
+          {/* Se conserva .metric-card: los e2e localizan estos indicadores por esa clase */}
           <div className="report-metrics">
             {[
               ['Cabezas en inventario', dashboard?.totalAnimals],
@@ -495,16 +498,18 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
             ))}
           </div>
 
-          <section className="card">
-            <h2>Población de animales por tipo</h2>
+          <SectionCard title="Población de animales por tipo">
             {dashboard && (dashboard.animalsByType.length ? (
-              <ul className="data-card-list data-card-grid" aria-label="Población por tipo">
+              <DataCardList label="Población por tipo" grid>
                 {dashboard.animalsByType.map(row => (
-                  <li key={row.type}><article className="data-card">
-                    <header className="data-card-head"><span className="data-card-title">{row.type}</span><span className="badge-status badge-primary font-numeric tabular-nums">{row.total} animales</span></header>
-                  </article></li>
+                  <DataCard key={row.type}>
+                    <DataCardHead
+                      title={row.type}
+                      badge={<StatusBadge tone="primary" className="font-numeric tabular-nums">{row.total} animales</StatusBadge>}
+                    />
+                  </DataCard>
                 ))}
-              </ul>
+              </DataCardList>
             ) : <DataState variant="empty" title="Sin población para el alcance seleccionado" />)}
             <div className="report-bars">
               {dashboard?.animalsByType.map(row => (
@@ -515,19 +520,23 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                 </label>
               ))}
             </div>
-          </section>
+          </SectionCard>
 
-          <section className="card">
-            <h2>Ventas por mes y moneda</h2>
+          <SectionCard title="Ventas por mes y moneda">
             {dashboard && (currencyTotals.length ? (
-              <ul className="data-card-list data-card-grid" aria-label="Ventas por mes y moneda">
+              <DataCardList label="Ventas por mes y moneda" grid>
                 {currencyTotals.map((row, i) => (
-                  <li key={`${row.month}-${row.currency}-${i}`}><article className="data-card">
-                    <header className="data-card-head"><span className="data-card-title font-numeric">{row.month}</span><span className="badge-status badge-outline">{row.currency}</span></header>
-                    <dl className="data-card-meta"><div><dt>Total ventas</dt><dd className="font-mono tabular-nums">{row.value}</dd></div></dl>
-                  </article></li>
+                  <DataCard key={`${row.month}-${row.currency}-${i}`}>
+                    <DataCardHead
+                      title={<span className="font-numeric">{row.month}</span>}
+                      badge={<StatusBadge tone="outline">{row.currency}</StatusBadge>}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Total ventas', value: row.value, className: 'font-mono tabular-nums' },
+                    ]} />
+                  </DataCard>
                 ))}
-              </ul>
+              </DataCardList>
             ) : <DataState variant="empty" title="Sin ventas registradas en el periodo." />)}
             <div className="report-bars">
               {currencyTotals.map(row => {
@@ -541,22 +550,24 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                 );
               })}
             </div>
-          </section>
+          </SectionCard>
 
-          <section className="card">
-            <h2>Costo de raciones y alimentación</h2>
+          <SectionCard title="Costo de raciones y alimentación">
             {dashboard && (dashboard.feedCosts.length ? (
-              <ul className="data-card-list data-card-grid" aria-label="Costos de alimentación por mes y moneda">
+              <DataCardList label="Costos de alimentación por mes y moneda" grid>
                 {dashboard.feedCosts.map(row => (
-                  <li key={`${row.month}-${row.currency}`}><article className="data-card">
-                    <header className="data-card-head"><span className="data-card-title font-numeric">{row.month}</span><span className="badge-status badge-outline">{row.currency}</span></header>
-                    <dl className="data-card-meta">
-                      <div><dt>Raciones entregadas</dt><dd className="font-mono tabular-nums">{row.count}</dd></div>
-                      <div><dt>Costo total</dt><dd className="font-mono tabular-nums">{(row.costMinor / 100).toLocaleString('es-PE', { style: 'currency', currency: row.currency })}</dd></div>
-                    </dl>
-                  </article></li>
+                  <DataCard key={`${row.month}-${row.currency}`}>
+                    <DataCardHead
+                      title={<span className="font-numeric">{row.month}</span>}
+                      badge={<StatusBadge tone="outline">{row.currency}</StatusBadge>}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Raciones entregadas', value: row.count, className: 'font-mono tabular-nums' },
+                      { label: 'Costo total', value: money(row.costMinor, row.currency), className: 'font-mono tabular-nums' },
+                    ]} />
+                  </DataCard>
                 ))}
-              </ul>
+              </DataCardList>
             ) : <DataState variant="empty" title="Sin entregas de alimento con costo en el periodo." />)}
             <div className="report-bars">
               {dashboard?.feedCosts.map(row => {
@@ -565,25 +576,21 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                   <label key={`${row.month}-${row.currency}`}>
                     <span>{row.month} · {row.currency}</span>
                     <progress aria-label={`Costo de alimentación ${row.month} ${row.currency}`} max={max} value={row.costMinor} />
-                    <strong className="tabular-nums">{(row.costMinor / 100).toLocaleString('es-PE', { style: 'currency', currency: row.currency })}</strong>
+                    <strong className="tabular-nums">{money(row.costMinor, row.currency)}</strong>
                   </label>
                 );
               })}
             </div>
-          </section>
+          </SectionCard>
         </>
       )}
 
       {section === 'crear' && (
         <>
-          <section className="card">
-            <div className="card-header">
-              <div>
-                <h2>Diseñar reporte personalizado</h2>
-                <p className="text-muted">
-                  {activeSource?.grain}. La vista previa limita la respuesta a 500 filas; las descargas consultan el conjunto completo.
-                </p>
-              </div>
+          <SectionCard
+            title="Diseñar reporte personalizado"
+            subtitle={`${activeSource?.grain ?? ''}. La vista previa limita la respuesta a 500 filas; las descargas consultan el conjunto completo.`}
+            actions={
               <button
                 className="btn btn-secondary btn-sm"
                 aria-label="Cargar plantilla recomendada para mi perfil"
@@ -594,7 +601,8 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                   <span>Usar plantilla de mi perfil</span>
                 </span>
               </button>
-            </div>
+            }
+          >
             <div className="form-sections">
             <fieldset className="form-section">
               <legend>Tipo y finalidad</legend>
@@ -721,25 +729,24 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                     <span>Agregar filtro</span>
                   </span>
                 </button>
-                {Object.entries(filters).map(([key, value]) => (
-                  <span className="badge-env ml-1" key={key}>
-                    {activeSource?.fields.find(field => field.key === key)?.label ?? key}: {value}{' '}
-                    <button
-                      type="button"
-                      className="inline-flex items-center ml-1 text-muted hover:text-danger"
-                      aria-label={`Quitar filtro ${key}`}
-                      onClick={() =>
-                        setFilters(old => {
-                          const next = { ...old };
-                          delete next[key];
-                          return next;
-                        })
-                      }
-                    >
-                      <IconX size={12} />
-                    </button>
-                  </span>
-                ))}
+                {Object.keys(filters).length > 0 && (
+                  <FilterChipRow>
+                    {Object.entries(filters).map(([key, value]) => (
+                      <FilterChip
+                        key={key}
+                        label={`${activeSource?.fields.find(field => field.key === key)?.label ?? key}: ${value}`}
+                        removeLabel={`Quitar filtro ${key}`}
+                        onRemove={() =>
+                          setFilters(old => {
+                            const next = { ...old };
+                            delete next[key];
+                            return next;
+                          })
+                        }
+                      />
+                    ))}
+                  </FilterChipRow>
+                )}
               </div>
             </div>
             </fieldset>
@@ -795,11 +802,12 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                 )}
               </div>
             </div>
-          </section>
+          </SectionCard>
 
           {!preview && (
+            /* Sin DataState: su role="status" chocaría con el aviso de éxito del módulo (e2e usa getByRole('status')) */
             <div className="card empty-state-card mt-4">
-              <div className="empty-icon-wrap">
+              <div className="empty-icon-wrap" aria-hidden="true">
                 <IconBarChart size={30} className="text-primary" />
               </div>
               <p className="font-semibold text-base">Generador y vista previa interactiva</p>
@@ -822,15 +830,10 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
           )}
 
           {preview && (
-            <section className="card">
-              <div className="card-header">
-                <div>
-                  <h2>Vista previa · {preview.rowCount} filas</h2>
-                  <p className="text-muted">
-                    Consultado al {preview.asOf} · Periodo {preview.definition.from ?? 'inicio'} a {preview.definition.to ?? 'hoy'} · Galpón {barns.find(barn => String(barn.id) === String(preview.definition.barnId))?.name ?? 'todos los asignados'}.{' '}
-                    {preview.truncated ? 'La vista muestra hasta 500 filas; las descargas procesan el total.' : 'Resultado completo del alcance autorizado.'}
-                  </p>
-                </div>
+            <SectionCard
+              title={`Vista previa · ${preview.rowCount} filas`}
+              subtitle={`Consultado al ${preview.asOf} · Periodo ${preview.definition.from ?? 'inicio'} a ${preview.definition.to ?? 'hoy'} · Galpón ${barns.find(barn => String(barn.id) === String(preview.definition.barnId))?.name ?? 'todos los asignados'}. ${preview.truncated ? 'La vista muestra hasta 500 filas; las descargas procesan el total.' : 'Resultado completo del alcance autorizado.'}`}
+              actions={
                 <div className="filter-row">
                   <button
                     className="btn btn-secondary btn-sm"
@@ -890,33 +893,27 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                     </>
                   )}
                 </div>
-              </div>
-
-              <div className="filter-row">
-                <div className="metric-card">
-                  <span>Registros</span>
-                  <strong className="tabular-nums">{preview.totals.rows}</strong>
-                </div>
+              }
+            >
+              <div className="report-metrics">
+                <KpiCard label="Registros" value={preview.totals.rows} />
                 {preview.totals.weightKg !== null && (
-                  <div className="metric-card">
-                    <span>Peso promedio</span>
-                    <strong className="tabular-nums">{preview.totals.weightKg.toFixed(2)} kg</strong>
-                  </div>
+                  <KpiCard label="Peso promedio" value={`${preview.totals.weightKg.toFixed(2)} kg`} />
                 )}
                 {preview.totals.sum !== null && preview.totals.sum !== undefined && (
-                  <div className="metric-card">
-                    <span>Suma de la métrica</span>
-                    <strong className="tabular-nums">{preview.totals.sum.toFixed(2)}</strong>
-                  </div>
+                  <KpiCard label="Suma de la métrica" value={preview.totals.sum.toFixed(2)} />
                 )}
                 {Object.entries(preview.moneyTotals).map(([currency, totals]) => (
-                  <div className="metric-card" key={currency}>
-                    <span>Balance · {currency}</span>
-                    <strong className={`tabular-nums ${totals.balance >= 0 ? 'text-success' : 'text-danger'}`}>
-                      {totals.balance.toLocaleString('es-PE', { style: 'currency', currency })}
-                    </strong>
-                    <small className="tabular-nums">Ingresos {totals.income.toFixed(2)} · Egresos {totals.expense.toFixed(2)}</small>
-                  </div>
+                  <KpiCard
+                    key={currency}
+                    label={`Balance · ${currency}`}
+                    value={
+                      <span className={totals.balance >= 0 ? 'text-success' : 'text-danger'}>
+                        {totals.balance.toLocaleString('es-PE', { style: 'currency', currency })}
+                      </span>
+                    }
+                    detail={`Ingresos ${totals.income.toFixed(2)} · Egresos ${totals.expense.toFixed(2)}`}
+                  />
                 ))}
               </div>
 
@@ -1006,28 +1003,25 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                   </table>
                 </div>
               ) : (
-                <div className="card empty-state-card mt-3">
-                  <div className="empty-icon-wrap">
-                    <IconBarChart size={28} className="text-muted" />
-                  </div>
-                  <p className="font-semibold text-base">Sin resultados para esta consulta</p>
-                  <p className="text-sm text-muted">
-                    No se encontraron registros en "{activeSource?.label}" para los filtros y fechas seleccionadas.
-                  </p>
+                <div className="mt-3">
+                  <DataState
+                    variant="empty"
+                    title="Sin resultados para esta consulta"
+                    description={`No se encontraron registros en "${activeSource?.label ?? ''}" para los filtros y fechas seleccionadas.`}
+                    icon={<IconBarChart size={28} className="text-muted" />}
+                  />
                 </div>
               )}
-            </section>
+            </SectionCard>
           )}
         </>
       )}
 
       {section === 'guardados' && (
-        <section className="card">
-          <div className="card-header">
-            <div>
-              <h2>Informes guardados en tu cuenta</h2>
-              <p className="text-muted">Plantillas y configuraciones personalizadas de reportes para consulta frecuente.</p>
-            </div>
+        <SectionCard
+          title="Informes guardados en tu cuenta"
+          subtitle="Plantillas y configuraciones personalizadas de reportes para consulta frecuente."
+          actions={
             <button
               type="button"
               className="btn btn-primary btn-sm"
@@ -1039,67 +1033,68 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                 <span>Diseñar nuevo reporte</span>
               </span>
             </button>
-          </div>
-
+          }
+        >
           {saved.length > 0 ? (
-            <ul className="data-card-list data-card-grid" aria-label="Informes guardados">
-                  {saved.map(item => (
-                    <li key={item.id}><article className="data-card">
-                      <header className="data-card-head"><span className="data-card-title">{item.name}</span></header>
-                      <p className="data-card-note">{item.purpose}</p>
-                      <dl className="data-card-meta">
-                        <div><dt>Fuente</dt><dd>{sources.find(source => source.id === item.definition.source)?.label ?? String(item.definition.source ?? 'Sin fuente')}</dd></div>
-                        <div><dt>Desde</dt><dd>{String(item.definition.from ?? 'Inicio')}</dd></div>
-                        <div><dt>Hasta</dt><dd>{String(item.definition.to ?? 'Hoy')}</dd></div>
-                      </dl>
-                        <div className="data-card-actions">
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            aria-label={`Abrir y ejecutar informe ${item.name}`}
-                            onClick={() => void openSaved(item.id)}
-                          >
-                            <span className="inline-flex items-center justify-center gap-2 leading-none">
-                              <IconRefreshCw size={12} />
-                              <span>Abrir y ejecutar</span>
-                            </span>
-                          </button>
-                          <button
-                            className="btn btn-outline btn-sm"
-                            aria-label={`Duplicar informe ${item.name}`}
-                            onClick={() => void duplicate(item.id)}
-                          >
-                            <span className="inline-flex items-center justify-center gap-2 leading-none">
-                              <IconPlus size={12} />
-                              <span>Duplicar</span>
-                            </span>
-                          </button>
-                        </div>
-                    </article></li>
-                  ))}
-            </ul>
+            <DataCardList label="Informes guardados" grid>
+              {saved.map(item => (
+                <DataCard key={item.id}>
+                  <DataCardHead title={item.name} />
+                  <DataCardNote>{item.purpose}</DataCardNote>
+                  <DataCardMeta items={[
+                    { label: 'Fuente', value: sources.find(source => source.id === item.definition.source)?.label ?? String(item.definition.source ?? 'Sin fuente') },
+                    { label: 'Desde', value: String(item.definition.from ?? 'Inicio') },
+                    { label: 'Hasta', value: String(item.definition.to ?? 'Hoy') },
+                  ]} />
+                  <DataCardActions>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      aria-label={`Abrir y ejecutar informe ${item.name}`}
+                      onClick={() => void openSaved(item.id)}
+                    >
+                      <span className="inline-flex items-center justify-center gap-2 leading-none">
+                        <IconRefreshCw size={12} />
+                        <span>Abrir y ejecutar</span>
+                      </span>
+                    </button>
+                    <button
+                      className="btn btn-outline btn-sm"
+                      aria-label={`Duplicar informe ${item.name}`}
+                      onClick={() => void duplicate(item.id)}
+                    >
+                      <span className="inline-flex items-center justify-center gap-2 leading-none">
+                        <IconPlus size={12} />
+                        <span>Duplicar</span>
+                      </span>
+                    </button>
+                  </DataCardActions>
+                </DataCard>
+              ))}
+            </DataCardList>
           ) : (
-            <div className="card empty-state-card mt-3">
-              <div className="empty-icon-wrap">
-                <IconBarChart size={28} className="text-muted" />
-              </div>
-              <p className="font-semibold text-base">Todavía no hay informes guardados</p>
-              <p className="text-sm text-muted">
-                Diseña un informe a medida con filtros por galpón, agrupación y métricas, y guárdalo para ejecutarlo cuando lo requieras.
-              </p>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm mt-3"
-                aria-label="Diseñar mi primer reporte personalizado"
-                onClick={() => setSection('crear')}
-              >
-                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconPlus size={14} />
-                  <span>Diseñar mi primer reporte</span>
-                </span>
-              </button>
+            <div className="mt-3">
+              <DataState
+                variant="empty"
+                title="Todavía no hay informes guardados"
+                description="Diseña un informe a medida con filtros por galpón, agrupación y métricas, y guárdalo para ejecutarlo cuando lo requieras."
+                icon={<IconBarChart size={28} className="text-muted" />}
+                action={
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    aria-label="Diseñar mi primer reporte personalizado"
+                    onClick={() => setSection('crear')}
+                  >
+                    <span className="inline-flex items-center justify-center gap-2 leading-none">
+                      <IconPlus size={14} />
+                      <span>Diseñar mi primer reporte</span>
+                    </span>
+                  </button>
+                }
+              />
             </div>
           )}
-        </section>
+        </SectionCard>
       )}
     </main>
   );
