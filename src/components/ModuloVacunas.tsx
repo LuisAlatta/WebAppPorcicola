@@ -1,6 +1,7 @@
 import { AnimalPicker } from './AnimalPicker';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { farmToday, newOperationKey, fetchOperation } from '../utils/operations';
+import { errorMessage } from '../utils/format';
 import { ModalDialog } from './ModalDialog';
 import {
   IconAlertTriangle,
@@ -14,6 +15,17 @@ import {
   IconX,
 } from './icons';
 import { DataState } from './DataState';
+import {
+  InlineAlert,
+  KpiCard,
+  StatusBadge,
+  DataCardList,
+  DataCard,
+  DataCardHead,
+  DataCardMeta,
+  DataCardActions,
+  FilterChip,
+} from './ui';
 import type { Perfil } from '../types';
 
 interface Rule {
@@ -159,7 +171,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void load().catch((err) => setError(err instanceof Error ? err.message : 'Error cargando vacunas'));
+      void load().catch((err) => setError(errorMessage(err, 'Error cargando vacunas')));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
@@ -191,7 +203,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
       );
       return data;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error');
+      setError(errorMessage(err, 'Error'));
       return null;
     } finally {
       setBusy(false);
@@ -226,7 +238,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
       setForm((old) => ({ ...old, vaccineName: '' }));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar la regla');
+      setError(errorMessage(err, 'No se pudo guardar la regla'));
     } finally {
       setBusy(false);
     }
@@ -293,7 +305,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
       setScheduleChangeForm({ date: '', reason: '' });
       setScheduleOperationKey(newOperationKey(cancel ? 'vaccine-cancel' : 'vaccine-reschedule'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error');
+      setError(errorMessage(err, 'Error'));
     } finally {
       setBusy(false);
     }
@@ -337,43 +349,29 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
         </button>
       </div>
 
-      {error && <div className="alert alert-error" role="alert" aria-live="assertive">{error}</div>}
-      {notice && <div className="alert alert-success" role="status" aria-live="polite">{notice}</div>}
+      {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
+      {notice && <InlineAlert tone="success" onDismiss={() => setNotice('')} autoDismissMs={6000}>{notice}</InlineAlert>}
 
       {/* Tablero Focal de Inmunización */}
       <div className="grid-3 mb-4">
-        <div className="metric-card">
-          <span className="kpi-label">
-            <IconCalendar size={16} className="text-warning" />
-            <span>Vacunas pendientes</span>
-          </span>
-          <span className="kpi-value tabular-nums">
-            {rows.filter((r) => r.status === 'pending').length}
-          </span>
-          <span className="kpi-detail">Dosis programadas en agenda</span>
-        </div>
-
-        <div className="metric-card">
-          <span className="kpi-label">
-            <IconCheck size={16} className="text-success" />
-            <span>Dosis aplicadas</span>
-          </span>
-          <span className="kpi-value tabular-nums">
-            {rows.filter((r) => r.status === 'applied').length}
-          </span>
-          <span className="kpi-detail">Inmunizaciones completadas</span>
-        </div>
-
-        <div className="metric-card">
-          <span className="kpi-label">
-            <IconShield size={16} className="text-primary" />
-            <span>Reglas vigentes</span>
-          </span>
-          <span className="kpi-value tabular-nums">
-            {rules.filter((r) => r.isActive && r.isCurrent).length}
-          </span>
-          <span className="kpi-detail">Protocolos preventivos activos</span>
-        </div>
+        <KpiCard
+          label="Vacunas pendientes"
+          icon={<IconCalendar size={16} className="text-warning" />}
+          value={rows.filter((r) => r.status === 'pending').length}
+          detail="Dosis programadas en agenda"
+        />
+        <KpiCard
+          label="Dosis aplicadas"
+          icon={<IconCheck size={16} className="text-success" />}
+          value={rows.filter((r) => r.status === 'applied').length}
+          detail="Inmunizaciones completadas"
+        />
+        <KpiCard
+          label="Reglas vigentes"
+          icon={<IconShield size={16} className="text-primary" />}
+          value={rules.filter((r) => r.isActive && r.isCurrent).length}
+          detail="Protocolos preventivos activos"
+        />
       </div>
 
       {/* Filtros de la Agenda */}
@@ -389,7 +387,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
           >
             <IconFilter size={14} />
             <span>Filtros</span>
-            {hasActiveFilters && <span className="badge-status badge-primary tabular-nums font-numeric">{filterCount}</span>}
+            {hasActiveFilters && <StatusBadge tone="primary" className="tabular-nums font-numeric">{filterCount}</StatusBadge>}
           </button>
           <span className="text-xs text-muted">{rows.length} dosis en la agenda</span>
         </div>
@@ -409,10 +407,10 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
       </div>
       {hasActiveFilters && (
         <div className="filter-chip-row mb-3" aria-label="Filtros aplicados">
-          {filter.from && <button type="button" className="filter-chip" onClick={() => setFilter({ ...filter, from: '' })} aria-label="Quitar filtro desde"><span>Desde {filter.from}</span><IconX size={12} /></button>}
-          {filter.to && <button type="button" className="filter-chip" onClick={() => setFilter({ ...filter, to: '' })} aria-label="Quitar filtro hasta"><span>Hasta {filter.to}</span><IconX size={12} /></button>}
-          {filter.animalType && <button type="button" className="filter-chip" onClick={() => setFilter({ ...filter, animalType: '' })} aria-label="Quitar filtro tipo de animal"><span>Tipo: {filter.animalType}</span><IconX size={12} /></button>}
-          {filter.status !== 'pending' && <button type="button" className="filter-chip" onClick={() => setFilter({ ...filter, status: 'pending' })} aria-label="Quitar filtro estado"><span>Estado: {filter.status === 'applied' ? 'Aplicadas' : filter.status === 'cancelled' ? 'Canceladas' : 'Todos'}</span><IconX size={12} /></button>}
+          {filter.from && <FilterChip label={`Desde ${filter.from}`} onRemove={() => setFilter({ ...filter, from: '' })} removeLabel="Quitar filtro desde" />}
+          {filter.to && <FilterChip label={`Hasta ${filter.to}`} onRemove={() => setFilter({ ...filter, to: '' })} removeLabel="Quitar filtro hasta" />}
+          {filter.animalType && <FilterChip label={`Tipo: ${filter.animalType}`} onRemove={() => setFilter({ ...filter, animalType: '' })} removeLabel="Quitar filtro tipo de animal" />}
+          {filter.status !== 'pending' && <FilterChip label={`Estado: ${filter.status === 'applied' ? 'Aplicadas' : filter.status === 'cancelled' ? 'Canceladas' : 'Todos'}`} onRemove={() => setFilter({ ...filter, status: 'pending' })} removeLabel="Quitar filtro estado" />}
         </div>
       )}
       {filtersOpen && <div id="vaccine-filters-panel" className="grid-4 mb-4">
@@ -477,28 +475,27 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
           action={hasActiveFilters ? <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" onClick={clearFilters}><IconX size={16} /><span>Limpiar filtros</span></button> : undefined}
         />
       ) : (
-        <ul className="data-card-list data-card-grid" aria-label="Agenda de vacunas">
+        <DataCardList label="Agenda de vacunas" grid>
           {rows.map((row) => (
-            <li key={row.id}>
-              <article className="data-card" data-state={row.status === 'pending' ? 'active' : row.status === 'applied' ? 'active' : 'inactive'}>
-                <header className="data-card-head">
-                  <div className="data-card-identity">
-                    <span className="data-card-title">{row.vaccineName}</span>
-                    <span className="data-card-subtitle font-mono">{row.animalCode} · {categoryLabels[row.targetCategory] ?? row.targetCategory}</span>
-                  </div>
-                  <span className={`badge-status ${row.status === 'pending' ? 'badge-warning' : row.status === 'applied' ? 'badge-success' : 'badge-outline'}`}>
+            <DataCard key={row.id} state={row.status === 'pending' ? 'active' : row.status === 'applied' ? 'active' : 'inactive'}>
+              <DataCardHead
+                title={row.vaccineName}
+                subtitle={<span className="font-mono">{row.animalCode} · {categoryLabels[row.targetCategory] ?? row.targetCategory}</span>}
+                badge={
+                  <StatusBadge tone={row.status === 'pending' ? 'warning' : row.status === 'applied' ? 'success' : 'outline'}>
                     <span className="status-dot"></span>
                     <span>{row.status === 'pending' ? 'Pendiente' : row.status === 'applied' ? 'Aplicada' : 'Cancelada'}</span>
-                  </span>
-                </header>
-                <dl className="data-card-meta">
-                  <div><dt>Fecha programada</dt><dd className="font-mono tabular-nums">{row.scheduledDate}</dd></div>
-                  <div><dt>Aplicada</dt><dd className="font-mono tabular-nums">{row.appliedDate ?? 'Sin aplicar'}</dd></div>
-                  <div><dt>Galpón</dt><dd>{row.barnName}</dd></div>
-                  <div><dt>Origen</dt><dd>{row.isManual ? 'Manual' : 'Regla automática'}</dd></div>
-                </dl>
+                  </StatusBadge>
+                }
+              />
+              <DataCardMeta items={[
+                { label: 'Fecha programada', value: row.scheduledDate, className: 'font-mono tabular-nums' },
+                { label: 'Aplicada', value: row.appliedDate ?? 'Sin aplicar', className: 'font-mono tabular-nums' },
+                { label: 'Galpón', value: row.barnName },
+                { label: 'Origen', value: row.isManual ? 'Manual' : 'Regla automática' },
+              ]} />
                 {row.status === 'pending' && canWrite && (
-                  <div className="data-card-actions">
+                  <DataCardActions>
                     <button
                       className="btn btn-primary"
                       type="button"
@@ -550,10 +547,10 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                       <IconX size={14} />
                       <span>Cancelar</span>
                     </button>
-                  </div>
+                  </DataCardActions>
                 )}
                 {row.status === 'applied' && canWrite && (
-                  <div className="data-card-actions">
+                  <DataCardActions>
                     <button type="button" className="btn btn-outline" disabled={busy}
                       aria-label={`Corregir aplicación de ${row.vaccineName} al animal ${row.animalCode}`}
                       onClick={() => {
@@ -570,12 +567,11 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                       <IconX size={14} />
                       <span>Anular aplicación</span>
                     </button>
-                  </div>
+                  </DataCardActions>
                 )}
-              </article>
-            </li>
+            </DataCard>
           ))}
-        </ul>
+        </DataCardList>
       )}
 
       {/* Programación Manual */}
@@ -659,27 +655,26 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             </div>
 
             {rules.some((rule) => rule.isCurrent) ? (
-              <ul className="data-card-list data-card-grid" aria-label="Reglas de vacunación automáticas">
+              <DataCardList label="Reglas de vacunación automáticas" grid>
                 {rules.filter((rule) => rule.isCurrent).map((rule) => (
-                  <li key={rule.id}>
-                    <article className="data-card" data-state={rule.isActive ? 'active' : 'inactive'}>
-                      <header className="data-card-head">
-                        <div className="data-card-identity">
-                          <span className="data-card-title">{rule.vaccineName}</span>
-                          <span className="data-card-subtitle">{categoryLabels[rule.targetCategory] ?? rule.targetCategory} · {baseLabels[rule.baseEvent] ?? rule.baseEvent}</span>
-                        </div>
-                        <span className={`badge-status ${rule.isActive ? 'badge-success' : 'badge-outline'}`}>
+                  <DataCard key={rule.id} state={rule.isActive ? 'active' : 'inactive'}>
+                    <DataCardHead
+                      title={rule.vaccineName}
+                      subtitle={<>{categoryLabels[rule.targetCategory] ?? rule.targetCategory} · {baseLabels[rule.baseEvent] ?? rule.baseEvent}</>}
+                      badge={
+                        <StatusBadge tone={rule.isActive ? 'success' : 'outline'}>
                           <span className="status-dot"></span>
                           <span>{rule.isActive ? 'Activa' : 'Inactiva'}</span>
-                        </span>
-                      </header>
-                      <dl className="data-card-meta">
-                        <div><dt>Ajuste</dt><dd className="font-mono tabular-nums">{rule.offsetDays > 0 ? `+${rule.offsetDays}` : rule.offsetDays} días</dd></div>
-                        <div><dt>Versión</dt><dd className="font-mono tabular-nums">v{rule.version}</dd></div>
-                        <div><dt>Edad objetivo</dt><dd className="font-mono tabular-nums">{rule.targetAgeDays === null ? 'No aplica' : `${rule.targetAgeDays} días`}</dd></div>
-                        <div><dt>Referencia</dt><dd className="font-mono tabular-nums">{rule.referenceDate ?? 'No aplica'}</dd></div>
-                      </dl>
-                      <div className="data-card-actions">
+                        </StatusBadge>
+                      }
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Ajuste', value: `${rule.offsetDays > 0 ? `+${rule.offsetDays}` : rule.offsetDays} días`, className: 'font-mono tabular-nums' },
+                      { label: 'Versión', value: `v${rule.version}`, className: 'font-mono tabular-nums' },
+                      { label: 'Edad objetivo', value: rule.targetAgeDays === null ? 'No aplica' : `${rule.targetAgeDays} días`, className: 'font-mono tabular-nums' },
+                      { label: 'Referencia', value: rule.referenceDate ?? 'No aplica', className: 'font-mono tabular-nums' },
+                    ]} />
+                    <DataCardActions>
                         <button
                           type="button"
                           className="btn btn-outline"
@@ -717,11 +712,10 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                             <span>Desactivar</span>
                           </button>
                         )}
-                      </div>
-                    </article>
-                  </li>
+                    </DataCardActions>
+                  </DataCard>
                 ))}
-              </ul>
+              </DataCardList>
             ) : (
               <DataState
                 variant="empty"
