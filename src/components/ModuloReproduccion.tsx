@@ -13,9 +13,20 @@ import {
   IconX,
 } from './icons';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
+import { errorMessage } from '../utils/format';
 import { DataState } from './DataState';
 import { ModalDialog } from './ModalDialog';
 import { ModuleTabs } from './ModuleTabs';
+import {
+  PageHeader,
+  InlineAlert,
+  KpiCard,
+  StatusBadge,
+  SectionCard,
+  DataCardHead,
+  DataCardMeta,
+  DataCardActions,
+} from './ui';
 import type { Perfil } from '../types';
 
 interface AnimalOption {
@@ -313,7 +324,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       })
       .catch((err: unknown) => {
         if (!active) return;
-        setError(err instanceof Error ? err.message : 'Error cargando reproducción.');
+        setError(errorMessage(err, 'Error cargando reproducción.'));
         setLoading(false);
       });
     return () => {
@@ -640,7 +651,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         setError('La corrección fue guardada, pero no se pudo actualizar la lista. Pulse Actualizar para consultar el resultado.');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo confirmar la corrección. Conserve el formulario y reintente.');
+      setError(errorMessage(err, 'No se pudo confirmar la corrección. Conserve el formulario y reintente.'));
     } finally {
       setBusy(false);
     }
@@ -677,7 +688,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         setError('La corrección fue guardada, pero no se pudo actualizar la lista. Pulse Actualizar.');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo confirmar la corrección. Conserve el formulario y reintente.');
+      setError(errorMessage(err, 'No se pudo confirmar la corrección. Conserve el formulario y reintente.'));
     } finally {
       setBusy(false);
     }
@@ -685,26 +696,29 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
 
   return (
     <section className="reproduction-page">
-      <div className="module-heading mb-4">
-        <p className="text-xs text-muted">
-          Ciclos reproductivos de marranas, servicios de monta o inseminación, confirmación de gestación y seguimiento de camadas.
-        </p>
-        <button
-          type="button"
-          className="btn btn-outline btn-sm"
-          disabled={busy}
-          onClick={() => void load().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Error cargando reproducción.'))}
-          aria-label="Actualizar agenda reproductiva"
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconRefreshCw size={14} />
-            <span>Actualizar agenda</span>
-          </span>
-        </button>
-      </div>
+      <PageHeader
+        title="Reproducción"
+        subtitle="Ciclos reproductivos de marranas, servicios de monta o inseminación, confirmación de gestación y seguimiento de camadas."
+        actions={
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            disabled={busy}
+            onClick={() => void load().catch((err: unknown) => setError(errorMessage(err, 'Error cargando reproducción.')))}
+            aria-label="Actualizar agenda reproductiva"
+          >
+            <span className="inline-flex items-center justify-center gap-2 leading-none">
+              <IconRefreshCw size={14} />
+              <span>Actualizar agenda</span>
+            </span>
+          </button>
+        }
+      />
 
-      {error && !dateCorrection && !countCorrection && !postweaningCycle && !litterEventCycle && (cycles.length > 0 || section === 'registro') && <div className="alert alert-error" role="alert" aria-live="assertive">{error}</div>}
-      {notice && <div className="alert alert-success" role="status" aria-live="polite">{notice}</div>}
+      {error && !dateCorrection && !countCorrection && !postweaningCycle && !litterEventCycle && (cycles.length > 0 || section === 'registro') && (
+        <InlineAlert tone="error" onDismiss={() => setError(null)}>{error}</InlineAlert>
+      )}
+      {notice && <InlineAlert tone="success" autoDismissMs={6000} onDismiss={() => setNotice(null)}>{notice}</InlineAlert>}
 
       <ModuleTabs
         label="Secciones del módulo reproductivo"
@@ -720,19 +734,14 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       />
 
       {section === 'registro' && !soloLectura && (
-        <div className="card mb-4">
-          <div className="card-header-clean mb-3 flex-wrap gap-2 justify-between">
-            <div>
-              <span className="section-title">
-                {isAntecedent ? 'Ingreso de marrana gestante (antecedente)' : 'Registrar servicio de monta / inseminación'}
-              </span>
-              <p className="text-xs text-muted mt-0.5">
-                {isAntecedent
-                  ? 'Registra preñez confirmada o adquirida sin requerir servicio previo en el sistema.'
-                  : 'Abre un nuevo ciclo reproductivo vinculando a la marrana y el macho o material genético.'}
-              </p>
-            </div>
-            <div className="inline-flex items-center gap-2">
+        <SectionCard
+          className="mb-4"
+          title={isAntecedent ? 'Ingreso de marrana gestante (antecedente)' : 'Registrar servicio de monta / inseminación'}
+          subtitle={isAntecedent
+            ? 'Registra preñez confirmada o adquirida sin requerir servicio previo en el sistema.'
+            : 'Abre un nuevo ciclo reproductivo vinculando a la marrana y el macho o material genético.'}
+          actions={
+            <>
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
@@ -758,9 +767,9 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                   <span>Volver a ciclos</span>
                 </span>
               </button>
-            </div>
-          </div>
-
+            </>
+          }
+        >
           <form onSubmit={submitCycle} className="form-stack">
             <div className="form-sections">
             <fieldset className="form-section">
@@ -946,65 +955,44 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
               </button>
             </div>
           </form>
-        </div>
+        </SectionCard>
       )}
 
       {section === 'ciclos' && (
         <>
           {/* Tablero Focal Reproductivo */}
           <div className="grid-4 mb-4">
-            <div className="metric-card">
-              <span className="kpi-label">
-                <IconHeart size={16} className="text-success" />
-                <span>Marranas gestantes</span>
-              </span>
-              <span className="kpi-value tabular-nums">
-                {activeCycles.filter((c) => c.reproductiveStatus === 'gestation').length}
-              </span>
-              <span className="kpi-detail">Preñez confirmada en curso</span>
-            </div>
-
-            <div className="metric-card">
-              <span className="kpi-label">
-                <IconCalendar size={16} className="text-warning" />
-                <span>Partos próximos (≤ 7d)</span>
-              </span>
-              <span className="kpi-value tabular-nums">
-                {activeCycles.filter((c) => ['gestation','possible_pregnancy'].includes(c.reproductiveStatus) && c.daysRemaining >= 0 && c.daysRemaining <= 7).length}
-              </span>
-              <span className="kpi-detail">Atención prioritaria de maternidad</span>
-            </div>
-
-            <div className="metric-card">
-              <span className="kpi-label">
-                <IconActivity size={16} className="text-primary" />
-                <span>Posible preñez</span>
-              </span>
-              <span className="kpi-value tabular-nums">
-                {activeCycles.filter((c) => c.reproductiveStatus === 'possible_pregnancy').length}
-              </span>
-              <span className="kpi-detail">Evaluación o ecografía pendiente</span>
-            </div>
-
-            <div className="metric-card">
-              <span className="kpi-label">
-                <IconHeart size={16} className="text-body" />
-                <span>Ciclos activos</span>
-              </span>
-              <span className="kpi-value tabular-nums">{activeCycles.length}</span>
-              <span className="kpi-detail">Marranas en seguimiento</span>
-            </div>
+            <KpiCard
+              label="Marranas gestantes"
+              icon={<IconHeart size={16} className="text-success" />}
+              value={activeCycles.filter((c) => c.reproductiveStatus === 'gestation').length}
+              detail="Preñez confirmada en curso"
+            />
+            <KpiCard
+              label="Partos próximos (≤ 7d)"
+              icon={<IconCalendar size={16} className="text-warning" />}
+              value={activeCycles.filter((c) => ['gestation','possible_pregnancy'].includes(c.reproductiveStatus) && c.daysRemaining >= 0 && c.daysRemaining <= 7).length}
+              detail="Atención prioritaria de maternidad"
+            />
+            <KpiCard
+              label="Posible preñez"
+              icon={<IconActivity size={16} className="text-primary" />}
+              value={activeCycles.filter((c) => c.reproductiveStatus === 'possible_pregnancy').length}
+              detail="Evaluación o ecografía pendiente"
+            />
+            <KpiCard
+              label="Ciclos activos"
+              icon={<IconHeart size={16} className="text-body" />}
+              value={activeCycles.length}
+              detail="Marranas en seguimiento"
+            />
           </div>
 
-          <div className="card">
-            <div className="card-header-clean mb-3">
-              <div>
-                <span className="section-title">Ciclos reproductivos</span>
-                <p className="text-xs text-muted mt-0.5">
-                  Rango inclusivo por fecha del último servicio (antecedente: fecha probable)
-                </p>
-              </div>
-              <div className="inline-flex items-center gap-2">
+          <SectionCard
+            title="Ciclos reproductivos"
+            subtitle="Rango inclusivo por fecha del último servicio (antecedente: fecha probable)"
+            actions={
+              <>
                 {!soloLectura && (
                   <button
                     type="button"
@@ -1031,9 +1019,9 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     </span>
                   </button>
                 )}
-              </div>
-            </div>
-
+              </>
+            }
+          >
         <div className="grid-3 mb-4">
           <div className="form-group">
             <label className="form-label">Desde</label>
@@ -1069,7 +1057,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 onClick={() => {
                   setLoading(true);
                   void load().catch((err) => {
-                    setError(err instanceof Error ? err.message : 'Error cargando reproducción.');
+                    setError(errorMessage(err, 'Error cargando reproducción.'));
                     setLoading(false);
                   });
                 }}
@@ -1097,9 +1085,9 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     <div className="inline-flex items-center gap-2 flex-wrap">
                       <span className="arete-badge">{cycle.femaleCode}</span>
                       {cycle.femaleAlias && <span className="font-semibold text-sm">{cycle.femaleAlias}</span>}
-                      <span className="badge-status badge-outline text-xs tabular-nums font-mono">Ciclo #{cycle.cycleNumber}</span>
+                      <StatusBadge className="text-xs tabular-nums font-mono">Ciclo #{cycle.cycleNumber}</StatusBadge>
                       {cycle.antecedent && (
-                        <span className="badge-status badge-outline text-xs">Antecedente</span>
+                        <StatusBadge className="text-xs">Antecedente</StatusBadge>
                       )}
                     </div>
                     <span className="data-card-subtitle">
@@ -1110,44 +1098,45 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                   </div>
 
                   <div className="reproduction-due flex flex-col items-end gap-1">
-                    <span
-                      className={`badge-status ${
+                    <StatusBadge
+                      tone={
                         cycle.reproductiveStatus === 'gestation'
-                          ? 'badge-success'
+                          ? 'success'
                           : cycle.reproductiveStatus === 'possible_pregnancy'
-                          ? 'badge-primary'
+                          ? 'primary'
                           : cycle.reproductiveStatus === 'abortion'
-                          ? 'badge-danger'
-                          : 'badge-outline'
-                      }`}
+                          ? 'danger'
+                          : 'outline'
+                      }
                     >
                       {statusLabels[cycle.reproductiveStatus] ?? cycle.reproductiveStatus}
-                    </span>
-                    <span
-                      className={`badge-status tabular-nums font-mono ${
-                        cycle.cycleStatus !== 'open' ? 'badge-outline' : cycle.daysRemaining < 0
-                          ? 'badge-danger'
+                    </StatusBadge>
+                    <StatusBadge
+                      className="tabular-nums font-mono"
+                      tone={
+                        cycle.cycleStatus !== 'open' ? 'outline' : cycle.daysRemaining < 0
+                          ? 'danger'
                           : cycle.daysRemaining <= 7
-                          ? 'badge-warning'
-                          : 'badge-primary'
-                      }`}
+                          ? 'warning'
+                          : 'primary'
+                      }
                     >
                       <IconCalendar size={13} />
                       <span>{cycle.dueLabel}</span>
-                    </span>
+                    </StatusBadge>
                     {cycle.cycleStatus === 'open' && <span className="text-xs text-muted tabular-nums font-mono">
                       {cycle.daysRemaining} días
                     </span>}
                   </div>
                 </header>
 
-                <dl className="data-card-meta">
-                  <div><dt>Servicio</dt><dd className="font-mono tabular-nums">{cycle.serviceAnchorDate ?? 'Sin registrar'}</dd></div>
-                  <div><dt>Parto probable</dt><dd className="font-mono tabular-nums">{cycle.probableFarrowingDate}</dd></div>
-                  <div><dt>Fuente de fecha</dt><dd>{cycle.dueDateSource === 'manual' ? 'Manual' : `${cycle.gestationDays} días de gestación`}</dd></div>
-                  <div><dt>Parto real</dt><dd className="font-mono tabular-nums">{cycle.litter?.farrowingDate ?? cycle.lastFarrowingDate ?? 'Sin registrar'}</dd></div>
-                  <div><dt>Camada</dt><dd className="font-mono tabular-nums">{cycle.litter ? `${cycle.litter.femaleAlive + cycle.litter.maleAlive + cycle.litter.unsexedAlive} lechones vivos` : 'Sin camada abierta'}</dd></div>
-                </dl>
+                <DataCardMeta items={[
+                  { label: 'Servicio', value: cycle.serviceAnchorDate ?? 'Sin registrar', className: 'font-mono tabular-nums' },
+                  { label: 'Parto probable', value: cycle.probableFarrowingDate, className: 'font-mono tabular-nums' },
+                  { label: 'Fuente de fecha', value: cycle.dueDateSource === 'manual' ? 'Manual' : `${cycle.gestationDays} días de gestación` },
+                  { label: 'Parto real', value: cycle.litter?.farrowingDate ?? cycle.lastFarrowingDate ?? 'Sin registrar', className: 'font-mono tabular-nums' },
+                  { label: 'Camada', value: cycle.litter ? `${cycle.litter.femaleAlive + cycle.litter.maleAlive + cycle.litter.unsexedAlive} lechones vivos` : 'Sin camada abierta', className: 'font-mono tabular-nums' },
+                ]} />
 
                 {cycle.dueDateReason && (
                   <p className="text-xs text-muted italic mt-2">
@@ -1168,7 +1157,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           className="text-xs text-muted flex items-center gap-2 flex-wrap p-1.5 rounded card-subtle"
                         >
                           <span className="font-semibold text-body tabular-nums font-mono">{service.serviceDate}</span>
-                          <span className="badge-status badge-outline text-xs tabular-nums font-mono">#{service.serviceNumber}</span>
+                          <StatusBadge className="text-xs tabular-nums font-mono">#{service.serviceNumber}</StatusBadge>
                           <span>{serviceLabels[service.serviceType] ?? service.serviceType}</span>
                           <span>·</span>
                           <span>
@@ -1199,9 +1188,9 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                             </div>
                             <div className="timeline-meta">
                               {entry.physiologicalStatus && (
-                                <span className="badge-status badge-outline text-xs">
+                                <StatusBadge className="text-xs">
                                   {statusLabels[entry.physiologicalStatus] ?? entry.physiologicalStatus}
-                                </span>
+                                </StatusBadge>
                               )}
                               {entry.reason && <span className="italic">{entry.reason}</span>}
                             </div>
@@ -1221,30 +1210,27 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 {/* Camada / Parto */}
                 {cycle.litter && (
                   <section className="data-card litter-card mt-3" aria-label={`Camada de ${cycle.femaleCode}`}>
-                    <header className="data-card-head">
-                      <div className="data-card-identity">
-                        <span className="data-card-title inline-flex items-center gap-2">
+                    <DataCardHead
+                      title={
+                        <span className="inline-flex items-center gap-2">
                           <IconActivity size={15} className="text-primary" />
                           <span>Camada · <span className="tabular-nums font-mono">{cycle.litter.id.slice(0, 8)}</span></span>
                         </span>
-                        <span className="data-card-subtitle">
-                          Parto real: <span className="tabular-nums font-mono">{cycle.litter.farrowingDate ?? cycle.lastFarrowingDate ?? 'Sin registrar'}</span>
-                        </span>
-                      </div>
-                    </header>
-
-                    <dl className="data-card-meta">
-                      <div><dt>Hembras vivas</dt><dd className="font-mono tabular-nums">{cycle.litter.femaleAlive}</dd></div>
-                      <div><dt>Machos vivos</dt><dd className="font-mono tabular-nums">{cycle.litter.maleAlive}</dd></div>
-                      <div><dt>Sin sexar</dt><dd className="font-mono tabular-nums">{cycle.litter.unsexedAlive}</dd></div>
-                      <div><dt>Vivos totales</dt><dd className="font-mono tabular-nums font-semibold">{cycle.litter.femaleAlive + cycle.litter.maleAlive + cycle.litter.unsexedAlive}</dd></div>
-                      <div><dt>Destete previsto</dt><dd className="font-mono tabular-nums">{cycle.litter.expectedWeaningDate ?? 'Sin parámetro'}</dd></div>
-                      <div><dt>Destete real</dt><dd className="font-mono tabular-nums">{cycle.litter.actualWeaningDate ?? 'Sin registrar'}</dd></div>
-                    </dl>
+                      }
+                      subtitle={<>Parto real: <span className="tabular-nums font-mono">{cycle.litter.farrowingDate ?? cycle.lastFarrowingDate ?? 'Sin registrar'}</span></>}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Hembras vivas', value: cycle.litter.femaleAlive, className: 'font-mono tabular-nums' },
+                      { label: 'Machos vivos', value: cycle.litter.maleAlive, className: 'font-mono tabular-nums' },
+                      { label: 'Sin sexar', value: cycle.litter.unsexedAlive, className: 'font-mono tabular-nums' },
+                      { label: 'Vivos totales', value: cycle.litter.femaleAlive + cycle.litter.maleAlive + cycle.litter.unsexedAlive, className: 'font-mono tabular-nums font-semibold' },
+                      { label: 'Destete previsto', value: cycle.litter.expectedWeaningDate ?? 'Sin parámetro', className: 'font-mono tabular-nums' },
+                      { label: 'Destete real', value: cycle.litter.actualWeaningDate ?? 'Sin registrar', className: 'font-mono tabular-nums' },
+                    ]} />
 
                     {!soloLectura && (
                       <>
-                        <div className="data-card-actions">
+                        <DataCardActions>
                           <button
                             type="button"
                             className="btn btn-primary"
@@ -1258,13 +1244,13 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                             <IconPlus size={14} />
                             <span>Baja, adopción o destete</span>
                           </button>
-                        </div>
+                        </DataCardActions>
                         <details className="data-card-disclosure">
                           <summary>
                             <IconEdit size={14} />
                             <span>Corregir datos de la camada</span>
                           </summary>
-                          <div className="data-card-actions">
+                          <DataCardActions>
                             <button
                               type="button"
                               className="btn btn-outline"
@@ -1287,7 +1273,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                                 <span>Corregir cantidades</span>
                               </button>
                             )}
-                          </div>
+                          </DataCardActions>
                         </details>
                       </>
                     )}
@@ -1305,7 +1291,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         onSubmit={(event) => void saveLitterDate(event)}
                       >
                         <h4 id="litter-date-dialog-title" className="text-lg font-bold mb-1">Corregir fecha real del parto</h4>
-                        {error && <div className="alert alert-error" role="alert">{error}</div>}
+                        {error && <InlineAlert tone="error">{error}</InlineAlert>}
                         <p className="text-xs text-muted">
                           Fecha vigente al abrir: <strong>{dateCorrection.expectedCurrentDate}</strong>. Indique el
                           motivo de la corrección para conservarlo en el historial.
@@ -1388,7 +1374,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         onSubmit={(event) => void saveLitterCounts(event)}
                       >
                         <h4 id="litter-count-dialog-title" className="text-lg font-bold mb-1">Corregir cantidades de nacimiento</h4>
-                        {error && <div className="alert alert-error" role="alert">{error}</div>}
+                        {error && <InlineAlert tone="error">{error}</InlineAlert>}
                         <p className="text-xs text-muted">
                           Corrija los nacimientos originales. Las bajas y destetes posteriores se conservarán y se
                           comprobarán antes de guardar.
@@ -1473,14 +1459,14 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                   </p>
                 )}
                 {cycle.weaningPlan && cycle.previousWeaningDate && cycle.weaningPlan.referenceWeaningDate !== cycle.previousWeaningDate && (
-                  <p className="alert alert-warning text-xs mt-2" role="alert">
+                  <InlineAlert tone="warning">
                     El destete real cambió a <strong className="tabular-nums font-mono">{cycle.previousWeaningDate}</strong>; revise y actualice este plan.
-                  </p>
+                  </InlineAlert>
                 )}
                 {cycle.weaningPlan && cycle.previousWeaningPending && (
-                  <p className="alert alert-warning text-xs mt-2" role="alert">
+                  <InlineAlert tone="warning">
                     El destete de la camada anterior volvió a quedar pendiente; revise este plan cuando se complete.
-                  </p>
+                  </InlineAlert>
                 )}
 
                 {!soloLectura && (
@@ -1511,7 +1497,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     onSubmit={(event) => void savePostweaningPlan(event, cycle)}
                   >
                     <h4 id={`postweaning-dialog-title-${cycle.id}`} className="text-lg font-bold mb-1">Plan postdestete</h4>
-                    {error && <div className="alert alert-error" role="alert">{error}</div>}
+                    {error && <InlineAlert tone="error">{error}</InlineAlert>}
                     <p className="text-xs text-muted mb-2">{cycle.femaleCode} · ajusta el destete de referencia y los intervalos de celo y repeticiones.</p>
                     <div className="grid-2">
                       <div className="form-group">
@@ -1620,7 +1606,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     onSubmit={(event) => void saveLitterEvent(event, cycle)}
                   >
                     <h4 id={`litter-event-dialog-title-${cycle.id}`} className="text-lg font-bold mb-1">Baja, adopción o destete</h4>
-                    {error && <div className="alert alert-error" role="alert">{error}</div>}
+                    {error && <InlineAlert tone="error">{error}</InlineAlert>}
                     <p className="text-xs text-muted mb-2">{cycle.femaleCode} · camada {cycle.litter.id.slice(0, 8)}</p>
                     <div className="grid-3">
                       <div className="form-group">
@@ -2167,7 +2153,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
             ))}
           </div>
         )}
-      </div>
+          </SectionCard>
     </>
   )}
 </section>
