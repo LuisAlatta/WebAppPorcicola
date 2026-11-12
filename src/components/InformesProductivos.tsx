@@ -4,6 +4,16 @@ import { ModuleTabs } from './ModuleTabs';
 import { DataState } from './DataState';
 import { generarReportePdf, type ReportColumn } from '../utils/exportPdf';
 import { generarReporteXlsx } from '../utils/exportXlsx';
+import { errorMessage } from '../utils/format';
+import {
+  InlineAlert,
+  KpiCard,
+  SectionCard,
+  DataCardList,
+  DataCard,
+  DataCardHead,
+  DataCardMeta,
+} from './ui';
 
 type Option = { code: string; name: string };
 type Filters = { from: string; to: string; barnId: string; locationCode: string; lotCode: string; stageCode: string; animalCode: string; motherCode: string };
@@ -89,7 +99,7 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
         if (active) setOptions(data.options);
       })
       .catch((err: unknown) => {
-        if (active) setError(err instanceof Error ? err.message : 'No se pudieron cargar los filtros');
+        if (active) setError(errorMessage(err, 'No se pudieron cargar los filtros'));
       });
     return () => {
       active = false;
@@ -122,7 +132,7 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
       setResult(await query(kind, filters));
     } catch (err) {
       setResult(null);
-      setError(err instanceof Error ? err.message : 'No se pudo consultar el informe');
+      setError(errorMessage(err, 'No se pudo consultar el informe'));
     } finally {
       setBusy(false);
     }
@@ -176,7 +186,7 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
       URL.revokeObjectURL(url);
     } catch (err) {
       setResult(null);
-      setError(err instanceof Error ? err.message : 'No se pudo exportar el informe');
+      setError(errorMessage(err, 'No se pudo exportar el informe'));
     } finally {
       setBusy(false);
     }
@@ -186,15 +196,16 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
   const maxBirths = result?.kind === 'births' ? result.data.rows.reduce((max, row) => Math.max(max, row.totalBorn), 1) : 1;
 
   return (
-    <section className="card">
-      <h2>Informes productivos de la granja</h2>
-      <p className="text-muted">Consulte registros de pesajes o partos y camadas con filtros por galpón y lote.</p>
+    <SectionCard
+      title="Informes productivos de la granja"
+      subtitle="Consulte registros de pesajes o partos y camadas con filtros por galpón y lote."
+    >
       {kind === 'births' && (
         <p className="text-muted text-xs">
           El periodo selecciona la fecha de parto de la marrana; las bajas de lactancia se contabilizan hasta la fecha final indicada.
         </p>
       )}
-      {error && <div className="alert alert-danger" role="alert" aria-live="assertive">{error}</div>}
+      {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
       <ModuleTabs
         label="Tipo de informe productivo"
         active={kind}
@@ -310,34 +321,29 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
           {result.kind === 'weights' ? (
             <>
               <div className="report-metrics">
-                <div className="metric-card">
-                  <span>Pesajes</span>
-                  <strong className="tabular-nums">{result.data.total.observations}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Peso promedio</span>
-                  <strong className="tabular-nums">{decimal(result.data.total.averageKg, ' kg')}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Mínimo / máximo</span>
-                  <strong className="tabular-nums font-mono">
-                    {decimal(result.data.total.minimumKg, ' kg')} / {decimal(result.data.total.maximumKg, ' kg')}
-                  </strong>
-                </div>
+                <KpiCard label="Pesajes" value={result.data.total.observations} />
+                <KpiCard label="Peso promedio" value={decimal(result.data.total.averageKg, ' kg')} />
+                <KpiCard
+                  label="Mínimo / máximo"
+                  value={`${decimal(result.data.total.minimumKg, ' kg')} / ${decimal(result.data.total.maximumKg, ' kg')}`}
+                />
               </div>
 
               {result.data.rows.length ? (
-                <ul className="data-card-list data-card-grid" aria-label="Pesajes por fecha y etapa">
+                <DataCardList label="Pesajes por fecha y etapa" grid>
                   {result.data.rows.map((row, index) => (
-                    <li key={`${row.date}-${row.stageCode}-${index}`}><article className="data-card">
-                      <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{options.stages.find(stage => stage.code === row.stageCode)?.name ?? row.stageCode ?? 'Sin etapa'}</span><span className="data-card-subtitle">{row.date}</span></div></header>
-                      <dl className="data-card-meta">
-                        <div><dt>Pesajes</dt><dd className="font-mono tabular-nums">{row.observations}</dd></div>
-                        <div><dt>Peso promedio</dt><dd className="font-mono tabular-nums">{decimal(row.averageKg, ' kg')}</dd></div>
-                      </dl>
-                    </article></li>
+                    <DataCard key={`${row.date}-${row.stageCode}-${index}`}>
+                      <DataCardHead
+                        title={options.stages.find(stage => stage.code === row.stageCode)?.name ?? row.stageCode ?? 'Sin etapa'}
+                        subtitle={row.date}
+                      />
+                      <DataCardMeta items={[
+                        { label: 'Pesajes', value: row.observations, className: 'font-mono tabular-nums' },
+                        { label: 'Peso promedio', value: decimal(row.averageKg, ' kg'), className: 'font-mono tabular-nums' },
+                      ]} />
+                    </DataCard>
                   ))}
-                </ul>
+                </DataCardList>
               ) : <DataState variant="empty" title="Sin pesajes para los filtros seleccionados." />}
 
               <h3 className="mt-4">Gráfico de pesos promedio</h3>
@@ -354,45 +360,30 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
           ) : (
             <>
               <div className="report-metrics">
-                <div className="metric-card">
-                  <span>Crías nacidas</span>
-                  <strong className="tabular-nums">{result.data.totals.totalBorn}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Nacidos muertos</span>
-                  <strong className="tabular-nums text-danger">{result.data.totals.deaths}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Bajas en lactancia</span>
-                  <strong className="tabular-nums text-warning">{result.data.totals.lactationDeaths}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Promedio mortalidad / camada</span>
-                  <strong className="tabular-nums">{decimal(result.data.totals.averageMortalityPct, ' %')}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Mortalidad global al nacer</span>
-                  <strong className="tabular-nums">{decimal(result.data.totals.globalMortalityPct, ' %')}</strong>
-                </div>
+                <KpiCard label="Crías nacidas" value={result.data.totals.totalBorn} />
+                <KpiCard label="Nacidos muertos" value={<span className="text-danger">{result.data.totals.deaths}</span>} />
+                <KpiCard label="Bajas en lactancia" value={<span className="text-warning">{result.data.totals.lactationDeaths}</span>} />
+                <KpiCard label="Promedio mortalidad / camada" value={decimal(result.data.totals.averageMortalityPct, ' %')} />
+                <KpiCard label="Mortalidad global al nacer" value={decimal(result.data.totals.globalMortalityPct, ' %')} />
               </div>
 
               {result.data.rows.length ? (
-                <ul className="data-card-list data-card-grid" aria-label="Partos y camadas">
-                    {result.data.rows.map(row => (
-                      <li key={row.id}><article className="data-card">
-                        <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{row.motherCode}</span><span className="data-card-subtitle">{row.farrowingDate} · {row.barnName}</span></div></header>
-                        <dl className="data-card-meta">
-                          <div><dt>Ubicación / Corral</dt><dd>{row.locationCode ?? 'Sin asignar'}</dd></div>
-                          <div><dt>Lote porcino</dt><dd>{row.lotCode ?? 'Sin lote'}</dd></div>
-                          <div><dt>Nacidos totales</dt><dd className="font-mono tabular-nums">{row.totalBorn}</dd></div>
-                          <div><dt>Nacidos vivos</dt><dd className="font-mono tabular-nums text-success">{row.liveBirths}</dd></div>
-                          <div><dt>Nacidos muertos</dt><dd className="font-mono tabular-nums text-danger">{row.deaths}</dd></div>
-                          <div><dt>Bajas en lactancia</dt><dd className="font-mono tabular-nums text-warning">{row.lactationDeaths}</dd></div>
-                          <div><dt>Mortalidad al nacer</dt><dd className="font-mono tabular-nums">{decimal(row.mortalityPct, ' %')}</dd></div>
-                        </dl>
-                      </article></li>
-                    ))}
-                </ul>
+                <DataCardList label="Partos y camadas" grid>
+                  {result.data.rows.map(row => (
+                    <DataCard key={row.id}>
+                      <DataCardHead title={row.motherCode} subtitle={`${row.farrowingDate} · ${row.barnName}`} />
+                      <DataCardMeta items={[
+                        { label: 'Ubicación / Corral', value: row.locationCode ?? 'Sin asignar' },
+                        { label: 'Lote porcino', value: row.lotCode ?? 'Sin lote' },
+                        { label: 'Nacidos totales', value: row.totalBorn, className: 'font-mono tabular-nums' },
+                        { label: 'Nacidos vivos', value: row.liveBirths, className: 'font-mono tabular-nums text-success' },
+                        { label: 'Nacidos muertos', value: row.deaths, className: 'font-mono tabular-nums text-danger' },
+                        { label: 'Bajas en lactancia', value: row.lactationDeaths, className: 'font-mono tabular-nums text-warning' },
+                        { label: 'Mortalidad al nacer', value: decimal(row.mortalityPct, ' %'), className: 'font-mono tabular-nums' },
+                      ]} />
+                    </DataCard>
+                  ))}
+                </DataCardList>
               ) : <DataState variant="empty" title="Sin nacimientos para los filtros seleccionados." />}
 
               <h3 className="mt-4">Gráfico de nacimientos por camada</h3>
@@ -424,6 +415,6 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
           )}
         </>
       )}
-    </section>
+    </SectionCard>
   );
 }
