@@ -181,7 +181,7 @@ const GROUP_DEFS: GroupDef[] = [
   {
     key: 'stock',
     label: 'Cabezas en el libro del galpón',
-    note: 'Saldo por etapa, sexo, ubicación y lote. Se resuelve con un traslado a otro galpón; mientras quede alguna cabeza no se puede cerrar ni eliminar.',
+    note: 'Saldo del libro de existencias por etapa, sexo, ubicación y lote. Son cabezas contabilizadas con movimientos (saldo inicial, compras, nacimientos, ajustes), no fichas del módulo Animales: por eso puede haber cabezas aquí sin fichas visibles. Se resuelve con un traslado a otro galpón o con el borrado del galpón.',
     section: 'animales',
     table: 'inventory_movements',
     column: 'barn_id',
@@ -1025,6 +1025,7 @@ export async function vacateBarn(
 
 export interface EvacuateInput {
   barnId: number;
+  /** null, undefined o '' activan el modo borrado: los datos del galpón se eliminan permanentemente. */
   destinationBarnId?: unknown;
   reason?: unknown;
   operationKey?: string;
@@ -1032,63 +1033,37 @@ export interface EvacuateInput {
 
 export interface EvacuateResult {
   ok: true;
+  mode: 'transfer' | 'delete';
   barnId: number;
-  destinationBarnId: number;
+  destinationBarnId: number | null;
   fichasTrasladadas: number;
   cabezasTrasladadas: number;
   fichasReasignadas: number;
+  fichasEliminadas: number;
+  cabezasEliminadas: number;
   desvinculadas: { group: string; label: string; count: number }[];
   reasignadas: { group: string; label: string; count: number }[];
+  eliminadas: { group: string; label: string; count: number }[];
   replayed: boolean;
 }
 
 const keyToken = (value: string): string => value.replace(/[^A-Za-z0-9._:-]+/g, '-').slice(0, 40);
 
-/**
- * Vacía el galpón y lo elimina en una sola acción.
- *
- * El ganado vivo se mueve con traslados reales (nunca con un UPDATE de barn_id),
- * porque un traslado ajusta el saldo del libro y cierra el historial de ubicación.
- * Cada traslado es una operación propia y derivada de la clave del intento, así que
- * un corte a mitad de camino se reanuda sin duplicar movimientos. El historial
- * obligatorio pasa al destino y la trazabilidad que admite nulo se desvincula, de
- * modo que el libro de auditoría no se toca.
- */
-export async function evacuateAndDeleteBarn(
+/** En el modo borrado, estos grupos se conservan en el libro sin galpón en lugar de eliminarse. */
+const DETACHED_ON_DELETE = new Set(['financial_allocations', 'feed_warehouses', 'operations', 'audit']);
+
+async function transferLivestock(
   db: D1Database,
   actorUserId: number,
-  input: EvacuateInput,
-): Promise<EvacuateResult> {
-  const reason = normalizeReason(input.reason, { required: true });
-  const effectiveDate = currentFarmDate();
-
-  const destinationBarnId = Number(input.destinationBarnId);
-  if (!Number.isInteger(destinationBarnId) || destinationBarnId <= 0) {
-    throw new ApiError(400, 'Seleccione el galpón destino');
-  }
-  if (destinationBarnId === input.barnId) throw new ApiError(400, 'El destino debe ser otro galpón');
-
-  // Primero el reintento: un vaciado ya aplicado no puede confundirse con un galpón inexistente.
-  const payload = { barnId: input.barnId, destinationBarnId, effectiveDate };
-  const existing = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
-  if (existing) return { ...(existing.result as EvacuateResult), replayed: true };
-
-  const barn = await db.prepare('SELECT id, code, name FROM barns WHERE id = ?')
-    .bind(input.barnId)
-    .first<Row>();
-  if (!barn) throw new ApiError(404, 'Galpón no encontrado');
-
-  const destination = await db.prepare('SELECT id, name FROM barns WHERE id = ?')
-    .bind(destinationBarnId)
-    .first<Row>();
-  if (!destination) throw new ApiError(404, 'El galpón destino no existe');
-
-  const attemptKey = input.operationKey ?? `evac-auto-${crypto.randomUUID()}`;
-  const subKey = (tag: string, identity: string) => `evac-${keyToken(attemptKey)}-${tag}-${keyToken(identity)}`.slice(0, 128);
-
+  barnId: number,
+  destinationBarnId: number,
+  effectiveDate: string,
+  reason: string,
+  subKey: (tag: string, identity: string) => string,
+): Promise<{ fichas: number; cabezas: number }> {
   const liveFichas = await db.prepare(
     'SELECT code FROM animals WHERE barn_id = ? AND is_active = 1 AND exit_date IS NULL ORDER BY code LIMIT 2000',
-  ).bind(input.barnId).all<Row>();
+  ).bind(barnId).all<Row>();
   const codes = (liveFichas.results ?? []).map((row) => text(row.code)).filter((code) => code.length > 0);
   for (const code of codes) {
     await transferAnimal(db, actorUserId, code, {
@@ -1107,7 +1082,7 @@ export async function evacuateAndDeleteBarn(
     GROUP BY stage_code, sex, location_code, lot_code
     HAVING heads > 0
     ORDER BY heads DESC LIMIT 500
-  `).bind(input.barnId).all<Row>();
+  `).bind(barnId).all<Row>();
 
   let headsMoved = 0;
   for (const bucket of stockBuckets.results ?? []) {
@@ -1122,7 +1097,7 @@ export async function evacuateAndDeleteBarn(
     // al galpón de origen y el traslado los rechazaría fuera de su galpón.
     await transferInventory(db, actorUserId, {
       effectiveDate,
-      sourceBarnId: input.barnId,
+      sourceBarnId: barnId,
       destinationBarnId,
       sourceLocationCode: locationCode,
       sourceLotCode: lotCode,
@@ -1139,7 +1114,7 @@ export async function evacuateAndDeleteBarn(
 
   const leftovers = await Promise.all(GROUP_DEFS.filter((def) => def.transferOnly).map(async (def) => ({
     def,
-    count: await countOf(db, def, input.barnId),
+    count: await countOf(db, def, barnId),
   })));
   const pending = leftovers
     .filter((item) => item.count > 0)
@@ -1148,47 +1123,224 @@ export async function evacuateAndDeleteBarn(
     throw new ApiError(409, `No se pudo trasladar todo el ganado (${pending.join(', ')}). Los traslados ya registrados no se duplican; reintente la acción.`);
   }
 
-  const closedFichas = await db.prepare(
-    'SELECT count(*) AS n FROM animals WHERE barn_id = ?',
-  ).bind(input.barnId).first<Row>();
-  const fichasReasignadas = Number(closedFichas?.n ?? 0);
+  return { fichas: codes.length, cabezas: headsMoved };
+}
 
-  const historyDefs = GROUP_DEFS.filter((def) => !def.cascade && !def.transferOnly);
-  const historyCounts = await Promise.all(historyDefs.map((def) => countOf(db, def, input.barnId)));
-  const desvinculadas = historyDefs
-    .map((def, index) => ({ group: def.key, label: def.label, count: historyCounts[index] }))
-    .filter((item, index) => item.count > 0 && historyDefs[index].nullable);
-  const reasignadas = historyDefs
-    .map((def, index) => ({ group: def.key, label: def.label, count: historyCounts[index] }))
-    .filter((item, index) => item.count > 0 && !historyDefs[index].nullable);
-
-  const result: EvacuateResult = {
-    ok: true,
-    barnId: input.barnId,
-    destinationBarnId,
-    fichasTrasladadas: codes.length,
-    cabezasTrasladadas: headsMoved,
-    fichasReasignadas,
-    desvinculadas,
-    reasignadas,
-    replayed: false,
+/**
+ * Plan de borrado permanente de los datos del galpón (modo sin destino).
+ * El orden respeta las claves foráneas: primero los hijos (eventos, correcciones,
+ * aplicaciones), luego los padres (camadas, ciclos, fichas). Los enlaces que otros
+ * galpones tienen contra estos registros se desvinculan antes de borrar; el libro
+ * financiero, los almacenes y la trazabilidad se conservan sin galpón.
+ */
+async function planBarnDeletion(db: D1Database, barnId: number): Promise<{
+  statements: D1PreparedStatement[];
+  fichas: number;
+  cabezas: number;
+  eliminadas: { group: string; label: string; count: number }[];
+  desvinculadas: { group: string; label: string; count: number }[];
+}> {
+  const scoped = (query: string) => {
+    const placeholders = query.split('?').length - 1;
+    return db.prepare(query).bind(...Array.from({ length: placeholders }, () => barnId));
   };
+  const A = '(SELECT id FROM animals WHERE barn_id = ?)';
+  const L = '(SELECT id FROM litters WHERE barn_id = ?)';
+  const C = '(SELECT id FROM reproduction_cycles WHERE barn_id = ?)';
+  const H = '(SELECT health_event_id FROM health_event_animals WHERE barn_id = ? OR animal_id IN (SELECT id FROM animals WHERE barn_id = ?))';
 
-  const statements: D1PreparedStatement[] = [
-    ...desvinculadas.map((item) => {
-      const def = findDef(item.group);
-      return db.prepare(`UPDATE ${def.table} SET ${def.column} = NULL WHERE ${def.column} = ?`).bind(input.barnId);
-    }),
-    ...reasignadas.map((item) => {
-      const def = findDef(item.group);
-      return db.prepare(`UPDATE ${def.table} SET ${def.column} = ? WHERE ${def.column} = ?`).bind(destinationBarnId, input.barnId);
-    }),
-    db.prepare('UPDATE animals SET barn_id = ? WHERE barn_id = ?').bind(destinationBarnId, input.barnId),
-    db.prepare('DELETE FROM user_barns WHERE barn_id = ?').bind(input.barnId),
-    db.prepare('DELETE FROM barn_team_history WHERE barn_id = ?').bind(input.barnId),
-    db.prepare('DELETE FROM barn_pens WHERE barn_id = ?').bind(input.barnId),
-    db.prepare('DELETE FROM barns WHERE id = ?').bind(input.barnId),
+  const statements = [
+    scoped(`DELETE FROM litter_identified_adoptions WHERE animal_id IN ${A} OR source_litter_id IN ${L} OR target_litter_id IN ${L}`),
+    scoped(`DELETE FROM litter_events WHERE destination_barn_id = ? OR litter_id IN ${L} OR destination_litter_id IN ${L}`),
+    scoped(`DELETE FROM litter_corrections WHERE litter_id IN ${L}`),
+    scoped(`DELETE FROM litters WHERE barn_id = ? OR female_animal_id IN ${A}`),
+    scoped(`DELETE FROM reproduction_weaning_plans WHERE cycle_id IN ${C}`),
+    scoped(`DELETE FROM reproduction_events WHERE cycle_id IN ${C}`),
+    scoped(`DELETE FROM reproduction_services WHERE cycle_id IN ${C}`),
+    scoped(`UPDATE reproduction_services SET sire_animal_id = NULL WHERE sire_animal_id IN ${A}`),
+    scoped(`DELETE FROM reproduction_cycles WHERE barn_id = ? OR female_animal_id IN ${A}`),
+    scoped(`DELETE FROM vaccine_occurrences WHERE animal_id IN ${A} OR application_health_event_id IN ${H}`),
+    scoped(`UPDATE inventory_movements SET health_event_id = NULL WHERE health_event_id IN ${H}`),
+    scoped(`DELETE FROM health_events WHERE id IN ${H}`),
+    scoped(`DELETE FROM health_event_animals WHERE barn_id = ? OR animal_id IN ${A}`),
+    scoped(`DELETE FROM animal_location_history WHERE barn_id = ? OR animal_id IN ${A}`),
+    scoped(`UPDATE animal_weights SET corrects_weight_id = NULL WHERE corrects_weight_id IN (SELECT id FROM animal_weights WHERE barn_id = ? OR animal_id IN ${A})`),
+    scoped(`DELETE FROM animal_weights WHERE barn_id = ? OR animal_id IN ${A}`),
+    scoped(`UPDATE animals SET mother_id = CASE WHEN mother_id IN ${A} THEN NULL ELSE mother_id END,
+      father_id = CASE WHEN father_id IN ${A} THEN NULL ELSE father_id END,
+      litter_id = CASE WHEN litter_id IN ${L} THEN NULL ELSE litter_id END
+      WHERE mother_id IN ${A} OR father_id IN ${A} OR litter_id IN ${L}`),
+    scoped(`UPDATE inventory_movements SET animal_id = NULL, litter_id = NULL WHERE animal_id IN ${A} OR litter_id IN ${L}`),
+    scoped(`UPDATE inventory_movements SET reverses_movement_id = NULL WHERE reverses_movement_id IN (SELECT id FROM inventory_movements WHERE barn_id = ?)`),
+    scoped(`UPDATE feed_movements SET animal_id = NULL WHERE animal_id IN ${A}`),
+    scoped(`UPDATE feed_movements SET reverses_movement_id = NULL WHERE reverses_movement_id IN (SELECT id FROM feed_movements WHERE destination_barn_id = ?)`),
+    scoped(`UPDATE financial_allocations SET animal_id = NULL WHERE animal_id IN ${A}`),
+    scoped('DELETE FROM inventory_reconciliations WHERE barn_id = ?'),
+    scoped('DELETE FROM inventory_movements WHERE barn_id = ?'),
+    scoped('DELETE FROM feed_turns WHERE barn_id = ?'),
+    scoped('DELETE FROM feed_movements WHERE destination_barn_id = ?'),
+    scoped('UPDATE financial_allocations SET barn_id = NULL WHERE barn_id = ?'),
+    scoped('DELETE FROM alert_occurrences WHERE barn_id = ?'),
+    scoped('DELETE FROM animals WHERE barn_id = ?'),
+    scoped('DELETE FROM location_versions WHERE barn_id = ?'),
+    scoped('UPDATE feed_warehouses SET barn_id = NULL WHERE barn_id = ?'),
+    scoped('UPDATE operation_log SET barn_id = NULL WHERE barn_id = ?'),
+    scoped('UPDATE audit_log SET barn_id = NULL WHERE barn_id = ?'),
+    scoped('DELETE FROM user_barns WHERE barn_id = ?'),
+    scoped('DELETE FROM barn_team_history WHERE barn_id = ?'),
+    scoped('DELETE FROM barn_pens WHERE barn_id = ?'),
+    scoped('DELETE FROM barns WHERE id = ?'),
   ];
+
+  const defs = GROUP_DEFS.filter((def) => !def.cascade);
+  const counts = await Promise.all(defs.map((def) => countOf(db, def, barnId)));
+  const eliminadas = defs
+    .map((def, index) => ({ group: def.key, label: def.label, count: counts[index] }))
+    .filter((item, index) => item.count > 0 && !DETACHED_ON_DELETE.has(defs[index].key));
+  const desvinculadas = defs
+    .map((def, index) => ({ group: def.key, label: def.label, count: counts[index] }))
+    .filter((item, index) => item.count > 0 && DETACHED_ON_DELETE.has(defs[index].key));
+
+  const fichasRow = await db.prepare('SELECT count(*) AS n FROM animals WHERE barn_id = ?').bind(barnId).first<Row>();
+  const cabezas = await countOf(db, findDef('stock'), barnId);
+
+  return { statements, fichas: Number(fichasRow?.n ?? 0), cabezas, eliminadas, desvinculadas };
+}
+
+/**
+ * Vacía el galpón y lo elimina en una sola acción reintentable.
+ *
+ * Con destino, el ganado vivo se mueve con traslados reales (nunca con un UPDATE de
+ * barn_id), porque un traslado ajusta el saldo del libro y cierra el historial de
+ * ubicación; cada traslado es una operación propia derivada de la clave del intento,
+ * así que un corte a mitad de camino se reanuda sin duplicar movimientos. El
+ * historial obligatorio pasa al destino y la trazabilidad que admite nulo se
+ * desvincula, de modo que el libro de auditoría no se toca.
+ *
+ * Sin destino (destinationBarnId nulo), los datos del galpón se eliminan
+ * permanentemente en orden de dependencias; solo se conservan sin galpón el libro
+ * financiero, los almacenes y la trazabilidad de auditoría y operaciones.
+ */
+export async function evacuateAndDeleteBarn(
+  db: D1Database,
+  actorUserId: number,
+  input: EvacuateInput,
+): Promise<EvacuateResult> {
+  const reason = normalizeReason(input.reason, { required: true });
+  const effectiveDate = currentFarmDate();
+
+  const rawDestination = input.destinationBarnId;
+  const hasDestination = rawDestination !== undefined && rawDestination !== null && rawDestination !== '';
+  const target = hasDestination ? Number(rawDestination) : null;
+  if (hasDestination && (!Number.isInteger(target) || (target as number) <= 0)) {
+    throw new ApiError(400, 'Seleccione el galpón destino');
+  }
+  if (target === input.barnId) throw new ApiError(400, 'El destino debe ser otro galpón');
+  const mode: 'transfer' | 'delete' = target === null ? 'delete' : 'transfer';
+
+  // Primero el reintento: un vaciado ya aplicado no puede confundirse con un galpón inexistente.
+  const payload = { barnId: input.barnId, destinationBarnId: target, mode, effectiveDate };
+  const existing = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (existing) return { ...(existing.result as EvacuateResult), replayed: true };
+
+  const barn = await db.prepare('SELECT id, code, name FROM barns WHERE id = ?')
+    .bind(input.barnId)
+    .first<Row>();
+  if (!barn) throw new ApiError(404, 'Galpón no encontrado');
+
+  const attemptKey = input.operationKey ?? `evac-auto-${crypto.randomUUID()}`;
+  const subKey = (tag: string, identity: string) => `evac-${keyToken(attemptKey)}-${tag}-${keyToken(identity)}`.slice(0, 128);
+
+  let result: EvacuateResult;
+  let statements: D1PreparedStatement[];
+  let newData: Record<string, unknown>;
+
+  if (target !== null) {
+    const destination = await db.prepare('SELECT id, name FROM barns WHERE id = ?')
+      .bind(target)
+      .first<Row>();
+    if (!destination) throw new ApiError(404, 'El galpón destino no existe');
+
+    const moved = await transferLivestock(db, actorUserId, input.barnId, target, effectiveDate, reason, subKey);
+
+    const closedFichas = await db.prepare(
+      'SELECT count(*) AS n FROM animals WHERE barn_id = ?',
+    ).bind(input.barnId).first<Row>();
+    const fichasReasignadas = Number(closedFichas?.n ?? 0);
+
+    const historyDefs = GROUP_DEFS.filter((def) => !def.cascade && !def.transferOnly);
+    const historyCounts = await Promise.all(historyDefs.map((def) => countOf(db, def, input.barnId)));
+    const desvinculadas = historyDefs
+      .map((def, index) => ({ group: def.key, label: def.label, count: historyCounts[index] }))
+      .filter((item, index) => item.count > 0 && historyDefs[index].nullable);
+    const reasignadas = historyDefs
+      .map((def, index) => ({ group: def.key, label: def.label, count: historyCounts[index] }))
+      .filter((item, index) => item.count > 0 && !historyDefs[index].nullable);
+
+    result = {
+      ok: true,
+      mode,
+      barnId: input.barnId,
+      destinationBarnId: target,
+      fichasTrasladadas: moved.fichas,
+      cabezasTrasladadas: moved.cabezas,
+      fichasReasignadas,
+      fichasEliminadas: 0,
+      cabezasEliminadas: 0,
+      desvinculadas,
+      reasignadas,
+      eliminadas: [],
+      replayed: false,
+    };
+
+    statements = [
+      ...desvinculadas.map((item) => {
+        const def = findDef(item.group);
+        return db.prepare(`UPDATE ${def.table} SET ${def.column} = NULL WHERE ${def.column} = ?`).bind(input.barnId);
+      }),
+      ...reasignadas.map((item) => {
+        const def = findDef(item.group);
+        return db.prepare(`UPDATE ${def.table} SET ${def.column} = ? WHERE ${def.column} = ?`).bind(target, input.barnId);
+      }),
+      db.prepare('UPDATE animals SET barn_id = ? WHERE barn_id = ?').bind(target, input.barnId),
+      db.prepare('DELETE FROM user_barns WHERE barn_id = ?').bind(input.barnId),
+      db.prepare('DELETE FROM barn_team_history WHERE barn_id = ?').bind(input.barnId),
+      db.prepare('DELETE FROM barn_pens WHERE barn_id = ?').bind(input.barnId),
+      db.prepare('DELETE FROM barns WHERE id = ?').bind(input.barnId),
+    ];
+    newData = {
+      destinationBarnId: target,
+      destinationName: text(destination.name),
+      fichasReasignadas,
+      desvinculadas,
+      reasignadas,
+    };
+  } else {
+    const plan = await planBarnDeletion(db, input.barnId);
+    result = {
+      ok: true,
+      mode,
+      barnId: input.barnId,
+      destinationBarnId: null,
+      fichasTrasladadas: 0,
+      cabezasTrasladadas: 0,
+      fichasReasignadas: 0,
+      fichasEliminadas: plan.fichas,
+      cabezasEliminadas: plan.cabezas,
+      desvinculadas: plan.desvinculadas,
+      reasignadas: [],
+      eliminadas: plan.eliminadas,
+      replayed: false,
+    };
+    statements = plan.statements;
+    newData = {
+      mode,
+      fichasEliminadas: plan.fichas,
+      cabezasEliminadas: plan.cabezas,
+      eliminadas: plan.eliminadas,
+      desvinculadas: plan.desvinculadas,
+    };
+  }
 
   const claim = await createOperationClaim({
     operationKey: input.operationKey,
@@ -1213,16 +1365,13 @@ export async function evacuateAndDeleteBarn(
       barnId: input.barnId,
       code: text(barn.code),
       name: text(barn.name),
-      fichasTrasladadas: codes.length,
-      cabezasTrasladadas: headsMoved,
+      mode,
+      fichasTrasladadas: result.fichasTrasladadas,
+      cabezasTrasladadas: result.cabezasTrasladadas,
+      fichasEliminadas: result.fichasEliminadas,
+      cabezasEliminadas: result.cabezasEliminadas,
     },
-    newData: {
-      destinationBarnId,
-      destinationName: text(destination.name),
-      fichasReasignadas,
-      desvinculadas,
-      reasignadas,
-    },
+    newData,
     effectiveDate,
     recordedAt: claim.recordedAt,
   }]);

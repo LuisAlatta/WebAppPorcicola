@@ -50,13 +50,17 @@ interface AssociationsResponse {
 
 interface EvacuateResult {
   ok: true;
+  mode: 'transfer' | 'delete';
   barnId: number;
-  destinationBarnId: number;
+  destinationBarnId: number | null;
   fichasTrasladadas: number;
   cabezasTrasladadas: number;
   fichasReasignadas: number;
+  fichasEliminadas: number;
+  cabezasEliminadas: number;
   desvinculadas: { group: string; label: string; count: number }[];
   reasignadas: { group: string; label: string; count: number }[];
+  eliminadas: { group: string; label: string; count: number }[];
   replayed: boolean;
 }
 
@@ -238,10 +242,10 @@ describe('Datos asociados al galpón · CFG-06', () => {
     const refused = await api(`/api/admin/barns/${sourceId}`, { method: 'DELETE' });
     expect(refused.status).toBe(409);
 
-    const missingTarget = await api(`/api/admin/barns/${sourceId}/evacuate-and-delete`, {
-      body: { reason: 'El galpón se cierra y su ganado pasa al receptor', operationKey: 'asoc-evac-0001' },
+    const invalidTarget = await api(`/api/admin/barns/${sourceId}/evacuate-and-delete`, {
+      body: { destinationBarnId: 'no-numerico', reason: 'El galpón se cierra y su ganado pasa al receptor', operationKey: 'asoc-evac-0001' },
     });
-    expect(missingTarget.status).toBe(400);
+    expect(invalidTarget.status).toBe(400);
 
     const selfTarget = await api(`/api/admin/barns/${sourceId}/evacuate-and-delete`, {
       body: { destinationBarnId: sourceId, reason: 'El galpón se cierra y su ganado pasa al receptor', operationKey: 'asoc-evac-0002' },
@@ -356,5 +360,77 @@ describe('Datos asociados al galpón · CFG-06', () => {
       body: { group: 'pens', recordId: '1; DROP TABLE barns', action: 'delete', reason: 'Intento de inyección', operationKey: 'asoc-bad-0006' },
     });
     expect(injection.status).toBe(400);
+  });
+
+  it('sin galpón destino borra los datos del galpón y conserva el libro financiero, almacenes y trazas', async () => {
+    const barnId = await createBarn('G-AS10', 'Galpón por borrar sin destino');
+    const now = new Date().toISOString();
+
+    const created = await api('/api/animals', {
+      body: {
+        code: 'A-DEL1',
+        animalType: 'lechon',
+        sex: 'hembra',
+        entryDate: '2026-01-10',
+        entryStageCode: 'preinicio',
+        barnId,
+        originType: 'compra',
+        purchaseAmount: '1.00',
+        purchaseCurrencyCode: 'PEN',
+        reason: 'Alta de ficha para borrar el galpón sin destino',
+        operationKey: 'asoc-del-alta-0001',
+      },
+    });
+    expect(created.status).toBe(201);
+
+    await db.batch([
+      db.prepare(`INSERT INTO inventory_movements (movement_type, effective_date, barn_id, stage_code, sex, quantity, created_by_user_id, created_at)
+        VALUES ('purchase', '2026-02-01', ?, 'engorde', 'hembra', 12, ?, ?)`).bind(barnId, adminId, now),
+      db.prepare(`INSERT INTO audit_log (entity_type, entity_id, action, actor_user_id, barn_id, reason, effective_date, recorded_at)
+        VALUES ('barn', ?, 'update', ?, ?, 'Alta del galpón', '2026-02-01', ?)`)
+        .bind(barnId, adminId, barnId, now),
+      db.prepare('INSERT INTO barn_pens (barn_id, code, name, capacity, created_at) VALUES (?, ?, ?, ?, ?)')
+        .bind(barnId, 'C-DEL', 'Corral por borrar', 10, now),
+      db.prepare('INSERT INTO feed_warehouses (code, name, barn_id, is_active, created_by_user_id, created_at) VALUES (?, ?, ?, 1, ?, ?)')
+        .bind('ALM-DEL', 'Almacén del galpón', barnId, adminId, now),
+    ]);
+
+    const view = await (await api(`/api/admin/barns/${barnId}/associations`)).json() as AssociationsResponse;
+    const stockCount = group(view, 'stock').count;
+    expect(stockCount).toBeGreaterThan(0);
+    expect(view.canDelete).toBe(false);
+
+    const deleted = await api(`/api/admin/barns/${barnId}/evacuate-and-delete`, {
+      body: { destinationBarnId: null, reason: 'El galpón se abrió por error y sus datos se borran', operationKey: 'asoc-del-0001' },
+    });
+    expect(deleted.status).toBe(200);
+    const result = await deleted.json() as EvacuateResult;
+    expect(result.mode).toBe('delete');
+    expect(result.destinationBarnId).toBeNull();
+    expect(result.fichasEliminadas).toBe(1);
+    expect(result.cabezasEliminadas).toBe(stockCount);
+    expect(result.eliminadas.map((item) => item.group)).toEqual(expect.arrayContaining(['stock', 'animals', 'inventory_movements']));
+    expect(result.desvinculadas.map((item) => item.group)).toEqual(expect.arrayContaining(['audit', 'feed_warehouses']));
+
+    expect(await db.prepare('SELECT id FROM barns WHERE id = ?').bind(barnId).first()).toBeNull();
+    expect(await db.prepare('SELECT id FROM animals WHERE code = ?').bind('A-DEL1').first()).toBeNull();
+
+    const counts = await db.batch([
+      db.prepare('SELECT count(*) AS n FROM inventory_movements WHERE barn_id = ?').bind(barnId),
+      db.prepare('SELECT count(*) AS n FROM audit_log WHERE barn_id = ?').bind(barnId),
+      db.prepare('SELECT count(*) AS n FROM barn_pens WHERE barn_id = ?').bind(barnId),
+    ]);
+    expect(Number((counts[0] as { results: { n: number }[] }).results[0].n)).toBe(0);
+    expect(Number((counts[1] as { results: { n: number }[] }).results[0].n)).toBe(0);
+    expect(Number((counts[2] as { results: { n: number }[] }).results[0].n)).toBe(0);
+
+    const warehouse = await db.prepare('SELECT barn_id FROM feed_warehouses WHERE code = ?').bind('ALM-DEL').first<{ barn_id: number | null }>();
+    expect(warehouse?.barn_id).toBeNull();
+
+    const replay = await api(`/api/admin/barns/${barnId}/evacuate-and-delete`, {
+      body: { destinationBarnId: null, reason: 'El galpón se abrió por error y sus datos se borran', operationKey: 'asoc-del-0001' },
+    });
+    expect(replay.status).toBe(200);
+    expect(((await replay.json()) as { replayed: boolean }).replayed).toBe(true);
   });
 });
