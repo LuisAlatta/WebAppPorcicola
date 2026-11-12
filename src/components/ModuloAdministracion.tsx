@@ -21,6 +21,7 @@ import {
 } from './icons';
 import { farmToday, newOperationKey } from '../utils/operations';
 import { ModalDialog } from './ModalDialog';
+import { BarnAssociationsModal } from './BarnAssociationsModal';
 import { ModuloConfiguracion } from './ModuloConfiguracion';
 import { ModuleTabs } from './ModuleTabs';
 
@@ -142,8 +143,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
   const [newBarnName, setNewBarnName] = useState<string>('');
   const [newBarnZone, setNewBarnZone] = useState<string>('');
   const [newBarnCapacity, setNewBarnCapacity] = useState<number>(80);
-  const [barnToDelete, setBarnToDelete] = useState<{ id: number; name: string } | null>(null);
-  const [deleteBarnLoading, setDeleteBarnLoading] = useState<boolean>(false);
+  const [barnToDelete, setBarnToDelete] = useState<{ id: number; code: string; name: string } | null>(null);
 
   // Asignación de equipo (ACC-04: clave de reintento estable por formulario)
   const [selectedBarnId, setSelectedBarnId] = useState<number | ''>('');
@@ -541,29 +541,6 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
     }
   };
 
-  const confirmDeleteBarn = async () => {
-    if (!barnToDelete) return;
-    setDeleteBarnLoading(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    try {
-      const res = await fetch(`/api/admin/barns/${barnToDelete.id}`, { method: 'DELETE' });
-      const data = await res.json() as { ok?: boolean; error?: string };
-      if (!res.ok) {
-        setErrorMsg(data.error || 'Error al eliminar galpón');
-        return;
-      }
-      setSuccessMsg(`Galpón ${barnToDelete.name} eliminado exitosamente`);
-      setBarnToDelete(null);
-      await refreshData();
-    } catch (err) {
-      setErrorMsg(String(err));
-    } finally {
-      setDeleteBarnLoading(false);
-    }
-  };
-
   // Listas filtradas para selectores
   const activeResponsables = users.filter((u) => u.role === 'responsable' && u.is_active === 1);
   const activeOperarios = users.filter((u) => u.role === 'operario' && u.is_active === 1);
@@ -855,8 +832,8 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm text-danger"
-                    onClick={() => setBarnToDelete({ id: b.id, name: b.name })}
-                    title="Eliminar galpón sin registros"
+                    onClick={() => setBarnToDelete({ id: b.id, code: b.code, name: b.name })}
+                    title="Ver los datos asociados y eliminar el galpón"
                   >
                     <IconTrash size={14} />
                     <span>Eliminar</span>
@@ -953,33 +930,19 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
             </ModalDialog>
           )}
 
-          {/* Modal Confirmar Eliminación de Galpón */}
+          {/* Modal Datos asociados del galpón (CFG-06) */}
           {barnToDelete && (
-            <ModalDialog labelledBy="admin-delete-barn-dialog-title" onDismiss={() => setBarnToDelete(null)} dismissDisabled={deleteBarnLoading}>
-                <h4 id="admin-delete-barn-dialog-title" className="text-lg font-bold mb-2 text-danger">Confirmar Eliminación</h4>
-                {errorMsg && <p role="alert" className="text-danger">{errorMsg}</p>}
-                <p className="text-sm mb-4">
-                  ¿Está seguro de eliminar el galpón <strong>{barnToDelete.name}</strong>? Esta acción solo es posible si no tiene registros asociados.
-                </p>
-                <div className="form-actions form-actions-sticky">
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    disabled={deleteBarnLoading}
-                    onClick={() => setBarnToDelete(null)}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    disabled={deleteBarnLoading}
-                    onClick={() => void confirmDeleteBarn()}
-                  >
-                    {deleteBarnLoading ? 'Eliminando…' : 'Eliminar Galpón'}
-                  </button>
-                </div>
-            </ModalDialog>
+            <BarnAssociationsModal
+              barn={barnToDelete}
+              barns={barns.map((item) => ({ id: item.id, code: item.code, name: item.name }))}
+              onDismiss={() => setBarnToDelete(null)}
+              onDeleted={(barnName) => {
+                setBarnToDelete(null);
+                setSuccessMsg(`Galpón ${barnName} eliminado exitosamente`);
+                void refreshData();
+              }}
+              onChanged={() => void refreshData()}
+            />
           )}
         </div>
       )}

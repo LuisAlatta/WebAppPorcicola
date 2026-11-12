@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Miniflare } from 'miniflare';
 import worker from '../worker/index';
@@ -27,24 +27,17 @@ describe('Módulo exclusivo de administración · T05', () => {
     db = await runtime.getD1Database('DB');
     await db.exec('PRAGMA foreign_keys = ON;');
 
-    // Ejecutar migraciones 0001 y 0002
-    const migrationFiles = ['0001_initial_schema.sql', '0002_administration_schema.sql', '0003_events_audit_schema.sql', '0004_farm_config_schema.sql','0027_location_barns.sql', '0005_inventory_schema.sql', '0006_animals_schema.sql', '0007_transfer_and_stock_guard.sql', '0008_animal_location_history.sql'];
-    for (const file of migrationFiles) {
-      const schemaSql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
-      const cleanSql = schemaSql
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => !line.startsWith('--'))
-        .join(' ');
-
-      const statements = cleanSql
-        .split(';')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-
-      for (const stmt of statements) {
-        await db.exec(stmt + ';');
+    // Esquema completo, como en un despliegue real
+    for (const file of (await readdir(new URL('../migrations/', import.meta.url))).filter((name) => /^\d+.*\.sql$/.test(name)).sort()) {
+      const sql = (await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8')).replace(/^\s*--.*$/gm, '').replace(/\s+/g, ' ');
+      let trigger = '';
+      for (const part of sql.split(';').map((item) => item.trim()).filter(Boolean)) {
+        if (trigger || /^CREATE TRIGGER/i.test(part)) {
+          trigger += `${part}; `;
+          if (/\bEND$/i.test(part)) { await db.exec(trigger.trim()); trigger = ''; }
+        } else await db.exec(part + ';');
       }
+      if (trigger) throw new Error(`Trigger incompleto: ${file}`);
     }
 
     // Inicializar primer administrador con bootstrap

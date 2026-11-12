@@ -13,6 +13,7 @@ import {
   lookupExistingOperation,
   type AuditRecordInput,
 } from './events';
+import { describeBarnBlockers } from './barn-associations';
 
 export interface Env {
   DB: D1Database;
@@ -1031,28 +1032,19 @@ export async function deleteBarn(db: D1Database, barnId: number): Promise<void> 
     throw new Error('Galpón no encontrado');
   }
 
-  // Verificar si hay registros asociados (corrales, historial o auditoría)
-  const pensCount = await db.prepare('SELECT count(*) as count FROM barn_pens WHERE barn_id = ?')
-    .bind(barnId)
-    .first() as { count: number } | null;
-
-  if ((pensCount?.count ?? 0) > 0) {
-    throw new Error('El galpón tiene corrales asociados. No puede eliminarse; use desactivación');
-  }
-
-  const [historyCount, auditCount] = await Promise.all([
-    db.prepare('SELECT count(*) as count FROM barn_team_history WHERE barn_id = ?').bind(barnId).first() as Promise<{ count: number } | null>,
-    db.prepare('SELECT count(*) as count FROM audit_log WHERE barn_id = ? OR (entity_type = ? AND entity_id = ?)')
-      .bind(barnId, 'barn', barnId).first() as Promise<{ count: number } | null>,
-  ]);
-
-  if ((historyCount?.count ?? 0) > 0 || (auditCount?.count ?? 0) > 0) {
-    throw new Error('El galpón tiene historial o auditoría asociada. No puede eliminarse; use desactivación');
+  // Cualquier tabla que no sea ON DELETE CASCADE deja de apuntar al galpón antes de borrarlo.
+  const blockers = await describeBarnBlockers(db, barnId);
+  if (blockers.length > 0) {
+    throw new ApiError(
+      409,
+      `El galpón todavía tiene datos asociados (${blockers.join(', ')}). Desvincúlelos o reasígnelos desde la lista de datos asociados.`,
+    );
   }
 
   await db.batch([
     db.prepare('DELETE FROM user_barns WHERE barn_id = ?').bind(barnId),
     db.prepare('DELETE FROM barn_team_history WHERE barn_id = ?').bind(barnId),
+    db.prepare('DELETE FROM barn_pens WHERE barn_id = ?').bind(barnId),
     db.prepare('DELETE FROM barns WHERE id = ?').bind(barnId),
   ]);
 }

@@ -32,6 +32,11 @@ import {
 } from './admin';
 import { ApiError, listAuditLog } from './events';
 import {
+  getBarnAssociations,
+  resolveBarnAssociation,
+  vacateBarn,
+} from './barn-associations';
+import {
   getConfigSnapshot,
   getConfigHistory,
   saveCatalogItem,
@@ -1008,6 +1013,39 @@ const worker = {
           return Response.json({ ok: true, barn }, { status: 201 });
         }
 
+        // GET /api/admin/barns/:id/associations: qué datos tiene el galpón y qué bloquea su eliminación
+        if (path.endsWith('/associations') && path.startsWith('/api/admin/barns/') && request.method === 'GET') {
+          const barnId = parseInt(path.split('/')[4], 10);
+          if (isNaN(barnId)) {
+            return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
+          }
+          const rowsParam = url.searchParams.get('rows');
+          const associations = await getBarnAssociations(env.DB, barnId, rowsParam ? Number(rowsParam) : undefined);
+          return Response.json({ ok: true, ...associations });
+        }
+
+        // POST /api/admin/barns/:id/associations/resolve: reasignar, desvincular o eliminar una fila
+        if (path.startsWith('/api/admin/barns/') && path.endsWith('/associations/resolve') && request.method === 'POST') {
+          const barnId = parseInt(path.split('/')[4], 10);
+          if (isNaN(barnId)) {
+            return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
+          }
+          const body = await request.json() as Omit<Parameters<typeof resolveBarnAssociation>[2], 'barnId'>;
+          const result = await resolveBarnAssociation(env.DB, session.user.id, { ...body, barnId });
+          return Response.json(result);
+        }
+
+        // POST /api/admin/barns/:id/vacate: desvincular o reasignar todo lo que no exige traslado
+        if (path.endsWith('/vacate') && request.method === 'POST') {
+          const barnId = parseInt(path.split('/')[4], 10);
+          if (isNaN(barnId)) {
+            return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
+          }
+          const body = await request.json() as Omit<Parameters<typeof vacateBarn>[2], 'barnId'>;
+          const result = await vacateBarn(env.DB, session.user.id, { ...body, barnId });
+          return Response.json(result);
+        }
+
         // PUT /api/admin/barns/:id/team: Asignar o sustituir equipo operativo
         if (path.includes('/api/admin/barns/') && path.endsWith('/team') && request.method === 'PUT') {
           const parts = path.split('/');
@@ -1077,8 +1115,8 @@ const worker = {
         }
 
         // PUT /api/admin/barns/:id: Actualizar datos generales del galpón
-        if (path.startsWith('/api/admin/barns/') && request.method === 'PUT') {
-          const barnId = parseInt(path.replace('/api/admin/barns/', ''), 10);
+        if (path.startsWith('/api/admin/barns/') && path.split('/').length === 5 && request.method === 'PUT') {
+          const barnId = parseInt(path.split('/')[4], 10);
           if (isNaN(barnId)) {
             return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
           }
@@ -1088,8 +1126,8 @@ const worker = {
         }
 
         // DELETE /api/admin/barns/:id: Eliminar galpón sin registros
-        if (path.startsWith('/api/admin/barns/') && request.method === 'DELETE') {
-          const barnId = parseInt(path.replace('/api/admin/barns/', ''), 10);
+        if (path.startsWith('/api/admin/barns/') && path.split('/').length === 5 && request.method === 'DELETE') {
+          const barnId = parseInt(path.split('/')[4], 10);
           if (isNaN(barnId)) {
             return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
           }
