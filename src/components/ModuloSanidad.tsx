@@ -13,11 +13,24 @@ import {
   IconX,
 } from './icons';
 import { farmToday, newOperationKey, fetchOperation } from '../utils/operations';
+import { errorMessage, pluralize } from '../utils/format';
 import type { Perfil } from '../types';
 import { ModuloVacunas } from './ModuloVacunas';
 import { ModalDialog } from './ModalDialog';
 import { DataState } from './DataState';
 import { ModuleTabs } from './ModuleTabs';
+import {
+  PageHeader,
+  InlineAlert,
+  KpiCard,
+  StatusBadge,
+  SectionCard,
+  DataCardList,
+  DataCard,
+  DataCardHead,
+  DataCardMeta,
+  DataCardActions,
+} from './ui';
 
 interface HealthEvent {
   id: number;
@@ -143,7 +156,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void load().catch((err) => setError(err instanceof Error ? err.message : 'Error cargando sanidad'));
+      void load().catch((err) => setError(errorMessage(err, 'Error cargando sanidad')));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
@@ -204,7 +217,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
       await load();
       setSection('historial');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar');
+      setError(errorMessage(err, 'No se pudo guardar'));
     } finally {
       setBusy(false);
     }
@@ -218,62 +231,56 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
   return (
     <main className="module-container">
       {/* Encabezado del Módulo */}
-      <div className="module-heading mb-4">
-        <p className="text-xs text-muted">
-          Historial clínico, registro de tratamientos, dosificación de fármacos y control de retiros sanitarios.
-        </p>
-        <button
-          type="button"
-          className="btn btn-outline btn-sm"
-          disabled={busy}
-          onClick={() => void load()}
-          aria-label="Actualizar registros sanitarios"
-        >
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconRefreshCw size={14} />
-            <span>Actualizar registros</span>
-          </span>
-        </button>
-      </div>
+      <PageHeader
+        title="Sanidad"
+        subtitle="Historial clínico, registro de tratamientos, dosificación de fármacos y control de retiros sanitarios."
+        actions={
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            disabled={busy}
+            onClick={() => void load()}
+            aria-label="Actualizar registros sanitarios"
+          >
+            <span className="inline-flex items-center justify-center gap-2 leading-none">
+              <IconRefreshCw size={14} />
+              <span>Actualizar registros</span>
+            </span>
+          </button>
+        }
+      />
 
       {/* Tablero Focal de Sanidad y Retiros */}
       <div className="grid-3 mb-4">
-        <div className={`metric-card ${alerts.length > 0 ? 'border-l-4 border-warning' : ''}`}>
-          <span className="kpi-label">
-            <IconShield size={16} className={alerts.length > 0 ? 'text-warning' : 'text-success'} />
-            <span>Retiros vigentes</span>
-          </span>
-          <span className="kpi-value tabular-nums">{alerts.length}</span>
-          <span className={`kpi-detail ${alerts.length > 0 ? 'text-warning font-semibold' : 'text-success'}`}>
-            {alerts.length > 0
-              ? `${alerts.length} ${alerts.length === 1 ? 'animal restringido' : 'animales restringidos'}`
-              : 'Inocuidad 100% · Sin restricciones'}
-          </span>
-        </div>
-
-        <div className="metric-card">
-          <span className="kpi-label">
-            <IconCalendar size={16} className="text-primary" />
-            <span>Actuaciones próximas</span>
-          </span>
-          <span className="kpi-value tabular-nums">{upcoming.length}</span>
-          <span className="kpi-detail">
-            {upcoming.length > 0 ? 'Dosis y tratamientos agendados' : 'Sin pendientes programados'}
-          </span>
-        </div>
-
-        <div className="metric-card">
-          <span className="kpi-label">
-            <IconActivity size={16} className="text-body" />
-            <span>Historial clínico</span>
-          </span>
-          <span className="kpi-value tabular-nums">{events.length}</span>
-          <span className="kpi-detail">Actuaciones trazables registradas</span>
-        </div>
+        <KpiCard
+          label="Retiros vigentes"
+          className={alerts.length > 0 ? 'border-l-4 border-warning' : undefined}
+          icon={<IconShield size={16} className={alerts.length > 0 ? 'text-warning' : 'text-success'} />}
+          value={alerts.length}
+          detail={
+            <span className={alerts.length > 0 ? 'text-warning font-semibold' : 'text-success'}>
+              {alerts.length > 0
+                ? pluralize(alerts.length, 'animal restringido', 'animales restringidos')
+                : 'Inocuidad 100% · Sin restricciones'}
+            </span>
+          }
+        />
+        <KpiCard
+          label="Actuaciones próximas"
+          icon={<IconCalendar size={16} className="text-primary" />}
+          value={upcoming.length}
+          detail={upcoming.length > 0 ? 'Dosis y tratamientos agendados' : 'Sin pendientes programados'}
+        />
+        <KpiCard
+          label="Historial clínico"
+          icon={<IconActivity size={16} className="text-body" />}
+          value={events.length}
+          detail="Actuaciones trazables registradas"
+        />
       </div>
 
-      {error && <div className="alert alert-error" role="alert" aria-live="assertive">{error}</div>}
-      {notice && <div className="alert alert-success" role="status" aria-live="polite">{notice}</div>}
+      {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
+      {notice && <InlineAlert tone="success" onDismiss={() => setNotice('')} autoDismissMs={6000}>{notice}</InlineAlert>}
 
       <ModuleTabs
         label="Secciones del módulo de sanidad"
@@ -297,15 +304,10 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
       {section === 'retiros' && (
         <>
           {/* Periodo de Retiro Vigente */}
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h2>Periodo de retiro vigente</h2>
-            <p className="text-xs text-muted mt-0.5">
-              Los animales listados no pueden registrarse como vendidos ni faenados hasta la fecha indicada por inocuidad del fármaco.
-            </p>
-          </div>
-        </div>
+      <SectionCard
+        title="Periodo de retiro vigente"
+        subtitle="Los animales listados no pueden registrarse como vendidos ni faenados hasta la fecha indicada por inocuidad del fármaco."
+      >
         {alerts.length === 0 ? (
           <DataState
             variant="empty"
@@ -314,41 +316,34 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
             icon={<IconShield size={28} className="text-success" />}
           />
         ) : (
-          <ul className="data-card-list data-card-grid" aria-label="Periodo de retiro vigente">
+          <DataCardList label="Periodo de retiro vigente" grid>
             {alerts.map((row, index) => (
-              <li key={`${row.animalCode}-${row.eventDate}-${index}`}>
-                <article className="data-card" data-state="inactive">
-                  <header className="data-card-head">
-                    <div className="data-card-identity">
-                      <span className="data-card-title font-mono">{row.animalCode}</span>
-                      <span className="data-card-subtitle">{row.barnName}</span>
-                    </div>
-                    <span className="badge-status badge-warning tabular-nums font-mono">
+              <DataCard key={`${row.animalCode}-${row.eventDate}-${index}`} state="inactive">
+                <DataCardHead
+                  title={<span className="font-mono">{row.animalCode}</span>}
+                  subtitle={row.barnName}
+                  badge={
+                    <StatusBadge tone="warning" className="tabular-nums font-mono">
                       <IconCalendar size={12} />
                       <span>{row.withdrawalUntil}</span>
-                    </span>
-                  </header>
-                  <dl className="data-card-meta">
-                    <div><dt>Fármaco / Producto</dt><dd>{row.product ?? 'Sin producto'}</dd></div>
-                    <div><dt>Fecha aplicación</dt><dd className="font-mono tabular-nums">{row.eventDate}</dd></div>
-                  </dl>
-                </article>
-              </li>
+                    </StatusBadge>
+                  }
+                />
+                <DataCardMeta items={[
+                  { label: 'Fármaco / Producto', value: row.product ?? 'Sin producto' },
+                  { label: 'Fecha aplicación', value: row.eventDate, className: 'font-mono tabular-nums' },
+                ]} />
+              </DataCard>
             ))}
-          </ul>
+          </DataCardList>
         )}
-      </section>
+      </SectionCard>
 
       {/* Próximas Actuaciones */}
-      <section className="card">
-        <div className="card-header">
-          <div>
-            <h2>Próximas actuaciones sanitarias</h2>
-            <p className="text-xs text-muted mt-0.5">
-              Tratamientos, desparasitaciones y aplicaciones programadas pendientes de ejecución.
-            </p>
-          </div>
-        </div>
+      <SectionCard
+        title="Próximas actuaciones sanitarias"
+        subtitle="Tratamientos, desparasitaciones y aplicaciones programadas pendientes de ejecución."
+      >
         {upcoming.length === 0 ? (
           <DataState
             variant="empty"
@@ -357,31 +352,29 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
             icon={<IconCalendar size={28} className="text-primary" />}
           />
         ) : (
-          <ul className="data-card-list data-card-grid" aria-label="Próximas actuaciones sanitarias">
+          <DataCardList label="Próximas actuaciones sanitarias" grid>
             {upcoming.map((row, index) => (
-              <li key={`${row.eventId}-${row.animalCode}-${index}`}>
-                <article className="data-card">
-                  <header className="data-card-head">
-                    <div className="data-card-identity">
-                      <span className="data-card-title font-mono">{row.animalCode}</span>
-                      <span className="data-card-subtitle">{row.barnName}{row.lotCode ? ` · ${row.lotCode}` : ''}</span>
-                    </div>
-                    <span className="badge-status badge-outline tabular-nums font-mono">
+              <DataCard key={`${row.eventId}-${row.animalCode}-${index}`}>
+                <DataCardHead
+                  title={<span className="font-mono">{row.animalCode}</span>}
+                  subtitle={`${row.barnName}${row.lotCode ? ` · ${row.lotCode}` : ''}`}
+                  badge={
+                    <StatusBadge tone="outline" className="tabular-nums font-mono">
                       <IconCalendar size={12} />
                       <span>{row.nextDueDate}</span>
-                    </span>
-                  </header>
-                  <dl className="data-card-meta">
-                    <div><dt>Fármaco y lote</dt><dd>{row.product}{row.productLot ? ` · Lote ${row.productLot}` : ''}</dd></div>
-                    <div><dt>Dosis</dt><dd className="font-mono tabular-nums">{row.dosage} {row.dosageUnit}</dd></div>
-                    <div><dt>Responsable</dt><dd>{row.responsibleName}</dd></div>
-                  </dl>
-                </article>
-              </li>
+                    </StatusBadge>
+                  }
+                />
+                <DataCardMeta items={[
+                  { label: 'Fármaco y lote', value: `${row.product}${row.productLot ? ` · Lote ${row.productLot}` : ''}` },
+                  { label: 'Dosis', value: `${row.dosage} ${row.dosageUnit}`, className: 'font-mono tabular-nums' },
+                  { label: 'Responsable', value: row.responsibleName },
+                ]} />
+              </DataCard>
             ))}
-          </ul>
+          </DataCardList>
         )}
-      </section>
+      </SectionCard>
     </>
   )}
 
@@ -680,15 +673,11 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
 
       {/* Historial Clínico */}
       {section === 'historial' && (
-        <section className="card">
-          <div className="card-header flex-wrap gap-2 justify-between">
-            <div>
-              <h2>Historial clínico</h2>
-              <p className="text-xs text-muted mt-0.5">
-                Registro trazable de eventos sanitarios aplicados en la granja.
-              </p>
-            </div>
-            <div className="inline-flex items-center gap-2">
+        <SectionCard
+          title="Historial clínico"
+          subtitle="Registro trazable de eventos sanitarios aplicados en la granja."
+          actions={
+            <>
               {canWrite && (
                 <button
                   type="button"
@@ -715,8 +704,9 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                   </span>
                 </button>
               )}
-            </div>
-          </div>
+            </>
+          }
+        >
 
         <div className="grid-3 mb-4">
           <div className="form-group">
@@ -780,46 +770,42 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
             action={hasActiveFilters ? <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" onClick={clearFilters}><IconX size={16} /><span>Limpiar filtros</span></button> : undefined}
           />
         ) : (
-          <ul className="data-card-list" aria-label="Historial clínico">
+          <DataCardList label="Historial clínico">
             {events.map((row, index) => (
-              <li key={`${row.id}-${row.animalCode}-${index}`}>
-                <article className="data-card" data-state={row.withdrawalUntil ? 'inactive' : 'active'}>
-                  <header className="data-card-head">
-                    <div className="data-card-identity">
-                      <span className="data-card-title font-mono">{row.animalCode}</span>
-                      <span className="data-card-subtitle">{row.effectiveDate} · {row.barnName}{row.lotCode ? ` · ${row.lotCode}` : ''} · {row.stageCode}</span>
-                    </div>
-                    <span className="badge-status badge-outline text-xs">{types[row.eventType] ?? row.eventType}</span>
-                  </header>
-                  <dl className="data-card-meta">
-                    <div><dt>Producto y lote</dt><dd>{row.product ?? row.causeCode}{row.productLot ? ` (${row.productLot})` : ''}</dd></div>
-                    <div><dt>Dosis</dt><dd className="font-mono tabular-nums">{row.dosage === null ? 'Sin dato' : `${row.dosage} ${row.dosageUnit}`}</dd></div>
-                    <div><dt>Próxima</dt><dd className="font-mono tabular-nums">{row.nextDueDate ?? 'Sin programar'}</dd></div>
-                    <div><dt>Retiro sanitario</dt><dd className="font-mono tabular-nums">{row.withdrawalUntil ? <span className="badge-status badge-warning text-xs">{row.withdrawalUntil}</span> : 'Sin retiro'}</dd></div>
-                    <div><dt>Responsable</dt><dd>{row.responsibleName}</dd></div>
-                  </dl>
-                  {canWrite && ['treatment', 'deworming', 'other'].includes(row.eventType) && (
-                    <div className="data-card-actions">
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        aria-label={`Corregir actuación sanitaria del animal ${row.animalCode}`}
-                        onClick={() => {
-                          startCorrection(row);
-                          document.getElementById('corregir-sanidad')?.scrollIntoView({ behavior: 'smooth' });
-                        }}
-                      >
-                        <IconEdit size={14} />
-                        <span>Corregir</span>
-                      </button>
-                    </div>
-                  )}
-                </article>
-              </li>
+              <DataCard key={`${row.id}-${row.animalCode}-${index}`} state={row.withdrawalUntil ? 'inactive' : 'active'}>
+                <DataCardHead
+                  title={<span className="font-mono">{row.animalCode}</span>}
+                  subtitle={`${row.effectiveDate} · ${row.barnName}${row.lotCode ? ` · ${row.lotCode}` : ''} · ${row.stageCode}`}
+                  badge={<StatusBadge tone="outline" className="text-xs">{types[row.eventType] ?? row.eventType}</StatusBadge>}
+                />
+                <DataCardMeta items={[
+                  { label: 'Producto y lote', value: <>{row.product ?? row.causeCode}{row.productLot ? ` (${row.productLot})` : ''}</> },
+                  { label: 'Dosis', value: row.dosage === null ? 'Sin dato' : `${row.dosage} ${row.dosageUnit}`, className: 'font-mono tabular-nums' },
+                  { label: 'Próxima', value: row.nextDueDate ?? 'Sin programar', className: 'font-mono tabular-nums' },
+                  { label: 'Retiro sanitario', value: row.withdrawalUntil ? <StatusBadge tone="warning" className="text-xs">{row.withdrawalUntil}</StatusBadge> : 'Sin retiro', className: 'font-mono tabular-nums' },
+                  { label: 'Responsable', value: row.responsibleName },
+                ]} />
+                {canWrite && ['treatment', 'deworming', 'other'].includes(row.eventType) && (
+                  <DataCardActions>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      aria-label={`Corregir actuación sanitaria del animal ${row.animalCode}`}
+                      onClick={() => {
+                        startCorrection(row);
+                        document.getElementById('corregir-sanidad')?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                    >
+                      <IconEdit size={14} />
+                      <span>Corregir</span>
+                    </button>
+                  </DataCardActions>
+                )}
+              </DataCard>
             ))}
-          </ul>
+          </DataCardList>
         )}
-      </section>
+      </SectionCard>
     )}
   </main>
   );

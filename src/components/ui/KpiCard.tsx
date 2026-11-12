@@ -6,11 +6,12 @@ interface KpiCardProps {
   detail?: ReactNode;
   icon?: ReactNode;
   focal?: boolean;
+  className?: string;
 }
 
-export function KpiCard({ label, value, detail, icon, focal = false }: KpiCardProps) {
+export function KpiCard({ label, value, detail, icon, focal = false, className }: KpiCardProps) {
   return (
-    <div className={`kpi-card${focal ? ' kpi-focal' : ''}`}>
+    <div className={`kpi-card${focal ? ' kpi-focal' : ''}${className ? ` ${className}` : ''}`}>
       <span className="kpi-label inline-flex items-center gap-1.5 leading-none">
         {icon}
         <span>{label}</span>
