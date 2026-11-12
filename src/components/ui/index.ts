@@ -9,3 +9,5 @@ export { FilterChipRow, FilterChip } from './FilterChip';
 export { ConfirmDialog } from './ConfirmDialog';
 export { IconButton } from './IconButton';
 export { BarnScopeBar } from './BarnScopeBar';
+export { FormField } from './FormField';
+export { DataTable } from './DataTable';
