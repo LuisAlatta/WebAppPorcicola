@@ -67,6 +67,7 @@ function App() {
   const [choosingBarns, setChoosingBarns] = useState(false);
   const isAnimalView = ['animales', 'listado', 'formulario', 'detalle'].includes(vistaActual);
   const animalBarnProps = { barnNames: barnSelection.names, onChangeBarns: () => setChoosingBarns(true) };
+  const hasBarnSelection = barnSelection.ids.length > 0;
 
   useEffect(() => {
     migrateRememberedUsername();
@@ -124,6 +125,11 @@ function App() {
       else if (vista === 'inicio') targetPath = '/inicio';
       window.history.pushState(null, '', targetPath);
     }
+  };
+
+  const handleNavbarNavigate = (vista: Vista) => {
+    if (choosingBarns) setChoosingBarns(false);
+    handleNavigate(!hasBarnSelection && vista === 'inicio' ? 'galpones' : vista);
   };
 
   const handleLogin = (perfil: Perfil, username?: string) => {
@@ -217,11 +223,13 @@ function App() {
     <div className="app-shell">
       {estaAutenticado && vistaActual !== 'login' && (
         <Navbar
-          vistaActual={!barnSelection.ids.length && vistaActual === 'inicio' ? 'galpones' : vistaActual}
+          vistaActual={!hasBarnSelection && vistaActual === 'inicio' ? 'galpones' : vistaActual}
           perfilActual={perfilActual}
           usuario={usuarioActual}
-          onNavigate={handleNavigate}
+          onNavigate={handleNavbarNavigate}
           onLogout={handleLogout}
+          onBack={choosingBarns && hasBarnSelection ? () => setChoosingBarns(false) : undefined}
+          hideBack={!hasBarnSelection}
         />
       )}
       <PwaControls />

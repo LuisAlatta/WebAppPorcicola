@@ -25,6 +25,8 @@ interface NavbarProps {
   usuario?: string;
   onNavigate: (vista: Vista) => void;
   onLogout: () => void;
+  onBack?: () => void;
+  hideBack?: boolean;
 }
 
 interface ViewMeta {
@@ -106,7 +108,7 @@ const viewMeta: Record<Vista, ViewMeta> = {
   },
 };
 
-export function Navbar({ vistaActual, perfilActual, usuario, onNavigate, onLogout }: NavbarProps) {
+export function Navbar({ vistaActual, perfilActual, usuario, onNavigate, onLogout, onBack, hideBack }: NavbarProps) {
   const [online, setOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
 
   useEffect(() => {
@@ -124,13 +126,14 @@ export function Navbar({ vistaActual, perfilActual, usuario, onNavigate, onLogou
     title: 'Menú Principal',
     icon: <IconGrid size={20} className="text-primary" />,
   };
+  const showBack = !hideBack && vistaActual !== 'login' && (!!onBack || !['inicio', 'galpones'].includes(vistaActual));
 
   return (
     <header className="navbar-wrapper">
       <div className="navbar-top">
         <div className="navbar-brand">
-          {!['inicio', 'galpones', 'login'].includes(vistaActual) && (
-            <button type="button" className="btn btn-ghost navbar-back" aria-label="Volver al Inicio" title="Volver al Inicio" onClick={() => onNavigate('inicio')}><IconArrowLeft size={18} /></button>
+          {showBack && (
+            <button type="button" className="btn btn-ghost navbar-back" aria-label={onBack ? 'Volver sin cambiar los galpones' : 'Volver al Inicio'} title={onBack ? 'Volver sin cambiar los galpones' : 'Volver al Inicio'} onClick={onBack ?? (() => onNavigate('inicio'))}><IconArrowLeft size={18} /></button>
           )}
           <button
             type="button"
