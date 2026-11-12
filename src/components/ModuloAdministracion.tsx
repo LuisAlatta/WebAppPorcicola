@@ -381,7 +381,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
         return;
       }
 
-      setSuccessMsg(`Galpón ${newBarnName} ${editingBarn ? 'actualizado' : 'creado'} exitosamente`);
+      setSuccessMsg(`${newBarnName} ${editingBarn ? 'actualizado' : 'creado'} exitosamente`);
       setShowBarnModal(false);
       setNewBarnCode('');
       setNewBarnName('');
@@ -938,7 +938,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
               onDismiss={() => setBarnToDelete(null)}
               onDeleted={(barnName) => {
                 setBarnToDelete(null);
-                setSuccessMsg(`Galpón ${barnName} eliminado exitosamente`);
+                setSuccessMsg(`${barnName} eliminado exitosamente`);
                 void refreshData();
               }}
               onChanged={() => void refreshData()}
