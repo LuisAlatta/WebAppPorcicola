@@ -3,7 +3,6 @@ import {
   IconAlertCircle,
   IconArrowRight,
   IconBuilding,
-  IconCalendar,
   IconCheck,
   IconClipboard,
   IconEye,
@@ -13,12 +12,24 @@ import {
   IconPlus,
   IconRefreshCw,
   IconScale,
-  IconSearch,
   IconX,
 } from './icons';
 import { farmToday, newOperationKey } from '../utils/operations';
 import { DataState } from './DataState';
 import { ModuleTabs } from './ModuleTabs';
+import {
+  PageHeader,
+  InlineAlert,
+  KpiCard,
+  StatusBadge,
+  type BadgeTone,
+  DataCardList,
+  DataCard,
+  DataCardHead,
+  DataCardMeta,
+  SectionCard,
+  SearchField,
+} from './ui';
 import type { Perfil } from '../types';
 
 type MovementType =
@@ -150,15 +161,15 @@ const SEX_LABELS: Record<Sex, string> = {
   pendiente: 'Pendiente de sexado',
 };
 
-const TYPE_BADGE: Record<string, string> = {
-  initial: 'badge-tag',
-  purchase: 'badge-status badge-success',
-  birth: 'badge-status badge-success',
-  sale: 'badge-status badge-warning',
-  death: 'badge-status badge-danger',
-  transfer_in: 'badge-status badge-success',
-  transfer_out: 'badge-status badge-warning',
-  adjustment: 'badge-tag',
+const TYPE_BADGE: Record<string, BadgeTone> = {
+  initial: 'outline',
+  purchase: 'success',
+  birth: 'success',
+  sale: 'warning',
+  death: 'danger',
+  transfer_in: 'success',
+  transfer_out: 'warning',
+  adjustment: 'outline',
 };
 
 function initialForm(perfil: Perfil): FormState {
@@ -189,31 +200,6 @@ function isNegativeMovement(movement: InventoryMovement): boolean {
 function formatSigned(movement: InventoryMovement): string {
   const negative = isNegativeMovement(movement);
   return `${negative ? '−' : '+'}${Math.abs(movement.quantity)}`;
-}
-
-function Metric({
-  label,
-  value,
-  detail,
-  icon,
-  focal = false,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  icon: React.ReactNode;
-  focal?: boolean;
-}) {
-  return (
-    <div className={`kpi-card ${focal ? 'kpi-focal' : ''}`}>
-      <span className="kpi-label inline-flex items-center gap-1.5 leading-none">
-        {icon}
-        <span>{label}</span>
-      </span>
-      <span className={`kpi-value ${focal ? 'text-primary' : ''}`}>{value}</span>
-      <span className="kpi-detail">{detail}</span>
-    </div>
-  );
 }
 
 export function ModuloInventario({ perfil }: { perfil: Perfil }) {
@@ -507,63 +493,29 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
 
   return (
     <div>
-      <div className="module-heading mb-4">
-        <p className="text-xs text-muted">
-          Existencias por fecha de corte, entradas, salidas, bajas y saldos por galpón.
-        </p>
-        <div className="inline-flex items-center gap-2 flex-wrap">
-          <label className="text-xs text-muted inline-flex items-center gap-1">
-            <IconCalendar size={14} />
-            <span>Corte:</span>
-          </label>
-          <input
-            type="date"
-            className="form-input form-select-sm"
-            value={asOf}
-            max={farmToday()}
-            onChange={(event) => setAsOf(event.target.value)}
-            aria-label="Fecha de corte del inventario"
-          />
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={() => void loadSnapshot(asOf)}
-            disabled={loading}
-            aria-label="Actualizar inventario a la fecha de corte"
-            title="Recargar inventario"
-          >
-            <span className="inline-flex items-center justify-center gap-2 leading-none">
-              <IconRefreshCw size={14} />
-              <span>Actualizar existencias</span>
-            </span>
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Inventario de Animales"
+        subtitle="Existencias por fecha de corte, entradas, salidas, bajas y saldos por galpón."
+        cutoff={{ label: 'Corte:', value: asOf, onChange: setAsOf, max: farmToday() }}
+        onRefresh={() => void loadSnapshot(asOf)}
+        refreshing={loading}
+      />
 
       {error && (
-        <div className="alert alert-error mb-4" role="alert" aria-live="assertive">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconAlertCircle size={16} />
-            <span>{error}</span>
-          </span>
+        <div className="mb-4">
+          <InlineAlert tone="error" onDismiss={() => setError(null)}>{error}</InlineAlert>
         </div>
       )}
 
       {success && (
-        <div className="alert alert-success mb-4" role="status" aria-live="polite">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconCheck size={16} />
-            <span>{success}</span>
-          </span>
+        <div className="mb-4">
+          <InlineAlert tone="success" onDismiss={() => setSuccess(null)}>{success}</InlineAlert>
         </div>
       )}
 
       {soloLectura && (
-        <div className="alert alert-warning mb-4" role="status" aria-live="polite">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconEye size={16} />
-            <span>El perfil Veterinario puede consultar inventario, pero no registrar movimientos.</span>
-          </span>
+        <div className="mb-4">
+          <InlineAlert tone="warning">El perfil Veterinario puede consultar inventario, pero no registrar movimientos.</InlineAlert>
         </div>
       )}
 
@@ -594,35 +546,35 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
       )}
 
       {data && !!data.capacityWarnings?.length && (
-        <div className="alert alert-warning" role="status">
+        <InlineAlert tone="warning">
           <strong>Sobre capacidad al {data.asOf}</strong>
           <ul>{data.capacityWarnings.map(item => <li key={item.barnId}>{item.barnName}: {item.heads} cabezas para una capacidad de {item.capacity} · exceso de {item.excessHeads}.</li>)}</ul>
-        </div>
+        </InlineAlert>
       )}
 
       {data && section === 'existencias' && (
         <div className="section-block">
           <div className="grid-3">
-            <Metric
+            <KpiCard
               label="Cabezas disponibles"
               value={String(totals?.available ?? 0)}
               detail={`Corte al ${data.asOf}`}
               icon={<IconPig size={14} />}
               focal={true}
             />
-            <Metric
+            <KpiCard
               label="Entradas acumuladas"
               value={String(totals?.entries ?? 0)}
               detail={`Iniciales: ${totals?.initial ?? 0} · externas: ${totals?.entriesExternal ?? 0}`}
               icon={<IconPlus size={14} />}
             />
-            <Metric
+            <KpiCard
               label="Salidas acumuladas"
               value={String(totals?.exits ?? 0)}
               detail={`Muertes: ${totals?.deaths ?? 0}`}
               icon={<IconBuilding size={14} />}
             />
-            <Metric
+            <KpiCard
               label="Mortalidad"
               value={totals?.mortalityPct === null || totals?.mortalityPct === undefined
                 ? 'Sin datos'
@@ -632,13 +584,13 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                 : 'Aún no hay entradas en el período'}
               icon={<IconAlertCircle size={14} />}
             />
-            <Metric
+            <KpiCard
               label="Grupos con existencia"
               value={String(balances.length)}
               detail="Combinaciones galpón, ubicación, lote, etapa y sexo"
               icon={<IconClipboard size={14} />}
             />
-            <Metric
+            <KpiCard
               label="Movimientos recientes"
               value={String(data.movements.length)}
               detail="Últimos movimientos hasta la fecha de corte"
@@ -646,91 +598,71 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
             />
           </div>
 
-          <div className="card">
-            <div className="card-header-clean mb-2">
-              <span className="section-title">Resumen por etapa</span>
-              <span className="text-xs text-muted">
-                Mortalidad = muertes sobre entradas del período
-              </span>
-            </div>
-            <ul className="data-card-list" aria-label="Resumen por etapa">
+          <SectionCard title="Resumen por etapa" subtitle="Mortalidad = muertes sobre entradas del período">
+            <DataCardList label="Resumen por etapa">
               {data.summary.byStage.map((stage) => (
-                <li key={stage.stageCode}>
-                  <article className="data-card">
-                    <header className="data-card-head">
-                      <span className="data-card-title">{stage.stageName}</span>
-                      <span className="badge-status badge-success tabular-nums font-numeric">{stage.available} disponibles</span>
-                    </header>
-                    <dl className="data-card-meta">
-                      <div><dt>Inicial</dt><dd className="font-mono tabular-nums">{stage.initial}</dd></div>
-                      <div><dt>Entradas externas</dt><dd className="font-mono tabular-nums">{stage.entriesExternal}</dd></div>
-                      <div><dt>Entradas</dt><dd className="font-mono tabular-nums">{stage.entries}</dd></div>
-                      <div><dt>Salidas</dt><dd className="font-mono tabular-nums">{stage.exits}</dd></div>
-                      <div><dt>Muertes</dt><dd className="font-mono tabular-nums text-danger">{stage.deaths}</dd></div>
-                      <div><dt>Mortalidad</dt><dd className="font-mono tabular-nums">{stage.mortalityPct === null ? <span className="text-muted">Sin datos</span> : `${stage.mortalityPct}%`}</dd></div>
-                    </dl>
-                  </article>
-                </li>
+                <DataCard key={stage.stageCode}>
+                  <DataCardHead
+                    title={stage.stageName}
+                    badge={<StatusBadge tone="success" className="tabular-nums font-numeric">{stage.available} disponibles</StatusBadge>}
+                  />
+                  <DataCardMeta items={[
+                    { label: 'Inicial', value: stage.initial, className: 'font-mono tabular-nums' },
+                    { label: 'Entradas externas', value: stage.entriesExternal, className: 'font-mono tabular-nums' },
+                    { label: 'Entradas', value: stage.entries, className: 'font-mono tabular-nums' },
+                    { label: 'Salidas', value: stage.exits, className: 'font-mono tabular-nums' },
+                    { label: 'Muertes', value: stage.deaths, className: 'font-mono tabular-nums text-danger' },
+                    { label: 'Mortalidad', value: stage.mortalityPct === null ? <span className="text-muted">Sin datos</span> : `${stage.mortalityPct}%`, className: 'font-mono tabular-nums' },
+                  ]} />
+                </DataCard>
               ))}
-              <li>
-                <article className="data-card data-card-total">
-                  <header className="data-card-head">
-                    <span className="data-card-title">{data.summary.total.stageName}</span>
-                    <span className="badge-status badge-success tabular-nums font-numeric">{data.summary.total.available} disponibles</span>
-                  </header>
-                  <dl className="data-card-meta">
-                    <div><dt>Inicial</dt><dd className="font-mono tabular-nums">{data.summary.total.initial}</dd></div>
-                    <div><dt>Entradas externas</dt><dd className="font-mono tabular-nums">{data.summary.total.entriesExternal}</dd></div>
-                    <div><dt>Entradas</dt><dd className="font-mono tabular-nums">{data.summary.total.entries}</dd></div>
-                    <div><dt>Salidas</dt><dd className="font-mono tabular-nums">{data.summary.total.exits}</dd></div>
-                    <div><dt>Muertes</dt><dd className="font-mono tabular-nums text-danger">{data.summary.total.deaths}</dd></div>
-                    <div><dt>Mortalidad</dt><dd className="font-mono tabular-nums">{data.summary.total.mortalityPct === null ? 'Sin datos' : `${data.summary.total.mortalityPct}%`}</dd></div>
-                  </dl>
-                </article>
-              </li>
-            </ul>
-          </div>
+              <DataCard total>
+                <DataCardHead
+                  title={data.summary.total.stageName}
+                  badge={<StatusBadge tone="success" className="tabular-nums font-numeric">{data.summary.total.available} disponibles</StatusBadge>}
+                />
+                <DataCardMeta items={[
+                  { label: 'Inicial', value: data.summary.total.initial, className: 'font-mono tabular-nums' },
+                  { label: 'Entradas externas', value: data.summary.total.entriesExternal, className: 'font-mono tabular-nums' },
+                  { label: 'Entradas', value: data.summary.total.entries, className: 'font-mono tabular-nums' },
+                  { label: 'Salidas', value: data.summary.total.exits, className: 'font-mono tabular-nums' },
+                  { label: 'Muertes', value: data.summary.total.deaths, className: 'font-mono tabular-nums text-danger' },
+                  { label: 'Mortalidad', value: data.summary.total.mortalityPct === null ? 'Sin datos' : `${data.summary.total.mortalityPct}%`, className: 'font-mono tabular-nums' },
+                ]} />
+              </DataCard>
+            </DataCardList>
+          </SectionCard>
 
-          <div className="card">
-            <div className="card-header-clean mb-2 flex-wrap gap-2">
-              <div>
-                <span className="section-title">Saldos por grupo</span>
-                <span className="text-xs text-muted block mt-0.5">
-                  Identificadas y sin identificar se separan desde T09
-                </span>
-              </div>
-              {balances.length > 0 && (
-                <div className="inline-flex items-center gap-2">
-                  <div className="search-input-wrap" style={{ minWidth: 200, maxWidth: 280 }}>
-                    <span className="search-icon">
-                      <IconSearch size={14} />
+          <SectionCard
+            title="Saldos por grupo"
+            subtitle="Identificadas y sin identificar se separan desde T09"
+            actions={balances.length > 0 ? (
+              <>
+                <SearchField
+                  value={balanceSearch}
+                  onChange={setBalanceSearch}
+                  placeholder="Filtrar galpón, etapa, lote..."
+                  label="Filtrar saldos de grupos"
+                  minWidth={200}
+                  maxWidth={280}
+                />
+                {balanceSearch && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs"
+                    onClick={() => setBalanceSearch('')}
+                    aria-label="Limpiar búsqueda de saldos"
+                    title="Limpiar búsqueda"
+                  >
+                    <span className="inline-flex items-center justify-center gap-2 leading-none">
+                      <IconX size={12} />
+                      <span>Limpiar</span>
                     </span>
-                    <input
-                      type="text"
-                      className="form-input form-select-sm search-input"
-                      placeholder="Filtrar galpón, etapa, lote..."
-                      value={balanceSearch}
-                      onChange={(event) => setBalanceSearch(event.target.value)}
-                      aria-label="Filtrar saldos de grupos"
-                    />
-                  </div>
-                  {balanceSearch && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-xs"
-                      onClick={() => setBalanceSearch('')}
-                      aria-label="Limpiar búsqueda de saldos"
-                      title="Limpiar búsqueda"
-                    >
-                      <span className="inline-flex items-center justify-center gap-2 leading-none">
-                        <IconX size={12} />
-                        <span>Limpiar</span>
-                      </span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+                  </button>
+                )}
+              </>
+            ) : undefined}
+          >
 
             {balances.length === 0 ? (
               <DataState
@@ -749,65 +681,52 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                 action={<button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" aria-label="Restablecer filtro de búsqueda de saldos" onClick={() => setBalanceSearch('')}><IconRefreshCw size={16} /><span>Restablecer filtro</span></button>}
               />
             ) : (
-              <ul className="data-card-list" aria-label="Saldos por grupo">
+              <DataCardList label="Saldos por grupo">
                 {filteredBalances.map((balance, index) => (
-                  <li key={`${balance.barnId}-${balance.locationCode ?? 'sin-u'}-${balance.lotCode ?? 'sin-l'}-${balance.stageCode}-${balance.sex}-${index}`}>
-                    <article className="data-card">
-                      <header className="data-card-head">
-                        <div className="data-card-identity">
-                          <span className="data-card-title">{balance.barnName}</span>
-                          <span className="data-card-subtitle">{[balance.locationName ?? 'Sin ubicación', balance.lotName ?? 'Sin lote'].join(' · ')}</span>
-                        </div>
-                        <span className="badge-status badge-success tabular-nums font-numeric">{balance.heads} cabezas</span>
-                      </header>
-                      <dl className="data-card-meta">
-                        <div><dt>Etapa</dt><dd>{balance.stageName}</dd></div>
-                        <div><dt>Sexo</dt><dd>{SEX_LABELS[balance.sex] ?? balance.sex}</dd></div>
-                        <div><dt>Identificadas</dt><dd className="font-mono tabular-nums">{balance.identified}</dd></div>
-                        <div><dt>Sin identificar</dt><dd className="font-mono tabular-nums text-muted">{balance.unidentified}</dd></div>
-                      </dl>
-                    </article>
-                  </li>
+                  <DataCard key={`${balance.barnId}-${balance.locationCode ?? 'sin-u'}-${balance.lotCode ?? 'sin-l'}-${balance.stageCode}-${balance.sex}-${index}`}>
+                    <DataCardHead
+                      title={balance.barnName}
+                      subtitle={[balance.locationName ?? 'Sin ubicación', balance.lotName ?? 'Sin lote'].join(' · ')}
+                      badge={<StatusBadge tone="success" className="tabular-nums font-numeric">{balance.heads} cabezas</StatusBadge>}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Etapa', value: balance.stageName },
+                      { label: 'Sexo', value: SEX_LABELS[balance.sex] ?? balance.sex },
+                      { label: 'Identificadas', value: balance.identified, className: 'font-mono tabular-nums' },
+                      { label: 'Sin identificar', value: balance.unidentified, className: 'font-mono tabular-nums text-muted' },
+                    ]} />
+                  </DataCard>
                 ))}
-              </ul>
+              </DataCardList>
             )}
-          </div>
+          </SectionCard>
 
-          <div className="card">
-            <div className="card-header-clean mb-2">
-              <span className="section-title">Desglose por sexo</span>
-              <span className="text-xs text-muted">Entradas, salidas y muertes del período</span>
-            </div>
-            <ul className="data-card-list data-card-grid" aria-label="Desglose por sexo">
+          <SectionCard title="Desglose por sexo" subtitle="Entradas, salidas y muertes del período">
+            <DataCardList label="Desglose por sexo" grid>
               {data.summary.byStage.map((stage) => (
-                <li key={`sex-${stage.stageCode}`}>
-                  <article className="data-card">
-                    <header className="data-card-head">
-                      <span className="data-card-title">{stage.stageName}</span>
-                      <span className="badge-status badge-outline tabular-nums font-numeric">{stage.entriesBySex.total} entradas</span>
-                    </header>
-                    <dl className="data-card-meta">
-                      <div><dt>Machos</dt><dd className="font-mono tabular-nums">{stage.entriesBySex.macho}</dd></div>
-                      <div><dt>Hembras</dt><dd className="font-mono tabular-nums">{stage.entriesBySex.hembra}</dd></div>
-                      <div><dt>Pendientes</dt><dd className="font-mono tabular-nums text-muted">{stage.entriesBySex.pendiente}</dd></div>
-                      <div><dt>Salidas</dt><dd className="font-mono tabular-nums text-danger">{stage.exitsBySex.total}</dd></div>
-                    </dl>
-                  </article>
-                </li>
+                <DataCard key={`sex-${stage.stageCode}`}>
+                  <DataCardHead
+                    title={stage.stageName}
+                    badge={<StatusBadge tone="outline" className="tabular-nums font-numeric">{stage.entriesBySex.total} entradas</StatusBadge>}
+                  />
+                  <DataCardMeta items={[
+                    { label: 'Machos', value: stage.entriesBySex.macho, className: 'font-mono tabular-nums' },
+                    { label: 'Hembras', value: stage.entriesBySex.hembra, className: 'font-mono tabular-nums' },
+                    { label: 'Pendientes', value: stage.entriesBySex.pendiente, className: 'font-mono tabular-nums text-muted' },
+                    { label: 'Salidas', value: stage.exitsBySex.total, className: 'font-mono tabular-nums text-danger' },
+                  ]} />
+                </DataCard>
               ))}
-            </ul>
-          </div>
+            </DataCardList>
+          </SectionCard>
         </div>
       )}
 
       {data && section === 'registrar' && (
-        <div className="card">
-          <div className="card-header-clean mb-2">
-            <span className="section-title">Nuevo movimiento de inventario</span>
-            <span className="text-xs text-muted">
-              Libro inmutable con fecha efectiva y motivo obligatorio
-            </span>
-          </div>
+        <SectionCard
+          title="Nuevo movimiento de inventario"
+          subtitle="Libro inmutable con fecha efectiva y motivo obligatorio"
+        >
 
           {soloLectura ? (
             <div className="note-box text-sm">
@@ -815,14 +734,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="form-stack">
-              {formError && (
-                <div className="alert alert-error" role="alert" aria-live="assertive">
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconAlertCircle size={16} />
-                    <span>{formError}</span>
-                  </span>
-                </div>
-              )}
+              {formError && <InlineAlert tone="error">{formError}</InlineAlert>}
 
               <div className="form-grid">
                 <div className="form-group">
@@ -1045,25 +957,17 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
               </div>
             </form>
           )}
-        </div>
+        </SectionCard>
       )}
 
       {data && section === 'traslado' && (
-        <div className="card">
-          <div className="card-header-clean mb-2">
-            <span className="section-title">Traslado y conciliación física</span>
-            <span className="text-xs text-muted">El traslado afecta ambos galpones en una sola operación; el conteo registra y audita la diferencia.</span>
-          </div>
+        <SectionCard
+          title="Traslado y conciliación física"
+          subtitle="El traslado afecta ambos galpones en una sola operación; el conteo registra y audita la diferencia."
+        >
           {soloLectura ? <div className="note-box text-sm">El perfil Veterinario puede consultar, pero no registrar cambios de inventario.</div> : (
             <form onSubmit={inventoryOperationMode === 'transfer' ? submitTransfer : submitReconciliation} className="form-stack">
-              {formError && (
-                <div className="alert alert-error" role="alert" aria-live="assertive">
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconAlertCircle size={16} />
-                    <span>{formError}</span>
-                  </span>
-                </div>
-              )}
+              {formError && <InlineAlert tone="error">{formError}</InlineAlert>}
               <div className="form-grid">
                 <div className="form-group">
                   <label className="form-label" htmlFor="t10-mode">Operación</label>
@@ -1307,28 +1211,17 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                   </span>
                 </button>
               </div>
-              {success && (
-                <div className="alert alert-success" role="status" aria-live="polite">
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconCheck size={16} />
-                    <span>{success}</span>
-                  </span>
-                </div>
-              )}
+              {success && <InlineAlert tone="success">{success}</InlineAlert>}
             </form>
           )}
-          {!soloLectura && <div className="card mt-4">
-            <div className="card-header-clean mb-2"><span className="section-title">Corregir un movimiento</span><span className="text-xs text-muted">El original se conserva; revise los movimientos posteriores antes de confirmar.</span></div>
+          {!soloLectura && <SectionCard
+            className="mt-4"
+            title="Corregir un movimiento"
+            subtitle="El original se conserva; revise los movimientos posteriores antes de confirmar."
+          >
             <p className="note-box text-sm">Para anular una venta grupal sin cobros, indique su ID y cantidad correcta 0. Se restituye el stock y se revierte el importe; después registre la venta con los datos correctos. Las ventas con cobros requieren conciliación.</p>
             <form className="form-stack" onSubmit={(event) => void submitCorrection(event)}>
-              {formError && (
-                <div className="alert alert-error" role="alert" aria-live="assertive">
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconAlertCircle size={16} />
-                    <span>{formError}</span>
-                  </span>
-                </div>
-              )}
+              {formError && <InlineAlert tone="error">{formError}</InlineAlert>}
               <div className="form-grid">
                 <div className="form-group">
                   <label className="form-label" htmlFor="t10-correction-id">ID del movimiento</label>
@@ -1387,7 +1280,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                 </button>
               </div>
               {correctionPreview && (
-                <div className={correctionPreview.allowed ? 'alert alert-success' : 'alert alert-error'} role="status" aria-live="polite">
+                <InlineAlert tone={correctionPreview.allowed ? 'success' : 'error'}>
                   <p className="inline-flex items-center gap-1.5 flex-wrap">
                     {correctionPreview.allowed ? (
                       <>
@@ -1400,7 +1293,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     )}
                   </p>
                   {correctionPreview.incompatibleMovements.map((item, index) => <p key={`${item.id}-${index}`}>#{item.id} · {item.type} · {item.date} · {item.quantity} cabezas · saldo resultante {item.balanceAfter}</p>)}
-                </div>
+                </InlineAlert>
               )}
               <div className="form-actions">
                 <button
@@ -1416,33 +1309,22 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                 </button>
               </div>
             </form>
-          </div>}
-        </div>
+          </SectionCard>}
+        </SectionCard>
       )}
 
       {data && section === 'movimientos' && (
-        <div className="card">
-          <div className="card-header-clean mb-2 flex-wrap gap-2">
-            <div>
-              <span className="section-title">Kardex de movimientos</span>
-              <span className="text-xs text-muted block mt-0.5">
-                Historial inmutable de entradas, salidas, muertes y traslados
-              </span>
-            </div>
-            <div className="inline-flex items-center gap-2 flex-wrap">
-              <div className="search-input-wrap" style={{ minWidth: 180, maxWidth: 240 }}>
-                <span className="search-icon">
-                  <IconSearch size={14} />
-                </span>
-                <input
-                  type="text"
-                  className="form-input form-select-sm search-input"
-                  placeholder="Buscar en movimientos..."
-                  value={movementSearch}
-                  onChange={(event) => setMovementSearch(event.target.value)}
-                  aria-label="Buscar en historial de movimientos"
-                />
-              </div>
+        <SectionCard
+          title="Kardex de movimientos"
+          subtitle="Historial inmutable de entradas, salidas, muertes y traslados"
+          actions={
+            <>
+              <SearchField
+                value={movementSearch}
+                onChange={setMovementSearch}
+                placeholder="Buscar en movimientos..."
+                label="Buscar en historial de movimientos"
+              />
 
               <div className="inline-flex items-center gap-1">
                 <label className="text-xs text-muted inline-flex items-center gap-1" htmlFor="inv-filter">
@@ -1481,8 +1363,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                   </span>
                 </button>
               )}
-            </div>
-          </div>
+            </>
+          }
+        >
 
           {movements.length === 0 ? (
             <DataState
@@ -1501,34 +1384,30 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
               action={<button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" aria-label="Restablecer filtros de búsqueda de movimientos" onClick={() => { setFilterType(''); setMovementSearch(''); }}><IconRefreshCw size={16} /><span>Restablecer filtros</span></button>}
             />
           ) : (
-            <ul className="data-card-list" aria-label="Kardex de movimientos">
+            <DataCardList label="Kardex de movimientos">
               {filteredMovements.map((movement) => (
-                <li key={movement.id}>
-                  <article className="data-card" data-state={isNegativeMovement(movement) ? 'inactive' : 'active'}>
-                    <header className="data-card-head">
-                      <div className="data-card-identity">
-                        <span className="data-card-title font-mono tabular-nums">{movement.effectiveDate}</span>
-                        <span className="data-card-subtitle">{movement.barnName}</span>
-                      </div>
-                      <span className={TYPE_BADGE[movement.movementType] ?? 'badge-tag'}>{movement.movementLabel}</span>
-                    </header>
-                    <dl className="data-card-meta">
-                      <div><dt>Cantidad</dt><dd className={`font-mono font-bold tabular-nums ${isNegativeMovement(movement) ? 'text-danger' : 'text-success'}`}>{formatSigned(movement)}</dd></div>
-                      <div><dt>Etapa y sexo</dt><dd>{movement.stageName} · {SEX_LABELS[movement.sex] ?? movement.sex}</dd></div>
-                      <div><dt>Ubicación y lote</dt><dd>{[movement.locationName ?? 'Sin ubicación', movement.lotName].filter(Boolean).join(' · ')}</dd></div>
-                      <div><dt>Causa</dt><dd>{movement.causeCode ?? <span className="text-muted">Sin causa</span>}</dd></div>
-                      <div><dt>Registró</dt><dd>{movement.createdByName || 'Sin dato'}</dd></div>
-                    </dl>
-                  </article>
-                </li>
+                <DataCard key={movement.id} state={isNegativeMovement(movement) ? 'inactive' : 'active'}>
+                  <DataCardHead
+                    title={<span className="font-mono tabular-nums">{movement.effectiveDate}</span>}
+                    subtitle={movement.barnName}
+                    badge={<StatusBadge tone={TYPE_BADGE[movement.movementType] ?? 'outline'}>{movement.movementLabel}</StatusBadge>}
+                  />
+                  <DataCardMeta items={[
+                    { label: 'Cantidad', value: formatSigned(movement), className: `font-mono font-bold tabular-nums ${isNegativeMovement(movement) ? 'text-danger' : 'text-success'}` },
+                    { label: 'Etapa y sexo', value: `${movement.stageName} · ${SEX_LABELS[movement.sex] ?? movement.sex}` },
+                    { label: 'Ubicación y lote', value: [movement.locationName ?? 'Sin ubicación', movement.lotName].filter(Boolean).join(' · ') },
+                    { label: 'Causa', value: movement.causeCode ?? <span className="text-muted">Sin causa</span> },
+                    { label: 'Registró', value: movement.createdByName || 'Sin dato' },
+                  ]} />
+                </DataCard>
               ))}
-            </ul>
+            </DataCardList>
           )}
 
           <p className="card-footer-note">
             Se muestran {filteredMovements.length} de {data.movements.length} movimientos hasta la fecha de corte ({data.asOf}).
           </p>
-        </div>
+        </SectionCard>
       )}
     </div>
   );
