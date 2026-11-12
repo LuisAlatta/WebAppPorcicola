@@ -941,7 +941,6 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                 setSuccessMsg(`${barnName} eliminado exitosamente`);
                 void refreshData();
               }}
-              onChanged={() => void refreshData()}
             />
           )}
         </div>

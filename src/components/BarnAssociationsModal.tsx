@@ -1,30 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ModalDialog } from './ModalDialog';
-import { IconAlertTriangle, IconCheck, IconRefreshCw, IconX } from './icons';
-import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
-
-type AssociationAction = 'reassign' | 'detach' | 'delete' | 'transfer';
-
-interface AssociationRow {
-  id: string;
-  label: string;
-  meta: string;
-  date: string | null;
-  quantity: string | null;
-  payload: Record<string, unknown> | null;
-}
+import { IconAlertTriangle, IconX } from './icons';
+import { fetchOperation, newOperationKey } from '../utils/operations';
 
 interface AssociationGroup {
   key: string;
   label: string;
-  note: string;
-  section: 'animales' | 'operacion' | 'config' | 'asociados' | 'trazabilidad';
   blocking: boolean;
-  actions: AssociationAction[];
+  actions: string[];
   count: number;
   unit: string;
-  rows: AssociationRow[];
-  hasMore: boolean;
 }
 
 interface AssociationsPayload {
@@ -39,38 +24,13 @@ interface BarnAssociationsModalProps {
   barns: { id: number; code: string; name: string }[];
   onDismiss: () => void;
   onDeleted: (barnName: string) => void;
-  onChanged: () => void;
 }
-
-const SECTION_LABEL: Record<AssociationGroup['section'], string> = {
-  animales: 'Ganado del galpón',
-  operacion: 'Registros de operación',
-  config: 'Configuración',
-  asociados: 'Personal y accesos',
-  trazabilidad: 'Trazabilidad',
-};
-
-const SECTION_ORDER: AssociationGroup['section'][] = ['animales', 'operacion', 'config', 'asociados', 'trazabilidad'];
 
 const oneOrMany = (count: number, singular: string, pluralForm: string) => `${count} ${count === 1 ? singular : pluralForm}`;
 
 const UNIT_SINGULAR: Record<string, string> = { cabezas: 'cabeza', fichas: 'ficha' };
 
 const unitOf = (count: number, unit: string) => (count === 1 ? UNIT_SINGULAR[unit] ?? unit : unit);
-
-const ACTION_LABEL: Record<AssociationAction, string> = {
-  reassign: 'Reasignar',
-  detach: 'Desvincular',
-  delete: 'Eliminar',
-  transfer: 'Trasladar',
-};
-
-const ACTION_HINT: Record<AssociationAction, string> = {
-  reassign: 'Pasar este registro al galpón destino. Cambia a qué galpón se le atribuye.',
-  detach: 'Conservar el registro y dejar de atribuirlo al galpón. No se pierde información.',
-  delete: 'Borrar este registro.',
-  transfer: 'Mover las cabezas con un traslado real: ajusta saldos e historial de ubicación.',
-};
 
 async function loadAssociations(barnId: number): Promise<{ payload: AssociationsPayload } | { error: string }> {
   try {
@@ -83,24 +43,20 @@ async function loadAssociations(barnId: number): Promise<{ payload: Associations
   }
 }
 
-export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onChanged }: BarnAssociationsModalProps) {
+export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: BarnAssociationsModalProps) {
   const [data, setData] = useState<AssociationsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [targetBarnId, setTargetBarnId] = useState<number | ''>('');
   const [reason, setReason] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [confirmEvacuate, setConfirmEvacuate] = useState(false);
-  const [detailOpen, setDetailOpen] = useState(false);
+  const [confirm, setConfirm] = useState<null | 'evacuate' | 'delete'>(null);
   const confirmRef = useRef<HTMLDivElement>(null);
   const primaryActionRef = useRef<HTMLButtonElement>(null);
   const wasConfirmOpenRef = useRef(false);
 
   useEffect(() => {
-    const open = confirmDelete || confirmEvacuate;
-    if (open) {
+    if (confirm) {
       confirmRef.current?.focus();
       wasConfirmOpenRef.current = true;
       return;
@@ -109,24 +65,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
       wasConfirmOpenRef.current = false;
       primaryActionRef.current?.focus();
     }
-  }, [confirmDelete, confirmEvacuate]);
-
-  const backFromConfirm = () => {
-    setConfirmDelete(false);
-    setConfirmEvacuate(false);
-  };
-
-  const refresh = useCallback(async () => {
-    const result = await loadAssociations(barn.id);
-    setLoading(false);
-    if ('error' in result) {
-      setErrorMsg(result.error);
-      setData(null);
-      return;
-    }
-    setErrorMsg(null);
-    setData(result.payload);
-  }, [barn.id]);
+  }, [confirm]);
 
   useEffect(() => {
     let isMounted = true;
@@ -149,113 +88,6 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
   const hasTarget = Number.isInteger(target) && target > 0;
   const hasReason = reason.trim().length >= 5;
 
-  const runOperation = async (path: string, body: Record<string, unknown>, busyKey: string, closeOnSuccess = false): Promise<Record<string, unknown> | null> => {
-    setBusy(busyKey);
-    setErrorMsg(null);
-    setNotice(null);
-    try {
-      const res = await fetchOperation(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...body, reason: reason.trim(), operationKey: newOperationKey('galp') }),
-      });
-      const payload = await res.json() as Record<string, unknown> & { error?: string };
-      if (!res.ok) {
-        setErrorMsg(String(payload.error ?? 'No se pudo completar la acción'));
-        return null;
-      }
-      if (closeOnSuccess) {
-        onChanged();
-        onDeleted(barn.name);
-        return payload;
-      }
-      await refresh();
-      onChanged();
-      return payload;
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : String(err));
-      return null;
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const applyRow = async (group: AssociationGroup, row: AssociationRow, action: AssociationAction) => {
-    const busyKey = `${group.key}:${row.id}:${action}`;
-    if (!hasReason) {
-      setErrorMsg('Escriba el motivo (mínimo 5 caracteres) antes de aplicar la acción.');
-      return;
-    }
-    if ((action === 'reassign' || action === 'transfer') && !hasTarget) {
-      setErrorMsg('Elija el galpón destino antes de reasignar o trasladar.');
-      return;
-    }
-
-    if (action === 'transfer') {
-      const payload = row.payload ?? {};
-      if (group.key === 'animals') {
-        const code = String(payload.code ?? row.id);
-        const result = await runOperation(`/api/animals/${encodeURIComponent(code)}/transfer`, {
-          destinationBarnId: target,
-          effectiveDate: farmToday(),
-        }, busyKey);
-        if (result) setNotice(`Ficha ${code} trasladada.`);
-        return;
-      }
-      const result = await runOperation('/api/inventory/transfers', {
-        effectiveDate: farmToday(),
-        sourceBarnId: barn.id,
-        destinationBarnId: target,
-        stageCode: String(payload.stageCode ?? ''),
-        sex: String(payload.sex ?? ''),
-        quantity: Number(payload.quantity ?? 0),
-        sourceLocationCode: payload.locationCode ?? null,
-        sourceLotCode: payload.lotCode ?? null,
-        destinationLocationCode: null,
-        destinationLotCode: null,
-        notes: `Vaciado de ${barn.name}`,
-      }, busyKey);
-      if (result) setNotice(`${Number(payload.quantity ?? 0)} cabezas trasladadas desde ${barn.name}.`);
-      return;
-    }
-
-    const result = await runOperation(`/api/admin/barns/${barn.id}/associations/resolve`, {
-      group: group.key,
-      recordId: row.id,
-      action,
-      targetBarnId: action === 'reassign' ? target : undefined,
-    }, busyKey);
-    if (result) {
-      setNotice(action === 'delete'
-        ? `Registro de “${group.label}” eliminado.`
-        : `Registro de “${group.label}” ${action === 'detach' ? 'desvinculado del galpón' : 'reasignado'}.`);
-    }
-  };
-
-  const runVacate = async (mode: 'detach' | 'reassign') => {
-    if (mode === 'reassign' && !hasTarget) {
-      setErrorMsg('Elija el galpón destino antes de reasignar todo.');
-      return;
-    }
-    if (!hasReason) {
-      setErrorMsg('Escriba el motivo (mínimo 5 caracteres) antes de aplicar la acción.');
-      return;
-    }
-    const result = await runOperation(`/api/admin/barns/${barn.id}/vacate`, {
-      mode,
-      targetBarnId: mode === 'reassign' ? target : undefined,
-    }, `vacate:${mode}`);
-    if (!result) return;
-    const affected = (result.affected as { label: string; count: number }[] | undefined) ?? [];
-    const skipped = (result.skipped as { label: string; count: number }[] | undefined) ?? [];
-    const moved = affected.map((item) => `${item.label.toLowerCase()} (${item.count})`).join(', ');
-    const pending = skipped.map((item) => `${item.label.toLowerCase()} (${item.count})`).join(', ');
-    setNotice(
-      `${moved ? `${mode === 'detach' ? 'Desvinculado: ' : 'Reasignado: '}${moved}.` : 'No había registros que resolver.'}`
-      + (pending ? ` Queda pendiente de traslado: ${pending}.` : ''),
-    );
-  };
-
   const runEvacuate = async () => {
     if (!hasTarget) {
       setErrorMsg('Elija el galpón destino antes de vaciar y eliminar.');
@@ -265,10 +97,26 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
       setErrorMsg('Escriba el motivo (mínimo 5 caracteres) antes de aplicar la acción.');
       return;
     }
-    setConfirmEvacuate(false);
-    await runOperation(`/api/admin/barns/${barn.id}/evacuate-and-delete`, {
-      destinationBarnId: target,
-    }, 'evacuate', true);
+    setConfirm(null);
+    setBusy('evacuate');
+    setErrorMsg(null);
+    try {
+      const res = await fetchOperation(`/api/admin/barns/${barn.id}/evacuate-and-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destinationBarnId: target, reason: reason.trim(), operationKey: newOperationKey('galp') }),
+      });
+      const payload = await res.json() as { error?: string };
+      if (!res.ok) {
+        setErrorMsg(payload.error ?? 'No se pudo vaciar y eliminar el galpón');
+        return;
+      }
+      onDeleted(barn.name);
+    } catch {
+      setErrorMsg('No se pudo confirmar la operación. Comprueba la conexión.');
+    } finally {
+      setBusy(null);
+    }
   };
 
   const removeBarn = async () => {
@@ -279,8 +127,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
       const payload = await res.json() as { error?: string };
       if (!res.ok) {
         setErrorMsg(payload.error ?? 'No se pudo eliminar el galpón');
-        setConfirmDelete(false);
-        await refresh();
+        setConfirm(null);
         return;
       }
       onDeleted(barn.name);
@@ -314,14 +161,8 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
   const evacuateSummary = [
     headsLabel ? `${headsLabel} ${headsVerb} a ${destinationName}` : null,
     migrateCount > 0 ? `${migratePhrase} ${migrateVerb} a ese galpón` : null,
-    detachCount > 0 ? `${detachCount} trazas quedan en el libro sin galpón` : null,
+    detachCount > 0 ? `${oneOrMany(detachCount, 'traza', 'trazas')} ${detachCount === 1 ? 'queda' : 'quedan'} en el libro sin galpón` : null,
   ].filter((item): item is string => item !== null).join('; ');
-  const condensed = [
-    headsLabel || null,
-    migrateCount > 0 ? migratePhrase : null,
-    detachCount > 0 ? `${detachCount} trazas` : null,
-    ownedByBarn.length > 0 ? `${sumOf(ownedByBarn)} datos propios` : null,
-  ].filter((item): item is string => item !== null).join(' · ');
 
   return (
     <ModalDialog labelledBy="barn-assoc-title" onDismiss={onDismiss} dismissDisabled={busy !== null} size="wide">
@@ -347,11 +188,6 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
             <IconAlertTriangle size={16} /> <span>{errorMsg}</span>
           </p>
         )}
-        {notice && (
-          <p role="status" className="barn-assoc-alert barn-assoc-alert-ok">
-            <IconCheck size={16} /> <span>{notice}</span>
-          </p>
-        )}
 
         {data && groups.length === 0 && !loading && (
           <p className="text-sm">
@@ -359,11 +195,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
           </p>
         )}
 
-        {groups.length > 0 && detailOpen && condensed && (
-          <p className="barn-assoc-condensed">{condensed}</p>
-        )}
-
-        {!detailOpen && groups.length > 0 && (
+        {groups.length > 0 && (
           <ul className="barn-assoc-summary">
             {livestock.map((group) => (
               <li key={group.key}>
@@ -379,8 +211,8 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
             )}
             {detachable.length > 0 && (
               <li>
-                <strong>{detachCount} trazas</strong>
-                <span>de auditoría y operaciones; quedan en el libro sin galpón.</span>
+                <strong>{oneOrMany(detachCount, 'traza', 'trazas')}</strong>
+                <span>de auditoría y operaciones; {detachCount === 1 ? 'queda' : 'quedan'} en el libro sin galpón.</span>
               </li>
             )}
             {ownedByBarn.length > 0 && (
@@ -393,138 +225,67 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
         )}
 
         {groups.length > 0 && (
-          <>
-            <div className="barn-assoc-controls card p-3">
-              <div>
-                <label htmlFor="barn-assoc-target" className="form-label">Galpón destino</label>
-                <select
-                  id="barn-assoc-target"
-                  className="form-select"
-                  required
-                  aria-describedby={showRequirements ? 'barn-assoc-requirements' : undefined}
-                  value={targetBarnId}
-                  onChange={(event) => setTargetBarnId(event.target.value === '' ? '' : Number(event.target.value))}
-                >
-                  <option value="">Sin destino</option>
-                  {barns.filter((item) => item.id !== barn.id).map((item) => (
-                    <option key={item.id} value={item.id}>{item.code} · {item.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="barn-assoc-reason" className="form-label">Motivo</label>
-                <input
-                  id="barn-assoc-reason"
-                  className="form-control"
-                  required
-                  minLength={5}
-                  aria-describedby={showRequirements ? 'barn-assoc-requirements' : undefined}
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  placeholder="Ej. el galpón se abrió por error y sus registros son de otro"
-                />
-              </div>
-              {showRequirements && (
-                <p id="barn-assoc-requirements" className="barn-assoc-requirements">
-                  <IconAlertTriangle size={14} />
-                  <span>Para vaciar y eliminar falta {missing.join(' y ')}.</span>
-                </p>
-              )}
+          <div className="barn-assoc-controls card p-3">
+            <div>
+              <label htmlFor="barn-assoc-target" className="form-label">Galpón destino</label>
+              <select
+                id="barn-assoc-target"
+                className="form-select"
+                required
+                aria-describedby={showRequirements ? 'barn-assoc-requirements' : undefined}
+                value={targetBarnId}
+                onChange={(event) => setTargetBarnId(event.target.value === '' ? '' : Number(event.target.value))}
+              >
+                <option value="">Sin destino</option>
+                {barns.filter((item) => item.id !== barn.id).map((item) => (
+                  <option key={item.id} value={item.id}>{item.code} · {item.name}</option>
+                ))}
+              </select>
             </div>
-
-            {detailOpen && (
-              <div className="barn-assoc-detail">
-              {SECTION_ORDER.map((section) => {
-                const sectionGroups = groups.filter((group) => group.section === section);
-                if (sectionGroups.length === 0) return null;
-                return (
-                  <section key={section} className="barn-assoc-section">
-                    <h3 className="barn-assoc-section-title">{SECTION_LABEL[section]}</h3>
-                    {sectionGroups.map((group) => (
-                      <article key={group.key} className={`barn-assoc-group${group.blocking ? ' barn-assoc-group-blocking' : ''}`}>
-                        <header className="barn-assoc-head">
-                          <h4>{group.label}</h4>
-                          <span className={`badge badge-sm ${group.blocking ? 'badge-danger' : 'badge-outline'}`}>
-                            {group.count} {group.unit}
-                            {group.hasMore ? '+' : ''}
-                          </span>
-                        </header>
-                        <p className="barn-assoc-note">{group.note}</p>
-                        <div className="barn-assoc-rows table-responsive">
-                          <table className="table">
-                            <thead>
-                              <tr>
-                                <th scope="col">Fecha</th>
-                                <th scope="col">Registro</th>
-                                <th scope="col">Cantidad</th>
-                                <th scope="col">Acciones</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {group.rows.map((row) => (
-                                <tr key={row.id}>
-                                  <td>{row.date ?? '—'}</td>
-                                  <td>
-                                    <div className="table-cell-stacked">
-                                      <strong>{row.label}</strong>
-                                      <span className="text-sm text-muted">{row.meta}</span>
-                                    </div>
-                                  </td>
-                                  <td>{row.quantity ?? '—'}</td>
-                                  <td>
-                                    <div className="table-actions">
-                                      {group.actions.map((action) => (
-                                        <button
-                                          key={action}
-                                          type="button"
-                                          className={`btn btn-sm ${action === 'delete' ? 'btn-ghost text-danger' : 'btn-outline'}`}
-                                          title={ACTION_HINT[action]}
-                                          disabled={busy !== null}
-                                          onClick={() => void applyRow(group, row, action)}
-                                        >
-                                          {ACTION_LABEL[action]}
-                                        </button>
-                                      ))}
-                                      {group.actions.length === 0 && <span className="text-sm text-muted">Se elimina con el galpón</span>}
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </article>
-                    ))}
-                  </section>
-                );
-              })}
-              </div>
+            <div>
+              <label htmlFor="barn-assoc-reason" className="form-label">Motivo</label>
+              <input
+                id="barn-assoc-reason"
+                className="form-control"
+                required
+                minLength={5}
+                aria-describedby={showRequirements ? 'barn-assoc-requirements' : undefined}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="Ej. el galpón se abrió por error y sus registros son de otro"
+              />
+            </div>
+            {showRequirements && (
+              <p id="barn-assoc-requirements" className="barn-assoc-requirements">
+                <IconAlertTriangle size={14} />
+                <span>Para vaciar y eliminar falta {missing.join(' y ')}.</span>
+              </p>
             )}
-          </>
+          </div>
         )}
 
         <div className="barn-assoc-footer">
-          {confirmEvacuate ? (
+          {confirm === 'evacuate' ? (
             <div className="barn-assoc-confirm" ref={confirmRef} tabIndex={-1} aria-label="Confirmar vaciado y eliminación">
               <p className="text-sm">
                 {evacuateSummary ? `${evacuateSummary}. ` : 'No hay registros que mover. '}
                 Después se elimina <strong>{barn.name}</strong> con sus accesos, historial de personal y corrales.
               </p>
               <div className="modal-actions">
-                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={backFromConfirm}>Volver</button>
+                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={() => setConfirm(null)}>Volver</button>
                 <button type="button" className="btn btn-danger" disabled={busy !== null} onClick={() => void runEvacuate()}>
                   {busy === 'evacuate' ? 'Vaciando…' : `Sí, vaciar y eliminar ${barn.name}`}
                 </button>
               </div>
             </div>
-          ) : confirmDelete ? (
+          ) : confirm === 'delete' ? (
             <div className="barn-assoc-confirm" ref={confirmRef} tabIndex={-1} aria-label="Confirmar eliminación">
               <p className="text-sm">
                 Se eliminará <strong>{barn.name}</strong> con sus cambios de personal, accesos y corrales.
                 La trazabilidad desvinculada se conserva en el libro de auditoría.
               </p>
               <div className="modal-actions">
-                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={backFromConfirm}>Volver</button>
+                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={() => setConfirm(null)}>Volver</button>
                 <button type="button" className="btn btn-danger" disabled={busy !== null} onClick={() => void removeBarn()}>
                   {busy === 'delete' ? 'Eliminando…' : `Sí, eliminar ${barn.name}`}
                 </button>
@@ -534,28 +295,6 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
             <div className="barn-assoc-actions">
               <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={onDismiss}>Cancelar</button>
               <div className="table-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  disabled={busy !== null}
-                  aria-expanded={detailOpen}
-                  onClick={() => setDetailOpen(!detailOpen)}
-                >
-                  <span>{detailOpen ? 'Ocultar detalle' : 'Ver detalle'}</span>
-                </button>
-                {detailOpen && (
-                  <>
-                    <button type="button" className="btn btn-outline" disabled={busy !== null || loading} onClick={() => void refresh()}>
-                      <IconRefreshCw size={14} /><span>Actualizar</span>
-                    </button>
-                    <button type="button" className="btn btn-outline" disabled={busy !== null || !hasReason} onClick={() => void runVacate('detach')}>
-                      <span>Desvincular trazas</span>
-                    </button>
-                    <button type="button" className="btn btn-outline" disabled={busy !== null || !hasReason || !hasTarget} onClick={() => void runVacate('reassign')}>
-                      <span>Reasignar al destino</span>
-                    </button>
-                  </>
-                )}
                 {data?.canDelete ? (
                   <button
                     ref={primaryActionRef}
@@ -563,7 +302,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
                     className="btn btn-danger"
                     disabled={busy !== null || loading}
                     title="Eliminar el galpón"
-                    onClick={() => setConfirmDelete(true)}
+                    onClick={() => setConfirm('delete')}
                   >
                     <span>Eliminar galpón</span>
                   </button>
@@ -578,7 +317,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
                       : !hasReason
                         ? 'Escriba el motivo (mínimo 5 caracteres)'
                         : 'Traslada el ganado, resuelve el historial y elimina el galpón'}
-                    onClick={() => setConfirmEvacuate(true)}
+                    onClick={() => setConfirm('evacuate')}
                   >
                     <span>Vaciar y eliminar</span>
                   </button>
