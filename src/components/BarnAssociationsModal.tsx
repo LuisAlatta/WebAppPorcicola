@@ -316,6 +316,12 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
     migrateCount > 0 ? `${migratePhrase} ${migrateVerb} a ese galpón` : null,
     detachCount > 0 ? `${detachCount} trazas quedan en el libro sin galpón` : null,
   ].filter((item): item is string => item !== null).join('; ');
+  const condensed = [
+    headsLabel || null,
+    migrateCount > 0 ? migratePhrase : null,
+    detachCount > 0 ? `${detachCount} trazas` : null,
+    ownedByBarn.length > 0 ? `${sumOf(ownedByBarn)} datos propios` : null,
+  ].filter((item): item is string => item !== null).join(' · ');
 
   return (
     <ModalDialog labelledBy="barn-assoc-title" onDismiss={onDismiss} dismissDisabled={busy !== null} size="wide">
@@ -351,6 +357,10 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
           <p className="text-sm">
             No hay registros asociados a este galpón. Los cambios de personal y los corrales se eliminan con él.
           </p>
+        )}
+
+        {groups.length > 0 && detailOpen && condensed && (
+          <p className="barn-assoc-condensed">{condensed}</p>
         )}
 
         {!detailOpen && groups.length > 0 && (
