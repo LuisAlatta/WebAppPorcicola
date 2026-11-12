@@ -8,7 +8,6 @@ import {
   IconPlus,
   IconCheck,
   IconAlertTriangle,
-  IconAlertCircle,
   IconClock,
   IconRefreshCw,
   IconTrash,
@@ -17,13 +16,27 @@ import {
   IconSettings,
   IconActivity,
   IconArrowLeft,
-  IconX,
 } from './icons';
 import { farmToday, newOperationKey } from '../utils/operations';
+import { formatDate, formatDateTime, errorMessage } from '../utils/format';
 import { ModalDialog } from './ModalDialog';
+import { DataState } from './DataState';
 import { BarnAssociationsModal } from './BarnAssociationsModal';
 import { ModuloConfiguracion } from './ModuloConfiguracion';
 import { ModuleTabs } from './ModuleTabs';
+import {
+  InlineAlert,
+  PageHeader,
+  StatusBadge,
+  DataCardList,
+  DataCard,
+  DataCardHead,
+  DataCardMeta,
+  DataCardNote,
+  DataCardActions,
+  FilterChipRow,
+  FilterChip,
+} from './ui';
 
 interface ModuloAdministracionProps {
   perfil: Perfil;
@@ -274,12 +287,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
         <p className="text-muted mb-4">
           Acceso denegado. Este módulo está reservado exclusivamente para el perfil <strong>Administrador</strong> (ACC-06, ADM-01). Su perfil actual es <strong>{perfil}</strong>.
         </p>
-        <div className="banner-alert banner-alert-error mb-4">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconAlertCircle size={18} />
-            <span>Las rutas y operaciones de administración están restringidas en el servidor con código HTTP 403 Forbidden.</span>
-          </span>
-        </div>
+        <InlineAlert tone="error">Las rutas y operaciones de administración están restringidas en el servidor con código HTTP 403 Forbidden.</InlineAlert>
         <div>
           <button
             type="button"
@@ -326,7 +334,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
       setNewBarnIds([]);
       await refreshData();
     } catch (err) {
-      setErrorMsg(String(err));
+      setErrorMsg(errorMessage(err, 'Error al crear usuario'));
     }
   };
 
@@ -351,7 +359,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
       setSuccessMsg(`Estado de ${user.name} actualizado exitosamente`);
       await refreshData();
     } catch (err) {
-      setErrorMsg(String(err));
+      setErrorMsg(errorMessage(err, 'Error al actualizar estado del usuario'));
     }
   };
 
@@ -388,7 +396,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
       setNewBarnZone('');
       await refreshData();
     } catch (err) {
-      setBarnError(String(err));
+      setBarnError(errorMessage(err, 'No se pudo guardar el galpón'));
     } finally {
       setBarnSaving(false);
     }
@@ -462,7 +470,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
       setAssignmentOperationKey(newOperationKey('asig'));
       await refreshData();
     } catch (err) {
-      setErrorMsg(`No se pudo confirmar la operación: ${String(err)}. Reintente con el mismo formulario; la clave de reintento evita duplicados.`);
+      setErrorMsg(`No se pudo confirmar la operación: ${errorMessage(err, 'error de conexión')}. Reintente con el mismo formulario; la clave de reintento evita duplicados.`);
     } finally {
       setAssignmentSaving(false);
     }
@@ -535,7 +543,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
       );
       await refreshData();
     } catch (err) {
-      setCorrectionError(`No se pudo confirmar la corrección: ${String(err)}. Reintente con el mismo formulario; la clave de reintento evita duplicados.`);
+      setCorrectionError(`No se pudo confirmar la corrección: ${errorMessage(err, 'error de conexión')}. Reintente con el mismo formulario; la clave de reintento evita duplicados.`);
     } finally {
       setCorrectionSaving(false);
     }
@@ -556,56 +564,36 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
     return pool.filter((u) => u.id !== correctionTarget.new_user_id);
   })();
 
-  const formatDateTime = (value: string): string => {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('es-PE');
-  };
-
-  const formatDate = (value: string): string => {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('es-PE');
-  };
-
   return (
     <div className="admin-container">
       {/* Encabezado */}
-      <div className="admin-toolbar">
-        <p className="admin-toolbar-text">
-          {barnsOnly ? 'Crea y edita galpones, asigna su personal y revisa los cambios.' : 'Cuentas de usuario, asignación de galpones y equipo operativo.'}
-        </p>
-        <button
-          type="button"
-          className="btn btn-outline btn-sm admin-refresh-button"
-          onClick={refreshData}
-          title="Actualizar datos"
-          aria-label="Actualizar datos de administración"
-        >
-          <IconRefreshCw size={16} />
-          <span>Actualizar</span>
-        </button>
-      </div>
-
-      {/* Alertas */}
-      {errorMsg && (
-        <div className="banner-alert banner-alert-error mb-4" role="alert">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconAlertCircle size={18} />
-            <span>{errorMsg}</span>
-          </span>
+      {barnsOnly ? (
+        <div className="admin-toolbar">
+          <p className="admin-toolbar-text">Crea y edita galpones, asigna su personal y revisa los cambios.</p>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm admin-refresh-button"
+            onClick={refreshData}
+            title="Actualizar datos"
+            aria-label="Actualizar datos de administración"
+          >
+            <IconRefreshCw size={16} />
+            <span>Actualizar</span>
+          </button>
         </div>
+      ) : (
+        <PageHeader
+          title="Administración"
+          subtitle="Cuentas de usuario, asignación de galpones y equipo operativo."
+          onRefresh={refreshData}
+          refreshing={loading}
+        />
       )}
 
-      {successMsg && (
-        <div className="banner-alert banner-alert-success mb-4" role="status">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconCheck size={18} />
-            <span>{successMsg}</span>
-          </span>
-        </div>
-      )}
+      {errorMsg && <InlineAlert tone="error" onDismiss={() => setErrorMsg(null)}>{errorMsg}</InlineAlert>}
+      {successMsg && <InlineAlert tone="success" onDismiss={() => setSuccessMsg(null)} autoDismissMs={6000}>{successMsg}</InlineAlert>}
 
-      {/* Pestañas de navegación interna */}
-      {loading && <p role="status" className="text-muted">Cargando datos de administración…</p>}
+      {loading && <DataState variant="loading" title="Cargando datos de administración…" />}
       <ModuleTabs label={barnsOnly ? 'Gestión de galpones' : 'Secciones de administración'} active={activeTab} onChange={setActiveTab} columns={3} tabs={[
         ...(!barnsOnly ? [{ id: 'usuarios', label: 'Usuarios', count: users.length, icon: <IconUser size={16} /> }] : []),
         { id: 'galpones', label: 'Galpones', count: barns.length, icon: <IconBuilding size={16} /> },
@@ -635,52 +623,54 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
           </div>
 
           {loading ? (
-            <p className="text-muted p-4 text-center">Cargando cuentas...</p>
+            <DataState variant="loading" title="Cargando cuentas…" />
           ) : (
-            <ul className="data-card-list data-card-grid" aria-label="Cuentas registradas">
-                  {users.map((u) => (
-                    <li key={u.id}><article className="data-card" data-state={u.is_active === 1 ? 'active' : 'inactive'}>
-                      <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{u.name}</span><span className="data-card-subtitle font-mono">{u.username}</span></div>
-                        <span className={`badge-status ${u.is_active === 1 ? 'badge-success' : 'badge-danger'}`}>
-                          {u.is_active === 1 ? 'ACTIVO' : 'INACTIVO'}
-                        </span>
-                      </header>
-                      <dl className="data-card-meta"><div><dt>Perfil</dt><dd>{u.role === 'administrador' ? 'Administrador' : ROLE_LABEL[u.role]}</dd></div><div><dt>Creación</dt><dd>{formatDateTime(u.created_at)}</dd></div><div><dt>Actualización</dt><dd>{formatDateTime(u.updated_at)}</dd></div></dl>
-                      <div>
-                        {u.role === 'administrador' ? (
-                          <span className="text-xs text-muted">Alcance de Granja (Todos)</span>
-                        ) : u.barns.length > 0 ? (
-                          <div className="flex gap-1 flex-wrap">
-                            {u.barns.map((b) => (
-                              <span key={b.id} className="badge badge-sm badge-outline">
-                                {b.code} - {b.name}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-danger">Sin galpones asignados</span>
-                        )}
+            <DataCardList label="Cuentas registradas" grid>
+              {users.map((u) => (
+                <DataCard key={u.id} state={u.is_active === 1 ? 'active' : 'inactive'}>
+                  <DataCardHead
+                    title={u.name}
+                    subtitle={<span className="font-mono">{u.username}</span>}
+                    badge={<StatusBadge tone={u.is_active === 1 ? 'success' : 'danger'}>{u.is_active === 1 ? 'ACTIVO' : 'INACTIVO'}</StatusBadge>}
+                  />
+                  <DataCardMeta items={[
+                    { label: 'Perfil', value: u.role === 'administrador' ? 'Administrador' : ROLE_LABEL[u.role] },
+                    { label: 'Creación', value: formatDateTime(u.created_at) },
+                    { label: 'Actualización', value: formatDateTime(u.updated_at) },
+                  ]} />
+                  <div>
+                    {u.role === 'administrador' ? (
+                      <span className="text-xs text-muted">Alcance de Granja (Todos)</span>
+                    ) : u.barns.length > 0 ? (
+                      <div className="flex gap-1 flex-wrap">
+                        {u.barns.map((b) => (
+                          <StatusBadge key={b.id} tone="outline" className="badge-sm">{b.code} - {b.name}</StatusBadge>
+                        ))}
                       </div>
-                      <div className="data-card-actions">
-                        <button
-                          type="button"
-                          className="btn btn-outline"
-                          onClick={() => handleToggleUserStatus(u)}
-                          title={u.is_active === 1 ? 'Desactivar cuenta' : 'Activar cuenta'}
-                        >
-                          <IconUser size={14} /><span>{u.is_active === 1 ? 'Desactivar' : 'Activar'}</span>
-                        </button>
-                      </div>
-                    </article></li>
-                  ))}
-            </ul>
+                    ) : (
+                      <span className="text-xs text-danger">Sin galpones asignados</span>
+                    )}
+                  </div>
+                  <DataCardActions>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      onClick={() => handleToggleUserStatus(u)}
+                      title={u.is_active === 1 ? 'Desactivar cuenta' : 'Activar cuenta'}
+                    >
+                      <IconUser size={14} /><span>{u.is_active === 1 ? 'Desactivar' : 'Activar'}</span>
+                    </button>
+                  </DataCardActions>
+                </DataCard>
+              ))}
+            </DataCardList>
           )}
 
           {/* Modal / Formulario Nueva Cuenta */}
           {showUserModal && (
             <ModalDialog labelledBy="admin-create-user-dialog-title" onDismiss={() => setShowUserModal(false)}>
                 <h4 id="admin-create-user-dialog-title" className="text-lg font-bold mb-3">Crear Nueva Cuenta</h4>
-                {errorMsg && <p role="alert" className="text-danger">{errorMsg}</p>}
+                {errorMsg && <InlineAlert tone="error">{errorMsg}</InlineAlert>}
                 <form onSubmit={handleCreateUser}>
                   <div className="form-group mb-2">
                     <label className="form-label text-sm">Nombre Completo:</label>
@@ -787,10 +777,9 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
             </button>
           </div>
 
-          {!loading && !barns.length && <div className="admin-empty-state" role="status">
-            <IconBuilding size={28} />
-            <p>No hay galpones registrados. Crea el primero con Nuevo Galpón.</p>
-          </div>}
+          {!loading && !barns.length && (
+            <DataState variant="empty" title="No hay galpones registrados" description="Crea el primero con Nuevo Galpón." icon={<IconBuilding size={26} className="text-primary" />} />
+          )}
 
           {barns.length > 0 && <div className="barn-admin-grid">
             {barns.map((b) => (
@@ -800,12 +789,9 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                     <span className="barn-admin-code">{b.code}</span>
                     <h4>{b.name}</h4>
                   </div>
-                  <span className={`badge ${
-                    b.status === 'operativo' ? 'badge-success' :
-                    b.status === 'preparacion' ? 'badge-warning' : 'badge-danger'
-                  }`}>
+                  <StatusBadge tone={b.status === 'operativo' ? 'success' : b.status === 'preparacion' ? 'warning' : 'danger'}>
                     {STATUS_LABEL[b.status] ?? b.status}
-                  </span>
+                  </StatusBadge>
                 </header>
 
                 <dl className="barn-admin-meta">
@@ -852,14 +838,14 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
               <select id="barn-status" className="form-select" value={nextBarnStatus} disabled={barnSaving} onChange={event => setNextBarnStatus(event.target.value as BarnItem['status'])}>
                 <option value="preparacion">En preparación</option><option value="operativo">Operativo</option><option value="inactivo">Inactivo</option>
               </select>
-              {barnError && <p role="alert" className="text-danger">{barnError}</p>}
+              {barnError && <InlineAlert tone="error">{barnError}</InlineAlert>}
               <div className="form-actions form-actions-sticky"><button type="button" className="btn btn-outline" disabled={barnSaving} onClick={() => setStatusBarn(null)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={barnSaving}>{barnSaving ? 'Guardando…' : 'Guardar estado'}</button></div>
             </form>
           </ModalDialog>}
           {showBarnModal && (
             <ModalDialog labelledBy="admin-create-barn-dialog-title" onDismiss={() => setShowBarnModal(false)} dismissDisabled={barnSaving}>
                 <h4 id="admin-create-barn-dialog-title" className="text-lg font-bold mb-3">{editingBarn ? 'Editar galpón' : 'Registrar Nuevo Galpón'}</h4>
-                {barnError && <p className="text-danger" role="alert">{barnError}</p>}
+                {barnError && <InlineAlert tone="error">{barnError}</InlineAlert>}
                 <form onSubmit={handleCreateBarn}>
                   <div className="form-group mb-2">
                     <label className="form-label text-sm" htmlFor="barn-code">Código Único:</label>
@@ -1118,7 +1104,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
           </p>
 
           {history.length === 0 ? (
-            <p className="text-muted text-center p-4">No hay cambios de equipo registrados aún.</p>
+            <DataState variant="empty" title="No hay cambios de equipo registrados aún." icon={<IconClock size={26} className="text-primary" />} />
           ) : (
             <ol className="timeline" aria-label="Historial de asignaciones">
                   {history.map((h) => {
@@ -1127,41 +1113,31 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       <li className="timeline-item" key={h.id}>
                         <span className="timeline-dot" aria-hidden="true" />
                         <article className="data-card timeline-record">
-                          <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{h.barn_code} ({h.barn_name})</span><span className="data-card-subtitle">{ROLE_LABEL[h.role] || h.role}</span></div><span className={`badge-status ${isCurrent ? 'badge-success' : 'badge-outline'}`}>{isCurrent ? 'Vigente' : 'Histórico'}</span></header>
-                          <dl className="data-card-meta">
-                          <div><dt>Asignación anterior</dt><dd>
-                          {h.previous_user_name ? (
-                            <span className="text-danger">{h.previous_user_name}</span>
-                          ) : (
-                            <span className="text-muted">(Sin titular previo)</span>
-                          )}
-                          </dd></div>
-                          <div><dt>Nuevo titular</dt><dd>
-                          <strong className="text-success">{h.new_user_name}</strong>
-                          </dd></div>
-                          <div><dt>Vigencia</dt><dd>
-                          <div className="font-mono">Desde: {formatDateTime(h.valid_from)}</div>
-                          <div className="font-mono text-muted">
-                            Hasta: {h.valid_until ? formatDateTime(h.valid_until) : 'Vigente'}
-                          </div>
-                          <div className="text-muted">Registrado: {formatDateTime(h.created_at)}</div>
-                          </dd></div>
-                          <div><dt>Motivo</dt><dd>
-                          {h.reason ? h.reason : <span className="text-muted">Sin motivo registrado</span>}
-                          </dd></div>
-                          <div><dt>Autor del cambio</dt><dd>
-                          <span className="text-xs text-muted">{h.changed_by_name}</span>
-                          </dd></div>
-                          </dl>
+                          <DataCardHead
+                            title={`${h.barn_code} (${h.barn_name})`}
+                            subtitle={ROLE_LABEL[h.role] || h.role}
+                            badge={<StatusBadge tone={isCurrent ? 'success' : 'outline'}>{isCurrent ? 'Vigente' : 'Histórico'}</StatusBadge>}
+                          />
+                          <DataCardMeta items={[
+                            { label: 'Asignación anterior', value: h.previous_user_name ? <span className="text-danger">{h.previous_user_name}</span> : <span className="text-muted">(Sin titular previo)</span> },
+                            { label: 'Nuevo titular', value: <strong className="text-success">{h.new_user_name}</strong> },
+                            { label: 'Vigencia', value: <>
+                              <div className="font-mono">Desde: {formatDateTime(h.valid_from)}</div>
+                              <div className="font-mono text-muted">Hasta: {h.valid_until ? formatDateTime(h.valid_until) : 'Vigente'}</div>
+                              <div className="text-muted">Registrado: {formatDateTime(h.created_at)}</div>
+                            </> },
+                            { label: 'Motivo', value: h.reason ? h.reason : <span className="text-muted">Sin motivo registrado</span> },
+                            { label: 'Autor del cambio', value: <span className="text-xs text-muted">{h.changed_by_name}</span> },
+                          ]} />
                           <div className="flex flex-col gap-1 items-start">
                             {h.corrects_history_id !== null && (
-                              <span className="badge badge-warning">Corrección de #{h.corrects_history_id}</span>
+                              <StatusBadge tone="warning">Corrección de #{h.corrects_history_id}</StatusBadge>
                             )}
                             {h.superseded_by_id !== null && (
                               <span className="text-xs text-muted">Reemplazado por #{h.superseded_by_id}</span>
                             )}
                           </div>
-                          <div className="data-card-actions">
+                          <DataCardActions>
                           {isCurrent ? (
                             <button
                               type="button"
@@ -1177,7 +1153,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                           ) : (
                             <span className="text-xs text-muted">Solo lectura</span>
                           )}
-                          </div>
+                          </DataCardActions>
                         </article>
                       </li>
                     );
@@ -1194,14 +1170,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                   <strong>{correctionTarget.new_user_name}</strong>. La fila original se conserva como histórica (GES-03).
                 </p>
 
-                {correctionError && (
-                  <div className="banner-alert banner-alert-error mb-3" role="alert">
-                    <span className="inline-flex items-center justify-center gap-2 leading-none">
-                      <IconAlertCircle size={16} />
-                      <span>{correctionError}</span>
-                    </span>
-                  </div>
-                )}
+                {correctionError && <InlineAlert tone="error">{correctionError}</InlineAlert>}
 
                 <form onSubmit={handleCorrectTeam}>
                   <div className="form-group mb-2">
@@ -1294,49 +1263,44 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
               {Object.entries(ACTION_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           </div>
-          {auditAction && <div className="filter-chip-row mb-3"><button type="button" className="filter-chip" onClick={() => setAuditAction('')} aria-label="Quitar filtro de auditoría"><span>{ACTION_LABEL[auditAction as AuditItem['action']]}</span><IconX size={12} /></button></div>}
+          {auditAction && <FilterChipRow><FilterChip label={ACTION_LABEL[auditAction as AuditItem['action']]} onRemove={() => setAuditAction('')} removeLabel="Quitar filtro de auditoría" /></FilterChipRow>}
           {visibleAudit.length === 0 ? (
-            <p className="text-muted text-center p-4">No hay eventos de auditoría para los filtros seleccionados.</p>
+            <DataState variant="empty" title="No hay eventos de auditoría para los filtros seleccionados." icon={<IconClipboard size={26} className="text-primary" />} />
           ) : (
-            <ul className="data-card-list data-card-grid" aria-label="Eventos de auditoría">
-                  {visibleAudit.map((a) => (
-                    <li key={a.id}><article className="data-card">
-                      <header className="data-card-head"><div className="data-card-identity"><span className="data-card-title">{a.entity_type} #{a.entity_id}</span><span className="data-card-subtitle">{formatDateTime(a.recorded_at)}</span></div>
-                        <span className={`badge-status ${
-                          a.action === 'correct' ? 'badge-warning' :
-                          a.action === 'delete' ? 'badge-danger' : 'badge-outline'
-                        }`}>
-                          {ACTION_LABEL[a.action] || a.action}
-                        </span>
-                      </header>
-                      <dl className="data-card-meta">
-                      <div><dt>Fecha efectiva</dt><dd>{formatDate(a.effective_date)}</dd></div>
-                      <div><dt>Galpón</dt><dd>
-                        {a.barn_code ? `${a.barn_code} (${a.barn_name || 'Sin nombre'})` : 'No aplica'}
-                      </dd></div>
-                      <div><dt>Autor</dt><dd>{a.actor_name}</dd></div>
-                      </dl>
-                      <p className="data-card-note">{a.reason || 'Sin motivo'}</p>
-                        <details className="data-card-disclosure">
-                          <summary className="cursor-pointer text-primary">Ver datos</summary>
-                          <div className="mt-2">
-                            <div className="font-bold">Anterior</div>
-                            <pre className="text-xs whitespace-pre-wrap break-all">
-                              {JSON.stringify(a.previous_data, null, 2)}
-                            </pre>
-                            <div className="font-bold mt-2">Nuevo</div>
-                            <pre className="text-xs whitespace-pre-wrap break-all">
-                              {JSON.stringify(a.new_data, null, 2)}
-                            </pre>
-                            <div className="text-muted mt-2">
-                              Entidad: {a.entity_type} #{a.entity_id}
-                              {a.operation_key ? ` · Clave: ${a.operation_key}` : ''}
-                            </div>
-                          </div>
-                        </details>
-                    </article></li>
-                  ))}
-            </ul>
+            <DataCardList label="Eventos de auditoría" grid>
+              {visibleAudit.map((a) => (
+                <DataCard key={a.id}>
+                  <DataCardHead
+                    title={`${a.entity_type} #${a.entity_id}`}
+                    subtitle={formatDateTime(a.recorded_at)}
+                    badge={<StatusBadge tone={a.action === 'correct' ? 'warning' : a.action === 'delete' ? 'danger' : 'outline'}>{ACTION_LABEL[a.action] || a.action}</StatusBadge>}
+                  />
+                  <DataCardMeta items={[
+                    { label: 'Fecha efectiva', value: formatDate(a.effective_date) },
+                    { label: 'Galpón', value: a.barn_code ? `${a.barn_code} (${a.barn_name || 'Sin nombre'})` : 'No aplica' },
+                    { label: 'Autor', value: a.actor_name },
+                  ]} />
+                  <DataCardNote>{a.reason || 'Sin motivo'}</DataCardNote>
+                  <details className="data-card-disclosure">
+                    <summary className="cursor-pointer text-primary">Ver datos</summary>
+                    <div className="mt-2">
+                      <div className="font-bold">Anterior</div>
+                      <pre className="text-xs whitespace-pre-wrap break-all">
+                        {JSON.stringify(a.previous_data, null, 2)}
+                      </pre>
+                      <div className="font-bold mt-2">Nuevo</div>
+                      <pre className="text-xs whitespace-pre-wrap break-all">
+                        {JSON.stringify(a.new_data, null, 2)}
+                      </pre>
+                      <div className="text-muted mt-2">
+                        Entidad: {a.entity_type} #{a.entity_id}
+                        {a.operation_key ? ` · Clave: ${a.operation_key}` : ''}
+                      </div>
+                    </div>
+                  </details>
+                </DataCard>
+              ))}
+            </DataCardList>
           )}
         </div>
       )}
