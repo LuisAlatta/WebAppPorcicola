@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ModalDialog } from './ModalDialog';
 import { IconAlertTriangle, IconCheck, IconRefreshCw, IconX } from './icons';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
@@ -94,6 +94,27 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmEvacuate, setConfirmEvacuate] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const confirmRef = useRef<HTMLDivElement>(null);
+  const primaryActionRef = useRef<HTMLButtonElement>(null);
+  const wasConfirmOpenRef = useRef(false);
+
+  useEffect(() => {
+    const open = confirmDelete || confirmEvacuate;
+    if (open) {
+      confirmRef.current?.focus();
+      wasConfirmOpenRef.current = true;
+      return;
+    }
+    if (wasConfirmOpenRef.current) {
+      wasConfirmOpenRef.current = false;
+      primaryActionRef.current?.focus();
+    }
+  }, [confirmDelete, confirmEvacuate]);
+
+  const backFromConfirm = () => {
+    setConfirmDelete(false);
+    setConfirmEvacuate(false);
+  };
 
   const refresh = useCallback(async () => {
     const result = await loadAssociations(barn.id);
@@ -321,7 +342,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
           </p>
         )}
         {notice && (
-          <p className="barn-assoc-alert barn-assoc-alert-ok">
+          <p role="status" className="barn-assoc-alert barn-assoc-alert-ok">
             <IconCheck size={16} /> <span>{notice}</span>
           </p>
         )}
@@ -474,26 +495,26 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
 
         <div className="barn-assoc-footer">
           {confirmEvacuate ? (
-            <div className="barn-assoc-confirm">
+            <div className="barn-assoc-confirm" ref={confirmRef} tabIndex={-1} aria-label="Confirmar vaciado y eliminación">
               <p className="text-sm">
                 {evacuateSummary ? `${evacuateSummary}. ` : 'No hay registros que mover. '}
                 Después se elimina <strong>{barn.name}</strong> con sus accesos, historial de personal y corrales.
               </p>
               <div className="modal-actions">
-                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={() => setConfirmEvacuate(false)}>Volver</button>
+                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={backFromConfirm}>Volver</button>
                 <button type="button" className="btn btn-danger" disabled={busy !== null} onClick={() => void runEvacuate()}>
                   {busy === 'evacuate' ? 'Vaciando…' : `Sí, vaciar y eliminar ${barn.name}`}
                 </button>
               </div>
             </div>
           ) : confirmDelete ? (
-            <div className="barn-assoc-confirm">
+            <div className="barn-assoc-confirm" ref={confirmRef} tabIndex={-1} aria-label="Confirmar eliminación">
               <p className="text-sm">
                 Se eliminará <strong>{barn.name}</strong> con sus cambios de personal, accesos y corrales.
                 La trazabilidad desvinculada se conserva en el libro de auditoría.
               </p>
               <div className="modal-actions">
-                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={() => setConfirmDelete(false)}>Volver</button>
+                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={backFromConfirm}>Volver</button>
                 <button type="button" className="btn btn-danger" disabled={busy !== null} onClick={() => void removeBarn()}>
                   {busy === 'delete' ? 'Eliminando…' : `Sí, eliminar ${barn.name}`}
                 </button>
@@ -527,6 +548,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
                 )}
                 {data?.canDelete ? (
                   <button
+                    ref={primaryActionRef}
                     type="button"
                     className="btn btn-danger"
                     disabled={busy !== null || loading}
@@ -537,6 +559,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
                   </button>
                 ) : (
                   <button
+                    ref={primaryActionRef}
                     type="button"
                     className="btn btn-danger"
                     disabled={busy !== null || loading || !hasTarget || !hasReason}
