@@ -19,6 +19,8 @@ import {
   lookupExistingOperation,
   normalizeReason,
 } from './events';
+import { transferAnimal } from './animals';
+import { transferInventory } from './inventory';
 
 export type AssociationAction = 'reassign' | 'detach' | 'delete' | 'transfer';
 
@@ -1014,6 +1016,213 @@ export async function vacateBarn(
     reason,
     previousData: { barnId: input.barnId, mode, affected },
     newData: { mode, targetBarnId, affected },
+    effectiveDate,
+    recordedAt: claim.recordedAt,
+  }]);
+
+  return result;
+}
+
+export interface EvacuateInput {
+  barnId: number;
+  destinationBarnId?: unknown;
+  reason?: unknown;
+  operationKey?: string;
+}
+
+export interface EvacuateResult {
+  ok: true;
+  barnId: number;
+  destinationBarnId: number;
+  fichasTrasladadas: number;
+  cabezasTrasladadas: number;
+  fichasReasignadas: number;
+  desvinculadas: { group: string; label: string; count: number }[];
+  reasignadas: { group: string; label: string; count: number }[];
+  replayed: boolean;
+}
+
+const keyToken = (value: string): string => value.replace(/[^A-Za-z0-9._:-]+/g, '-').slice(0, 40);
+
+/**
+ * Vacía el galpón y lo elimina en una sola acción.
+ *
+ * El ganado vivo se mueve con traslados reales (nunca con un UPDATE de barn_id),
+ * porque un traslado ajusta el saldo del libro y cierra el historial de ubicación.
+ * Cada traslado es una operación propia y derivada de la clave del intento, así que
+ * un corte a mitad de camino se reanuda sin duplicar movimientos. El historial
+ * obligatorio pasa al destino y la trazabilidad que admite nulo se desvincula, de
+ * modo que el libro de auditoría no se toca.
+ */
+export async function evacuateAndDeleteBarn(
+  db: D1Database,
+  actorUserId: number,
+  input: EvacuateInput,
+): Promise<EvacuateResult> {
+  const reason = normalizeReason(input.reason, { required: true });
+  const effectiveDate = currentFarmDate();
+
+  const destinationBarnId = Number(input.destinationBarnId);
+  if (!Number.isInteger(destinationBarnId) || destinationBarnId <= 0) {
+    throw new ApiError(400, 'Seleccione el galpón destino');
+  }
+  if (destinationBarnId === input.barnId) throw new ApiError(400, 'El destino debe ser otro galpón');
+
+  // Primero el reintento: un vaciado ya aplicado no puede confundirse con un galpón inexistente.
+  const payload = { barnId: input.barnId, destinationBarnId, effectiveDate };
+  const existing = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
+  if (existing) return { ...(existing.result as EvacuateResult), replayed: true };
+
+  const barn = await db.prepare('SELECT id, code, name FROM barns WHERE id = ?')
+    .bind(input.barnId)
+    .first<Row>();
+  if (!barn) throw new ApiError(404, 'Galpón no encontrado');
+
+  const destination = await db.prepare('SELECT id, name FROM barns WHERE id = ?')
+    .bind(destinationBarnId)
+    .first<Row>();
+  if (!destination) throw new ApiError(404, 'El galpón destino no existe');
+
+  const attemptKey = input.operationKey ?? `evac-auto-${crypto.randomUUID()}`;
+  const subKey = (tag: string, identity: string) => `evac-${keyToken(attemptKey)}-${tag}-${keyToken(identity)}`.slice(0, 128);
+
+  const liveFichas = await db.prepare(
+    'SELECT code FROM animals WHERE barn_id = ? AND is_active = 1 AND exit_date IS NULL ORDER BY code LIMIT 2000',
+  ).bind(input.barnId).all<Row>();
+  const codes = (liveFichas.results ?? []).map((row) => text(row.code)).filter((code) => code.length > 0);
+  for (const code of codes) {
+    await transferAnimal(db, actorUserId, code, {
+      destinationBarnId,
+      effectiveDate,
+      reason,
+      operationKey: subKey('ficha', code),
+    }, {});
+  }
+
+  const stockBuckets = await db.prepare(`
+    SELECT stage_code, sex, location_code, lot_code,
+      SUM(CASE WHEN movement_type IN ('sale','death','transfer_out') THEN -quantity ELSE quantity END) AS heads
+    FROM inventory_movements
+    WHERE barn_id = ?
+    GROUP BY stage_code, sex, location_code, lot_code
+    HAVING heads > 0
+    ORDER BY heads DESC LIMIT 500
+  `).bind(input.barnId).all<Row>();
+
+  let headsMoved = 0;
+  for (const bucket of stockBuckets.results ?? []) {
+    const quantity = Number(bucket.heads ?? 0);
+    if (!Number.isInteger(quantity) || quantity <= 0) continue;
+    const stageCode = text(bucket.stage_code);
+    const sex = text(bucket.sex);
+    const locationCode = bucket.location_code === null || bucket.location_code === undefined
+      ? null : text(bucket.location_code);
+    const lotCode = bucket.lot_code === null || bucket.lot_code === undefined ? null : text(bucket.lot_code);
+    // El destino recibe las cabezas sin ubicación ni lote: ambos códigos pertenecen
+    // al galpón de origen y el traslado los rechazaría fuera de su galpón.
+    await transferInventory(db, actorUserId, {
+      effectiveDate,
+      sourceBarnId: input.barnId,
+      destinationBarnId,
+      sourceLocationCode: locationCode,
+      sourceLotCode: lotCode,
+      destinationLocationCode: null,
+      destinationLotCode: null,
+      stageCode,
+      sex,
+      quantity,
+      reason,
+      operationKey: subKey('stock', `${stageCode}|${sex}|${locationCode ?? ''}|${lotCode ?? ''}`),
+    }, {});
+    headsMoved += quantity;
+  }
+
+  const leftovers = await Promise.all(GROUP_DEFS.filter((def) => def.transferOnly).map(async (def) => ({
+    def,
+    count: await countOf(db, def, input.barnId),
+  })));
+  const pending = leftovers
+    .filter((item) => item.count > 0)
+    .map((item) => `${item.def.label.toLowerCase()}: ${item.count} ${item.def.unit}`);
+  if (pending.length > 0) {
+    throw new ApiError(409, `No se pudo trasladar todo el ganado (${pending.join(', ')}). Los traslados ya registrados no se duplican; reintente la acción.`);
+  }
+
+  const closedFichas = await db.prepare(
+    'SELECT count(*) AS n FROM animals WHERE barn_id = ?',
+  ).bind(input.barnId).first<Row>();
+  const fichasReasignadas = Number(closedFichas?.n ?? 0);
+
+  const historyDefs = GROUP_DEFS.filter((def) => !def.cascade && !def.transferOnly);
+  const historyCounts = await Promise.all(historyDefs.map((def) => countOf(db, def, input.barnId)));
+  const desvinculadas = historyDefs
+    .map((def, index) => ({ group: def.key, label: def.label, count: historyCounts[index] }))
+    .filter((item, index) => item.count > 0 && historyDefs[index].nullable);
+  const reasignadas = historyDefs
+    .map((def, index) => ({ group: def.key, label: def.label, count: historyCounts[index] }))
+    .filter((item, index) => item.count > 0 && !historyDefs[index].nullable);
+
+  const result: EvacuateResult = {
+    ok: true,
+    barnId: input.barnId,
+    destinationBarnId,
+    fichasTrasladadas: codes.length,
+    cabezasTrasladadas: headsMoved,
+    fichasReasignadas,
+    desvinculadas,
+    reasignadas,
+    replayed: false,
+  };
+
+  const statements: D1PreparedStatement[] = [
+    ...desvinculadas.map((item) => {
+      const def = findDef(item.group);
+      return db.prepare(`UPDATE ${def.table} SET ${def.column} = NULL WHERE ${def.column} = ?`).bind(input.barnId);
+    }),
+    ...reasignadas.map((item) => {
+      const def = findDef(item.group);
+      return db.prepare(`UPDATE ${def.table} SET ${def.column} = ? WHERE ${def.column} = ?`).bind(destinationBarnId, input.barnId);
+    }),
+    db.prepare('UPDATE animals SET barn_id = ? WHERE barn_id = ?').bind(destinationBarnId, input.barnId),
+    db.prepare('DELETE FROM user_barns WHERE barn_id = ?').bind(input.barnId),
+    db.prepare('DELETE FROM barn_team_history WHERE barn_id = ?').bind(input.barnId),
+    db.prepare('DELETE FROM barn_pens WHERE barn_id = ?').bind(input.barnId),
+    db.prepare('DELETE FROM barns WHERE id = ?').bind(input.barnId),
+  ];
+
+  const claim = await createOperationClaim({
+    operationKey: input.operationKey,
+    operationType: 'barn.evacuate_and_delete',
+    authorUserId: actorUserId,
+    entityType: 'barn',
+    entityId: input.barnId,
+    barnId: null,
+    effectiveDate,
+    payload,
+    result,
+  });
+
+  await commitOperation(db, claim, statements, [{
+    entityType: 'barn',
+    entityId: input.barnId,
+    action: 'delete',
+    actorUserId,
+    barnId: null,
+    reason,
+    previousData: {
+      barnId: input.barnId,
+      code: text(barn.code),
+      name: text(barn.name),
+      fichasTrasladadas: codes.length,
+      cabezasTrasladadas: headsMoved,
+    },
+    newData: {
+      destinationBarnId,
+      destinationName: text(destination.name),
+      fichasReasignadas,
+      desvinculadas,
+      reasignadas,
+    },
     effectiveDate,
     recordedAt: claim.recordedAt,
   }]);

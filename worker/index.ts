@@ -35,6 +35,7 @@ import {
   getBarnAssociations,
   resolveBarnAssociation,
   vacateBarn,
+  evacuateAndDeleteBarn,
 } from './barn-associations';
 import {
   getConfigSnapshot,
@@ -1043,6 +1044,18 @@ const worker = {
           }
           const body = await request.json() as Omit<Parameters<typeof vacateBarn>[2], 'barnId'>;
           const result = await vacateBarn(env.DB, session.user.id, { ...body, barnId });
+          return Response.json(result);
+        }
+
+        // POST /api/admin/barns/:id/evacuate-and-delete: trasladar el ganado, resolver el
+        // historial y eliminar el galpón en una sola acción reintentable
+        if (path.endsWith('/evacuate-and-delete') && request.method === 'POST') {
+          const barnId = parseInt(path.split('/')[4], 10);
+          if (isNaN(barnId)) {
+            return Response.json({ error: 'ID de galpón inválido' }, { status: 400 });
+          }
+          const body = await request.json() as Omit<Parameters<typeof evacuateAndDeleteBarn>[2], 'barnId'>;
+          const result = await evacuateAndDeleteBarn(env.DB, session.user.id, { ...body, barnId });
           return Response.json(result);
         }
 

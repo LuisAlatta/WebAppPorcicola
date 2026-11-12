@@ -48,6 +48,18 @@ interface AssociationsResponse {
   error?: string;
 }
 
+interface EvacuateResult {
+  ok: true;
+  barnId: number;
+  destinationBarnId: number;
+  fichasTrasladadas: number;
+  cabezasTrasladadas: number;
+  fichasReasignadas: number;
+  desvinculadas: { group: string; label: string; count: number }[];
+  reasignadas: { group: string; label: string; count: number }[];
+  replayed: boolean;
+}
+
 const group = (payload: AssociationsResponse, key: string): AssociationGroup => {
   const found = payload.groups.find((item) => item.key === key);
   if (!found) throw new Error(`Grupo no devuelto: ${key}`);
@@ -208,6 +220,118 @@ describe('Datos asociados al galpón · CFG-06', () => {
       body: { mode: 'reassign', targetBarnId: targetId, reason: 'El libro del galpón mal creado pasa al correcto', operationKey: 'asoc-vacate-0003' },
     });
     expect(((await replay.json()) as { replayed: boolean }).replayed).toBe(true);
+  });
+
+  it('vaciar y eliminar en una sola acción traslada el saldo, resuelve el historial y cierra el galpón', async () => {
+    const sourceId = await createBarn('G-AS6', 'Galpón por cerrar');
+    const targetId = await createBarn('G-AS7', 'Galpón receptor');
+    const now = new Date().toISOString();
+
+    await db.batch([
+      db.prepare(`INSERT INTO inventory_movements (movement_type, effective_date, barn_id, stage_code, sex, quantity, created_by_user_id, created_at)
+        VALUES ('purchase', '2026-02-01', ?, 'engorde', 'hembra', 12, ?, ?)`).bind(sourceId, adminId, now),
+      db.prepare(`INSERT INTO audit_log (entity_type, entity_id, action, actor_user_id, barn_id, reason, effective_date, recorded_at)
+        VALUES ('barn', ?, 'update', ?, ?, 'Alta del galpón', '2026-02-01', ?)`)
+        .bind(sourceId, adminId, sourceId, now),
+    ]);
+
+    const refused = await api(`/api/admin/barns/${sourceId}`, { method: 'DELETE' });
+    expect(refused.status).toBe(409);
+
+    const missingTarget = await api(`/api/admin/barns/${sourceId}/evacuate-and-delete`, {
+      body: { reason: 'El galpón se cierra y su ganado pasa al receptor', operationKey: 'asoc-evac-0001' },
+    });
+    expect(missingTarget.status).toBe(400);
+
+    const selfTarget = await api(`/api/admin/barns/${sourceId}/evacuate-and-delete`, {
+      body: { destinationBarnId: sourceId, reason: 'El galpón se cierra y su ganado pasa al receptor', operationKey: 'asoc-evac-0002' },
+    });
+    expect(selfTarget.status).toBe(400);
+
+    const evacuated = await api(`/api/admin/barns/${sourceId}/evacuate-and-delete`, {
+      body: { destinationBarnId: targetId, reason: 'El galpón se cierra y su ganado pasa al receptor', operationKey: 'asoc-evac-0003' },
+    });
+    expect(evacuated.status).toBe(200);
+    const result = await evacuated.json() as EvacuateResult;
+    expect(result.cabezasTrasladadas).toBe(12);
+    expect(result.reasignadas.map((item) => item.group)).toEqual(expect.arrayContaining(['inventory_movements']));
+    expect(result.desvinculadas.map((item) => item.group)).toEqual(expect.arrayContaining(['audit']));
+
+    expect(await db.prepare('SELECT id FROM barns WHERE id = ?').bind(sourceId).first()).toBeNull();
+
+    const headsAtTarget = await db.prepare(`
+      SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out') THEN -quantity ELSE quantity END), 0) AS n
+      FROM inventory_movements WHERE barn_id = ?`).bind(targetId).first<{ n: number }>();
+    expect(Number(headsAtTarget?.n)).toBe(12);
+
+    const stillAtSource = await db.prepare('SELECT count(*) AS n FROM inventory_movements WHERE barn_id = ?')
+      .bind(sourceId).first<{ n: number }>();
+    expect(Number(stillAtSource?.n)).toBe(0);
+
+    const auditTrail = await db.batch([
+      db.prepare('SELECT count(*) AS n FROM audit_log WHERE barn_id = ?').bind(sourceId),
+      db.prepare('SELECT count(*) AS n FROM audit_log WHERE barn_id IS NULL'),
+    ]);
+    expect(Number((auditTrail[0] as { results: { n: number }[] }).results[0].n)).toBe(0);
+    expect(Number((auditTrail[1] as { results: { n: number }[] }).results[0].n)).toBeGreaterThan(0);
+
+    const replay = await api(`/api/admin/barns/${sourceId}/evacuate-and-delete`, {
+      body: { destinationBarnId: targetId, reason: 'El galpón se cierra y su ganado pasa al receptor', operationKey: 'asoc-evac-0003' },
+    });
+    expect(replay.status).toBe(200);
+    expect(((await replay.json()) as { replayed: boolean }).replayed).toBe(true);
+  });
+
+  it('traslada las fichas vivas con traslado real y reasigna las ya cerradas', async () => {
+    const sourceId = await createBarn('G-AS8', 'Galpón con fichas');
+    const targetId = await createBarn('G-AS9', 'Galpón receptor de fichas');
+    const now = new Date().toISOString();
+
+    // La ficha viva se crea por la API: alta real, con su movimiento de entrada y su historial.
+    const created = await api('/api/animals', {
+      body: {
+        code: 'A-VIVA1',
+        animalType: 'lechon',
+        sex: 'hembra',
+        entryDate: '2026-01-10',
+        entryStageCode: 'preinicio',
+        barnId: sourceId,
+        originType: 'compra',
+        purchaseAmount: '1.00',
+        purchaseCurrencyCode: 'PEN',
+        reason: 'Alta de ficha para cerrar el galpón',
+        operationKey: 'asoc-alta-0010',
+      },
+    });
+    expect(created.status).toBe(201);
+
+    // La ficha ya salida no se traslada: se reasigna junto con el resto del historial.
+    await db.prepare(`
+      INSERT INTO animals (code, animal_type, sex, status, origin_type, entry_date, entry_stage_code,
+        current_stage_code, barn_id, is_active, exit_date, exit_type, created_by_user_id, created_at, updated_at)
+      VALUES ('A-CERR1', 'lechon', 'hembra', 'vendido', 'nacimiento', '2026-01-10', 'preinicio', 'preinicio', ?, 0, '2026-03-01', 'sale', ?, ?, ?)`)
+      .bind(sourceId, adminId, now, now).run();
+
+    const view = await (await api(`/api/admin/barns/${sourceId}/associations`)).json() as AssociationsResponse;
+    expect(group(view, 'animals').count).toBe(1);
+    expect(group(view, 'animals').actions).toEqual(['transfer']);
+
+    const evacuated = await api(`/api/admin/barns/${sourceId}/evacuate-and-delete`, {
+      body: { destinationBarnId: targetId, reason: 'Se cierra el galpón y sus fichas pasan al receptor', operationKey: 'asoc-evac-0010' },
+    });
+    expect(evacuated.status).toBe(200);
+    const result = await evacuated.json() as EvacuateResult;
+    expect(result.fichasTrasladadas).toBe(1);
+    expect(result.fichasReasignadas).toBe(1);
+
+    const moved = await db.prepare('SELECT code, barn_id FROM animals WHERE code IN (?, ?) ORDER BY code')
+      .bind('A-CERR1', 'A-VIVA1').all<{ code: string; barn_id: number }>();
+    expect(moved.results ?? []).toEqual([
+      { code: 'A-CERR1', barn_id: targetId },
+      { code: 'A-VIVA1', barn_id: targetId },
+    ]);
+
+    expect(await db.prepare('SELECT id FROM barns WHERE id = ?').bind(sourceId).first()).toBeNull();
   });
 
   it('rechaza grupos y identificadores que no corresponden al galpón', async () => {

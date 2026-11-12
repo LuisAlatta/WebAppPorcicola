@@ -52,6 +52,12 @@ const SECTION_LABEL: Record<AssociationGroup['section'], string> = {
 
 const SECTION_ORDER: AssociationGroup['section'][] = ['animales', 'operacion', 'config', 'asociados', 'trazabilidad'];
 
+const oneOrMany = (count: number, singular: string, pluralForm: string) => `${count} ${count === 1 ? singular : pluralForm}`;
+
+const UNIT_SINGULAR: Record<string, string> = { cabezas: 'cabeza', fichas: 'ficha' };
+
+const unitOf = (count: number, unit: string) => (count === 1 ? UNIT_SINGULAR[unit] ?? unit : unit);
+
 const ACTION_LABEL: Record<AssociationAction, string> = {
   reassign: 'Reasignar',
   detach: 'Desvincular',
@@ -86,6 +92,8 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
   const [targetBarnId, setTargetBarnId] = useState<number | ''>('');
   const [reason, setReason] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmEvacuate, setConfirmEvacuate] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     const result = await loadAssociations(barn.id);
@@ -120,7 +128,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
   const hasTarget = Number.isInteger(target) && target > 0;
   const hasReason = reason.trim().length >= 5;
 
-  const runOperation = async (path: string, body: Record<string, unknown>, busyKey: string): Promise<Record<string, unknown> | null> => {
+  const runOperation = async (path: string, body: Record<string, unknown>, busyKey: string, closeOnSuccess = false): Promise<Record<string, unknown> | null> => {
     setBusy(busyKey);
     setErrorMsg(null);
     setNotice(null);
@@ -134,6 +142,11 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
       if (!res.ok) {
         setErrorMsg(String(payload.error ?? 'No se pudo completar la acción'));
         return null;
+      }
+      if (closeOnSuccess) {
+        onChanged();
+        onDeleted(barn.name);
+        return payload;
       }
       await refresh();
       onChanged();
@@ -222,6 +235,21 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
     );
   };
 
+  const runEvacuate = async () => {
+    if (!hasTarget) {
+      setErrorMsg('Elija el galpón destino antes de vaciar y eliminar.');
+      return;
+    }
+    if (!hasReason) {
+      setErrorMsg('Escriba el motivo (mínimo 5 caracteres) antes de aplicar la acción.');
+      return;
+    }
+    setConfirmEvacuate(false);
+    await runOperation(`/api/admin/barns/${barn.id}/evacuate-and-delete`, {
+      destinationBarnId: target,
+    }, 'evacuate', true);
+  };
+
   const removeBarn = async () => {
     setBusy('delete');
     setErrorMsg(null);
@@ -244,19 +272,38 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
 
   const groups = (data?.groups ?? []).filter((group) => group.count > 0);
   const blockingCount = groups.filter((group) => group.blocking).length;
+  const sumOf = (items: AssociationGroup[]) => items.reduce((total, item) => total + item.count, 0);
+  const livestock = groups.filter((group) => group.actions.includes('transfer'));
+  const detachable = groups.filter((group) => group.blocking && group.actions.includes('detach'));
+  const migratable = groups.filter(
+    (group) => group.blocking && group.actions.includes('reassign') && !group.actions.includes('detach'),
+  );
+  const ownedByBarn = groups.filter((group) => !group.blocking && group.actions.length === 0);
+  const headsLabel = livestock.map((group) => `${group.count} ${unitOf(group.count, group.unit)}`).join(' · ');
+  const headsVerb = livestock.every((group) => group.count === 1) ? 'se traslada' : 'se trasladan';
+  const detachCount = sumOf(detachable);
+  const migrateCount = sumOf(migratable);
+  const migratePhrase = oneOrMany(migrateCount, 'dato histórico', 'datos históricos');
+  const migrateVerb = migrateCount === 1 ? 'pasa' : 'pasan';
+  const destinationName = barns.find((item) => item.id === target)?.name ?? '';
+  const evacuateSummary = [
+    headsLabel ? `${headsLabel} ${headsVerb} a ${destinationName}` : null,
+    migrateCount > 0 ? `${migratePhrase} ${migrateVerb} a ese galpón` : null,
+    detachCount > 0 ? `${detachCount} trazas quedan en el libro sin galpón` : null,
+  ].filter((item): item is string => item !== null).join('; ');
 
   return (
     <ModalDialog labelledBy="barn-assoc-title" onDismiss={onDismiss} dismissDisabled={busy !== null} size="wide">
       <div className="barn-assoc">
         <div className="modal-header">
           <div className="modal-body">
-            <h2 id="barn-assoc-title">Datos asociados · {barn.name}</h2>
+            <h2 id="barn-assoc-title">{barn.name}</h2>
             <p className="text-sm text-muted">
               {loading
                 ? 'Consultando qué registros apuntan a este galpón…'
                 : data?.canDelete
-                  ? 'Ya no queda nada que impida eliminarlo.'
-                  : `${blockingCount} tipo${blockingCount === 1 ? '' : 's'} de registro${blockingCount === 1 ? '' : 's'} impide${blockingCount === 1 ? '' : 'n'} eliminarlo. Resuélvalos aquí, o desactive el galpón y deje la historia intacta.`}
+                  ? 'No queda nada que impida eliminarlo.'
+                  : `${blockingCount} tipo${blockingCount === 1 ? '' : 's'} de dato${blockingCount === 1 ? '' : 's'} ${blockingCount === 1 ? 'impide' : 'impiden'} eliminarlo. Se resuelven solos al vaciar el galpón.`}
             </p>
           </div>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onDismiss} disabled={busy !== null} aria-label="Cerrar">
@@ -279,6 +326,35 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
           <p className="text-sm">
             No hay registros asociados a este galpón. Los cambios de personal y los corrales se eliminan con él.
           </p>
+        )}
+
+        {!detailOpen && groups.length > 0 && (
+          <ul className="barn-assoc-summary">
+            {livestock.map((group) => (
+              <li key={group.key}>
+                <strong>{group.count} {unitOf(group.count, group.unit)}</strong>
+                <span>en el galpón; {group.count === 1 ? 'se traslada al destino con un movimiento real.' : 'se trasladan al destino con movimientos reales.'}</span>
+              </li>
+            ))}
+            {migratable.length > 0 && (
+              <li>
+                <strong>{migratePhrase}</strong>
+                <span>de {oneOrMany(migratable.length, 'tipo', 'tipos')}; {migrateVerb} {destinationName ? `a ${destinationName}` : 'al destino'}.</span>
+              </li>
+            )}
+            {detachable.length > 0 && (
+              <li>
+                <strong>{detachCount} trazas</strong>
+                <span>de auditoría y operaciones; quedan en el libro sin galpón.</span>
+              </li>
+            )}
+            {ownedByBarn.length > 0 && (
+              <li className="barn-assoc-summary-muted">
+                <strong>{sumOf(ownedByBarn)} datos</strong>
+                <span>de personal, accesos y corrales se eliminan con el galpón.</span>
+              </li>
+            )}
+          </ul>
         )}
 
         {groups.length > 0 && (
@@ -310,75 +386,92 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
               </div>
             </div>
 
-            {SECTION_ORDER.map((section) => {
-              const sectionGroups = groups.filter((group) => group.section === section);
-              if (sectionGroups.length === 0) return null;
-              return (
-                <section key={section} className="barn-assoc-section">
-                  <h3 className="barn-assoc-section-title">{SECTION_LABEL[section]}</h3>
-                  {sectionGroups.map((group) => (
-                    <article key={group.key} className={`barn-assoc-group${group.blocking ? ' barn-assoc-group-blocking' : ''}`}>
-                      <header className="barn-assoc-head">
-                        <h4>{group.label}</h4>
-                        <span className={`badge badge-sm ${group.blocking ? 'badge-danger' : 'badge-outline'}`}>
-                          {group.count} {group.unit}
-                          {group.hasMore ? '+' : ''}
-                        </span>
-                      </header>
-                      <p className="barn-assoc-note">{group.note}</p>
-                      <div className="barn-assoc-rows table-responsive">
-                        <table className="table">
-                          <thead>
-                            <tr>
-                              <th scope="col">Fecha</th>
-                              <th scope="col">Registro</th>
-                              <th scope="col">Cantidad</th>
-                              <th scope="col">Acciones</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {group.rows.map((row) => (
-                              <tr key={row.id}>
-                                <td>{row.date ?? '—'}</td>
-                                <td>
-                                  <div className="table-cell-stacked">
-                                    <strong>{row.label}</strong>
-                                    <span className="text-sm text-muted">{row.meta}</span>
-                                  </div>
-                                </td>
-                                <td>{row.quantity ?? '—'}</td>
-                                <td>
-                                  <div className="table-actions">
-                                    {group.actions.map((action) => (
-                                      <button
-                                        key={action}
-                                        type="button"
-                                        className={`btn btn-sm ${action === 'delete' ? 'btn-ghost text-danger' : 'btn-outline'}`}
-                                        title={ACTION_HINT[action]}
-                                        disabled={busy !== null}
-                                        onClick={() => void applyRow(group, row, action)}
-                                      >
-                                        {ACTION_LABEL[action]}
-                                      </button>
-                                    ))}
-                                    {group.actions.length === 0 && <span className="text-sm text-muted">Se elimina con el galpón</span>}
-                                  </div>
-                                </td>
+            {detailOpen && (
+              <div className="barn-assoc-detail">
+              {SECTION_ORDER.map((section) => {
+                const sectionGroups = groups.filter((group) => group.section === section);
+                if (sectionGroups.length === 0) return null;
+                return (
+                  <section key={section} className="barn-assoc-section">
+                    <h3 className="barn-assoc-section-title">{SECTION_LABEL[section]}</h3>
+                    {sectionGroups.map((group) => (
+                      <article key={group.key} className={`barn-assoc-group${group.blocking ? ' barn-assoc-group-blocking' : ''}`}>
+                        <header className="barn-assoc-head">
+                          <h4>{group.label}</h4>
+                          <span className={`badge badge-sm ${group.blocking ? 'badge-danger' : 'badge-outline'}`}>
+                            {group.count} {group.unit}
+                            {group.hasMore ? '+' : ''}
+                          </span>
+                        </header>
+                        <p className="barn-assoc-note">{group.note}</p>
+                        <div className="barn-assoc-rows table-responsive">
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th scope="col">Fecha</th>
+                                <th scope="col">Registro</th>
+                                <th scope="col">Cantidad</th>
+                                <th scope="col">Acciones</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </article>
-                  ))}
-                </section>
-              );
-            })}
+                            </thead>
+                            <tbody>
+                              {group.rows.map((row) => (
+                                <tr key={row.id}>
+                                  <td>{row.date ?? '—'}</td>
+                                  <td>
+                                    <div className="table-cell-stacked">
+                                      <strong>{row.label}</strong>
+                                      <span className="text-sm text-muted">{row.meta}</span>
+                                    </div>
+                                  </td>
+                                  <td>{row.quantity ?? '—'}</td>
+                                  <td>
+                                    <div className="table-actions">
+                                      {group.actions.map((action) => (
+                                        <button
+                                          key={action}
+                                          type="button"
+                                          className={`btn btn-sm ${action === 'delete' ? 'btn-ghost text-danger' : 'btn-outline'}`}
+                                          title={ACTION_HINT[action]}
+                                          disabled={busy !== null}
+                                          onClick={() => void applyRow(group, row, action)}
+                                        >
+                                          {ACTION_LABEL[action]}
+                                        </button>
+                                      ))}
+                                      {group.actions.length === 0 && <span className="text-sm text-muted">Se elimina con el galpón</span>}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </article>
+                    ))}
+                  </section>
+                );
+              })}
+              </div>
+            )}
           </>
         )}
 
         <div className="barn-assoc-footer">
-          {confirmDelete ? (
+          {confirmEvacuate ? (
+            <div className="barn-assoc-confirm">
+              <p className="text-sm">
+                {evacuateSummary ? `${evacuateSummary}. ` : 'No hay registros que mover. '}
+                Después se elimina <strong>{barn.name}</strong> con sus accesos, historial de personal y corrales.
+              </p>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={() => setConfirmEvacuate(false)}>Volver</button>
+                <button type="button" className="btn btn-danger" disabled={busy !== null} onClick={() => void runEvacuate()}>
+                  {busy === 'evacuate' ? 'Vaciando…' : `Sí, vaciar y eliminar ${barn.name}`}
+                </button>
+              </div>
+            </div>
+          ) : confirmDelete ? (
             <div className="barn-assoc-confirm">
               <p className="text-sm">
                 Se eliminará <strong>{barn.name}</strong> con sus cambios de personal, accesos y corrales.
@@ -395,24 +488,53 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted, onCha
             <div className="barn-assoc-actions">
               <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={onDismiss}>Cancelar</button>
               <div className="table-actions">
-                <button type="button" className="btn btn-outline" disabled={busy !== null || loading} onClick={() => void refresh()}>
-                  <IconRefreshCw size={14} /><span>Actualizar</span>
-                </button>
-                <button type="button" className="btn btn-outline" disabled={busy !== null || !hasReason} onClick={() => void runVacate('detach')}>
-                  <span>Desvincular lo desligable</span>
-                </button>
-                <button type="button" className="btn btn-outline" disabled={busy !== null || !hasReason || !hasTarget} onClick={() => void runVacate('reassign')}>
-                  <span>Reasignar todo al destino</span>
-                </button>
                 <button
                   type="button"
-                  className="btn btn-danger"
-                  disabled={busy !== null || loading || !data?.canDelete}
-                  title={data?.canDelete ? 'Eliminar el galpón' : 'Primero hay que resolver los registros que lo bloquean'}
-                  onClick={() => setConfirmDelete(true)}
+                  className="btn btn-ghost"
+                  disabled={busy !== null}
+                  aria-expanded={detailOpen}
+                  onClick={() => setDetailOpen(!detailOpen)}
                 >
-                  <span>Eliminar galpón</span>
+                  <span>{detailOpen ? 'Ocultar detalle' : 'Ver detalle'}</span>
                 </button>
+                {detailOpen && (
+                  <>
+                    <button type="button" className="btn btn-outline" disabled={busy !== null || loading} onClick={() => void refresh()}>
+                      <IconRefreshCw size={14} /><span>Actualizar</span>
+                    </button>
+                    <button type="button" className="btn btn-outline" disabled={busy !== null || !hasReason} onClick={() => void runVacate('detach')}>
+                      <span>Desvincular trazas</span>
+                    </button>
+                    <button type="button" className="btn btn-outline" disabled={busy !== null || !hasReason || !hasTarget} onClick={() => void runVacate('reassign')}>
+                      <span>Reasignar al destino</span>
+                    </button>
+                  </>
+                )}
+                {data?.canDelete ? (
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={busy !== null || loading}
+                    title="Eliminar el galpón"
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    <span>Eliminar galpón</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={busy !== null || loading || !hasTarget || !hasReason}
+                    title={!hasTarget
+                      ? 'Elija el galpón destino'
+                      : !hasReason
+                        ? 'Escriba el motivo (mínimo 5 caracteres)'
+                        : 'Traslada el ganado, resuelve el historial y elimina el galpón'}
+                    onClick={() => setConfirmEvacuate(true)}
+                  >
+                    <span>Vaciar y eliminar</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
