@@ -36,6 +36,7 @@ import {
   DataCardActions,
   FilterChipRow,
   FilterChip,
+  FormField,
 } from './ui';
 
 interface ModuloAdministracionProps {
@@ -672,8 +673,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                 <h4 id="admin-create-user-dialog-title" className="text-lg font-bold mb-3">Crear Nueva Cuenta</h4>
                 {errorMsg && <InlineAlert tone="error">{errorMsg}</InlineAlert>}
                 <form onSubmit={handleCreateUser}>
-                  <div className="form-group mb-2">
-                    <label className="form-label text-sm">Nombre Completo:</label>
+                  <FormField label="Nombre Completo:" className="mb-2" labelClassName="text-sm">
                     <input
                       type="text"
                       className="form-input"
@@ -682,9 +682,8 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       onChange={(e) => setNewName(e.target.value)}
                       placeholder="Ej. Juan Pérez"
                     />
-                  </div>
-                  <div className="form-group mb-2">
-                    <label className="form-label text-sm">Identificador / Correo de Acceso:</label>
+                  </FormField>
+                  <FormField label="Identificador / Correo de Acceso:" className="mb-2" labelClassName="text-sm">
                     <input
                       type="text"
                       className="form-input"
@@ -693,9 +692,8 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       onChange={(e) => setNewUsername(e.target.value)}
                       placeholder="Ej. juan.perez@granja.pe"
                     />
-                  </div>
-                  <div className="form-group mb-2">
-                    <label className="form-label text-sm">Contraseña (mínimo 8 caracteres):</label>
+                  </FormField>
+                  <FormField label="Contraseña (mínimo 8 caracteres):" className="mb-2" labelClassName="text-sm">
                     <input
                       type="password"
                       className="form-input"
@@ -705,9 +703,8 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="********"
                     />
-                  </div>
-                  <div className="form-group mb-3">
-                    <label className="form-label text-sm">Perfil Operativo:</label>
+                  </FormField>
+                  <FormField label="Perfil Operativo:" className="mb-3" labelClassName="text-sm">
                     <select
                       className="form-select"
                       value={newRole}
@@ -718,13 +715,10 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       <option value="veterinario">Médico Veterinario (Sanidad / Reproducción)</option>
                       <option value="administrador">Administrador (Control total)</option>
                     </select>
-                  </div>
+                  </FormField>
 
                   {newRole === 'responsable' && (
-                    <div className="form-group mb-3">
-                      <label className="form-label text-sm">
-                        Galpón Inicial Asignado (Obligatorio para Responsable activo):
-                      </label>
+                    <FormField label="Galpón Inicial Asignado (Obligatorio para Responsable activo):" className="mb-3" labelClassName="text-sm">
                       <select
                         className="form-select"
                         required
@@ -738,7 +732,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                           </option>
                         ))}
                       </select>
-                    </div>
+                    </FormField>
                   )}
 
                   <div className="form-actions form-actions-sticky mt-4">
@@ -847,8 +841,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                 <h4 id="admin-create-barn-dialog-title" className="text-lg font-bold mb-3">{editingBarn ? 'Editar galpón' : 'Registrar Nuevo Galpón'}</h4>
                 {barnError && <InlineAlert tone="error">{barnError}</InlineAlert>}
                 <form onSubmit={handleCreateBarn}>
-                  <div className="form-group mb-2">
-                    <label className="form-label text-sm" htmlFor="barn-code">Código Único:</label>
+                  <FormField label="Código Único:" htmlFor="barn-code" className="mb-2" labelClassName="text-sm">
                     <input
                       type="text"
                       className="form-input"
@@ -859,9 +852,8 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       onChange={(e) => setNewBarnCode(e.target.value)}
                       placeholder="Ej. G-C"
                     />
-                  </div>
-                  <div className="form-group mb-2">
-                    <label className="form-label text-sm" htmlFor="barn-name">Nombre del Galpón:</label>
+                  </FormField>
+                  <FormField label="Nombre del Galpón:" htmlFor="barn-name" className="mb-2" labelClassName="text-sm">
                     <input
                       type="text"
                       className="form-input"
@@ -872,9 +864,8 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       onChange={(e) => setNewBarnName(e.target.value)}
                       placeholder="Ej. Galpón C Maternidad"
                     />
-                  </div>
-                  <div className="form-group mb-2">
-                    <label className="form-label text-sm" htmlFor="barn-zone">Ubicación / Zona:</label>
+                  </FormField>
+                  <FormField label="Ubicación / Zona:" htmlFor="barn-zone" className="mb-2" labelClassName="text-sm">
                     <input
                       type="text"
                       className="form-input"
@@ -884,9 +875,8 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       onChange={(e) => setNewBarnZone(e.target.value)}
                       placeholder="Ej. Sector Maternidad Norte"
                     />
-                  </div>
-                  <div className="form-group mb-3">
-                    <label className="form-label text-sm" htmlFor="barn-capacity">Capacidad en Cabezas:</label>
+                  </FormField>
+                  <FormField label="Capacidad en Cabezas:" htmlFor="barn-capacity" className="mb-3" labelClassName="text-sm">
                     <input
                       type="number"
                       className="form-input"
@@ -897,7 +887,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       disabled={barnSaving}
                       onChange={(e) => setNewBarnCapacity(Number(e.target.value))}
                     />
-                  </div>
+                  </FormField>
 
                   <div className="form-actions form-actions-sticky mt-4">
                     <button
@@ -941,8 +931,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
           </p>
 
           <form onSubmit={handleSaveTeam} className="admin-team-form">
-            <div className="form-group mb-3">
-              <label className="form-label font-bold">Seleccionar Galpón:</label>
+            <FormField label="Seleccionar Galpón:" className="mb-3" labelClassName="font-bold">
               <select
                 className="form-select"
                 required
@@ -964,7 +953,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                   </option>
                 ))}
               </select>
-            </div>
+            </FormField>
 
             <div className="grid-3 gap-3 mb-4">
               <div className="form-group card p-3 team-role-card" data-role="responsable">
@@ -1030,11 +1019,11 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
             </div>
 
             <div className="grid-3 gap-3 mb-4">
-              <div className="form-group card p-3">
-                <label className="form-label font-bold inline-flex items-center gap-1">
-                  <IconCalendar size={16} />
-                  <span>Fecha efectiva:</span>
-                </label>
+              <FormField
+                label={<><IconCalendar size={16} /><span>Fecha efectiva:</span></>}
+                className="card p-3"
+                labelClassName="font-bold inline-flex items-center gap-1"
+              >
                 <input
                   type="date"
                   className="form-input"
@@ -1043,10 +1032,9 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                   onChange={(e) => setAssignmentEffectiveDate(e.target.value)}
                 />
                 <span className="text-xs text-muted mt-1">Fecha local de la granja (America/Lima)</span>
-              </div>
+              </FormField>
 
-              <div className="form-group card p-3 admin-form-span2">
-                <label className="form-label font-bold">Motivo del cambio (queda en auditoría):</label>
+              <FormField label="Motivo del cambio (queda en auditoría):" className="card p-3 admin-form-span2" labelClassName="font-bold">
                 <input
                   type="text"
                   className="form-input"
@@ -1057,7 +1045,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                 <span className="text-xs text-muted mt-1">
                   Clave de reintento activa: {assignmentOperationKey.slice(0, 18)}… (ACC-04)
                 </span>
-              </div>
+              </FormField>
             </div>
 
             <div className="card p-3 mb-4 bg-light">
@@ -1173,8 +1161,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                 {correctionError && <InlineAlert tone="error">{correctionError}</InlineAlert>}
 
                 <form onSubmit={handleCorrectTeam}>
-                  <div className="form-group mb-2">
-                    <label className="form-label text-sm">Titular Correcto:</label>
+                  <FormField label="Titular Correcto:" className="mb-2" labelClassName="text-sm">
                     <select
                       className="form-select"
                       required
@@ -1193,13 +1180,13 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                         No hay otros usuarios activos con ese perfil disponibles.
                       </span>
                     )}
-                  </div>
+                  </FormField>
 
-                  <div className="form-group mb-2">
-                    <label className="form-label text-sm inline-flex items-center gap-1">
-                      <IconCalendar size={14} />
-                      <span>Fecha efectiva de la corrección:</span>
-                    </label>
+                  <FormField
+                    label={<><IconCalendar size={14} /><span>Fecha efectiva de la corrección:</span></>}
+                    className="mb-2"
+                    labelClassName="text-sm inline-flex items-center gap-1"
+                  >
                     <input
                       type="date"
                       className="form-input"
@@ -1207,10 +1194,9 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       value={correctionEffectiveDate}
                       onChange={(e) => setCorrectionEffectiveDate(e.target.value)}
                     />
-                  </div>
+                  </FormField>
 
-                  <div className="form-group mb-3">
-                    <label className="form-label text-sm">Motivo de la corrección (obligatorio):</label>
+                  <FormField label="Motivo de la corrección (obligatorio):" className="mb-3" labelClassName="text-sm">
                     <input
                       type="text"
                       className="form-input"
@@ -1223,7 +1209,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                     <span className="text-xs text-muted mt-1">
                       Clave de reintento activa: {correctionOperationKey.slice(0, 18)}… (ACC-04)
                     </span>
-                  </div>
+                  </FormField>
 
                   <div className="form-actions form-actions-sticky mt-4">
                     <button
@@ -1256,13 +1242,12 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
             Solo el Administrador puede consultarlo (ACC-06).
           </p>
 
-          <div className="form-group mb-3">
-            <label className="form-label" htmlFor="audit-action">Acción auditada</label>
+          <FormField label="Acción auditada" htmlFor="audit-action" className="mb-3">
             <select id="audit-action" className="form-select" value={auditAction} onChange={event => setAuditAction(event.target.value)}>
               <option value="">Todas las acciones</option>
               {Object.entries(ACTION_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
-          </div>
+          </FormField>
           {auditAction && <FilterChipRow><FilterChip label={ACTION_LABEL[auditAction as AuditItem['action']]} onRemove={() => setAuditAction('')} removeLabel="Quitar filtro de auditoría" /></FilterChipRow>}
           {visibleAudit.length === 0 ? (
             <DataState variant="empty" title="No hay eventos de auditoría para los filtros seleccionados." icon={<IconClipboard size={26} className="text-primary" />} />
