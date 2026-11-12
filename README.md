@@ -14,7 +14,7 @@ Para iniciar la base local se necesita Node.js 24 y npm. Ejecutar `npm ci` y des
 - `npm test`: Ejecuta toda la suite de pruebas con Vitest.
 - `npm run test:integration`: Ejecuta las pruebas de integración con Miniflare y D1.
 - `npm run test:e2e`: Ejecuta pruebas de navegador con Playwright, después de compilar la aplicación.
-- Sin seleccionar otro entorno, el build y el despliegue usan `production`, incluido el binding `webporcicola-produccion` y el cron diario de las 00:05 de Lima. Para cambiar a staging cuando se solicite, en PowerShell ejecutar `$env:CLOUDFLARE_ENV='staging'; npm run build`.
+- El build y el despliegue usan únicamente `production`, incluido el binding `webporcicola-produccion` y el cron diario de las 00:05 de Lima. No existe ningún otro entorno.
 - Antes de desplegar, comprobar la cuenta activa y ejecutar `npx wrangler deploy --config dist/web_porcicola_produccion/wrangler.json --dry-run`; verificar nombre del Worker, binding D1 y cron. El despliegue normal es `npx wrangler deploy --config dist/web_porcicola_produccion/wrangler.json --keep-vars`.
 
 ### Versiones compatibles fijadas

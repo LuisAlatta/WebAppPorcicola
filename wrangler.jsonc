@@ -31,19 +31,6 @@
           "database_id": "1a6f4451-bde8-46cf-beae-ed4dd76d34c0"
         }
       ]
-    },
-    "staging": {
-      "name": "web-porcicola-staging",
-      "triggers": {
-        "crons": ["5 5 * * *"]
-      },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "webporcicola-staging",
-          "database_id": "0e990468-3530-4e3a-a1df-530721ce38d7"
-        }
-      ]
     }
   }
 }
