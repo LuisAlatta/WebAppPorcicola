@@ -931,7 +931,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                       { label: 'Servido', value: `${row.servedKg} kg`, className: 'font-mono tabular-nums text-primary' },
                       { label: 'Consumido medido', value: row.consumedKg === null ? <span className="text-muted">Sin medición</span> : <span className="text-success">{row.consumedKg} kg</span>, className: 'font-mono tabular-nums' },
                     ]} />
-                    <p className="data-card-note font-mono">{row.feedCode} · lote {row.lotCode}</p>
+                    <DataCardNote className="font-mono">{row.feedCode} · lote {row.lotCode}</DataCardNote>
                   </DataCard>
                 ))}
               </DataCardList>

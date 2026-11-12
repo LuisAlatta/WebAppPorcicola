@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { FormField, DataTable } from '../src/components/ui';
+import { FormField, DataTable, DataCardNote } from '../src/components/ui';
 
 describe('FormField', () => {
   it('reproduce el form-group con label y control', () => {
@@ -32,5 +32,16 @@ describe('DataTable', () => {
   it('añade clase al wrapper y omite aria-label si no se pasa', () => {
     const html = renderToStaticMarkup(createElement(DataTable, { className: 'mb-4', children: createElement('tbody', null) }));
     expect(html).toBe('<div class="table-responsive mb-4"><table class="data-table"><tbody></tbody></table></div>');
+  });
+});
+
+describe('DataCardNote', () => {
+  it('renderiza un p data-card-note sin clase extra por defecto', () => {
+    const html = renderToStaticMarkup(createElement(DataCardNote, { children: 'Nota' }));
+    expect(html).toBe('<p class="data-card-note">Nota</p>');
+  });
+  it('añade className preservando el tag p', () => {
+    const html = renderToStaticMarkup(createElement(DataCardNote, { className: 'font-mono mb-3', children: 'Nota' }));
+    expect(html).toBe('<p class="data-card-note font-mono mb-3">Nota</p>');
   });
 });

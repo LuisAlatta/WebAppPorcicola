@@ -40,8 +40,8 @@ export function DataCardMeta({ items, className }: { items: { label: string; val
   );
 }
 
-export function DataCardNote({ children }: { children: ReactNode }) {
-  return <p className="data-card-note">{children}</p>;
+export function DataCardNote({ className, children }: { className?: string; children: ReactNode }) {
+  return <p className={`data-card-note${className ? ` ${className}` : ''}`}>{children}</p>;
 }
 
 export function DataCardActions({ children }: { children: ReactNode }) {

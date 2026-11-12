@@ -982,7 +982,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             <IconList size={14} />
             <span>Volver al padrón</span>
             {total > 0 && (
-              <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{total}</span>
+              <StatusBadge tone="outline" className="tabular-nums font-numeric ml-1">{total}</StatusBadge>
             )}
           </span>
         </button>

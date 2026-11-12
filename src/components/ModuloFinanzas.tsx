@@ -715,7 +715,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
               </span>
             </button>
           </div>
-          <p className="data-card-note mb-3">{settlementTarget.category} · {settlementTarget.concept}</p>
+          <DataCardNote className="mb-3">{settlementTarget.category} · {settlementTarget.concept}</DataCardNote>
           {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
           <form className="form-grid" onSubmit={settle}>
             <FormField label="Fecha efectiva">
@@ -1005,7 +1005,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
       {detailTarget && (
         <ModalDialog labelledBy="finance-detail-title" onDismiss={() => setDetailTarget(null)}>
           <h2 id="finance-detail-title" className="text-lg font-bold mb-3">Operación #{detailTarget.id}</h2>
-          <p className="data-card-note mb-3">{detailTarget.concept}</p>
+          <DataCardNote className="mb-3">{detailTarget.concept}</DataCardNote>
           <dl className="detail-grid">
             <div className="detail-item"><dt>Tipo</dt><dd>{detailTarget.direction === 'income' ? 'Ingreso' : 'Egreso'}</dd></div>
             <div className="detail-item"><dt>Estado</dt><dd>{detailTarget.reversedAt ? 'Anulada' : detailTarget.reversalOfId ? 'Reversión' : 'Vigente'}</dd></div>
