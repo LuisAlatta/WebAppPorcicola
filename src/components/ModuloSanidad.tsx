@@ -25,6 +25,7 @@ import {
   KpiCard,
   StatusBadge,
   SectionCard,
+  FormField,
   DataCardList,
   DataCard,
   DataCardHead,
@@ -403,8 +404,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
 
           <form className="form-stack" onSubmit={submit}>
             <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label" htmlFor="health-event-type">Tipo de evento</label>
+              <FormField label="Tipo de evento" htmlFor="health-event-type">
                 <select
                   id="health-event-type"
                   className="form-select"
@@ -419,10 +419,9 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                       </option>
                     ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="health-effective-date">Fecha efectiva</label>
+              <FormField label="Fecha efectiva" htmlFor="health-effective-date">
                 <input
                   id="health-effective-date"
                   type="date"
@@ -432,7 +431,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                   value={form.effectiveDate}
                   onChange={(e) => update('effectiveDate', e.target.value)}
                 />
-              </div>
+              </FormField>
             </div>
 
             <p className="text-xs text-muted">
@@ -459,14 +458,13 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                 La corrección o anulación se aplicará a todos los animales de esta actuación grupal. El registro anterior se conserva en auditoría.
               </p>
             ) : (
-              <div className="form-group">
+              <FormField>
                 <AnimalPicker label="Animales aplicables" searchLabel="Buscar animales para tratamiento" multiple required activeOnly value={selected} onChange={setSelected} />
-              </div>
+              </FormField>
             )}
 
             <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label" htmlFor="health-product">Producto / medicamento</label>
+              <FormField label="Producto / medicamento" htmlFor="health-product">
                 <input
                   id="health-product"
                   className="form-input"
@@ -475,10 +473,9 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                   value={form.product}
                   onChange={(e) => update('product', e.target.value)}
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="health-product-lot">Lote del producto</label>
+              <FormField label="Lote del producto" htmlFor="health-product-lot">
                 <input
                   id="health-product-lot"
                   className="form-input"
@@ -486,12 +483,11 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                   value={form.productLot}
                   onChange={(e) => update('productLot', e.target.value)}
                 />
-              </div>
+              </FormField>
             </div>
 
             <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label" htmlFor="health-dosage">Dosis por animal</label>
+              <FormField label="Dosis por animal" htmlFor="health-dosage">
                 <input
                   id="health-dosage"
                   type="number"
@@ -502,10 +498,9 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                   value={form.dosage}
                   onChange={(e) => update('dosage', e.target.value)}
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="health-dosage-unit">Unidad de dosis</label>
+              <FormField label="Unidad de dosis" htmlFor="health-dosage-unit">
                 <input
                   id="health-dosage-unit"
                   className="form-input"
@@ -514,12 +509,11 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                   value={form.dosageUnit}
                   onChange={(e) => update('dosageUnit', e.target.value)}
                 />
-              </div>
+              </FormField>
             </div>
 
             <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label" htmlFor="health-next-due-date">Próxima aplicación (opcional)</label>
+              <FormField label="Próxima aplicación (opcional)" htmlFor="health-next-due-date">
                 <input
                   id="health-next-due-date"
                   type="date"
@@ -528,10 +522,9 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                   value={form.nextDueDate}
                   onChange={(e) => update('nextDueDate', e.target.value)}
                 />
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="health-withdrawal-until">Fin del retiro (opcional)</label>
+              <FormField label="Fin del retiro (opcional)" htmlFor="health-withdrawal-until">
                 <input
                   id="health-withdrawal-until"
                   type="date"
@@ -540,11 +533,10 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                   value={form.withdrawalUntil}
                   onChange={(e) => update('withdrawalUntil', e.target.value)}
                 />
-              </div>
+              </FormField>
             </div>
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="health-reason">Motivo</label>
+            <FormField label="Motivo" htmlFor="health-reason">
               <input
                 id="health-reason"
                 className="form-input"
@@ -553,10 +545,9 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                 value={form.reason}
                 onChange={(e) => update('reason', e.target.value)}
               />
-            </div>
+            </FormField>
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="health-observations">Observaciones</label>
+            <FormField label="Observaciones" htmlFor="health-observations">
               <textarea
                 id="health-observations"
                 className="form-textarea"
@@ -565,7 +556,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                 value={form.observations}
                 onChange={(e) => update('observations', e.target.value)}
               />
-            </div>
+            </FormField>
 
             <div className="form-actions">
               <button
@@ -709,8 +700,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
         >
 
         <div className="grid-3 mb-4">
-          <div className="form-group">
-            <label className="form-label" htmlFor="health-filter-animal">Animal</label>
+          <FormField label="Animal" htmlFor="health-filter-animal">
             <input
               id="health-filter-animal"
               className="form-input"
@@ -718,9 +708,8 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
               onChange={(e) => setFilter({ ...filter, animalCode: e.target.value })}
               placeholder="Código de arete"
             />
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="health-filter-product">Producto</label>
+          </FormField>
+          <FormField label="Producto" htmlFor="health-filter-product">
             <input
               id="health-filter-product"
               className="form-input"
@@ -728,9 +717,8 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
               onChange={(e) => setFilter({ ...filter, product: e.target.value })}
               placeholder="Nombre del medicamento"
             />
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="health-filter-lot">Lote animal</label>
+          </FormField>
+          <FormField label="Lote animal" htmlFor="health-filter-lot">
             <input
               id="health-filter-lot"
               className="form-input"
@@ -738,9 +726,8 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
               onChange={(e) => setFilter({ ...filter, lotCode: e.target.value })}
               placeholder="Lote"
             />
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="health-filter-from">Desde</label>
+          </FormField>
+          <FormField label="Desde" htmlFor="health-filter-from">
             <input
               id="health-filter-from"
               type="date"
@@ -748,9 +735,8 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
               value={filter.from}
               onChange={(e) => setFilter({ ...filter, from: e.target.value })}
             />
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="health-filter-to">Hasta</label>
+          </FormField>
+          <FormField label="Hasta" htmlFor="health-filter-to">
             <input
               id="health-filter-to"
               type="date"
@@ -758,7 +744,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
               value={filter.to}
               onChange={(e) => setFilter({ ...filter, to: e.target.value })}
             />
-          </div>
+          </FormField>
         </div>
 
         {events.length === 0 ? (

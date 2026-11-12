@@ -23,6 +23,7 @@ import {
   KpiCard,
   StatusBadge,
   SectionCard,
+  FormField,
   DataCardHead,
   DataCardMeta,
   DataCardActions,
@@ -775,8 +776,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
             <fieldset className="form-section">
               <legend>Identificación del ciclo</legend>
             <div className="grid-3">
-              <div className="form-group">
-                <label className="form-label">Marrana (Hembra reproductora)</label>
+              <FormField label="Marrana (Hembra reproductora)">
                 <select
                   className="form-select"
                   required
@@ -791,12 +791,9 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     </option>
                   ))}
                 </select>
-              </div>
+              </FormField>
 
-              <div className="form-group">
-                <label className="form-label">
-                  {isAntecedent ? 'Fecha de ingreso / antecedente' : 'Fecha del servicio'}
-                </label>
+              <FormField label={isAntecedent ? 'Fecha de ingreso / antecedente' : 'Fecha del servicio'}>
                 <input
                   type="date"
                   className="form-input"
@@ -805,11 +802,10 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                   value={form.serviceDate}
                   onChange={(e) => setForm((prev) => ({ ...prev, serviceDate: e.target.value }))}
                 />
-              </div>
+              </FormField>
 
               {!isAntecedent && (
-                <div className="form-group">
-                  <label className="form-label">Tipo de servicio</label>
+                <FormField label="Tipo de servicio">
                   <select
                     className="form-select"
                     value={form.serviceType}
@@ -821,7 +817,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       </option>
                     ))}
                   </select>
-                </div>
+                </FormField>
               )}
             </div>
             </fieldset>
@@ -830,8 +826,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
               <fieldset className="form-section">
                 <legend>Padre o material genético</legend>
               <div className="grid-3">
-                <div className="form-group">
-                  <label className="form-label">Origen del material</label>
+                <FormField label="Origen del material">
                   <select
                     className="form-select"
                     value={form.materialSource}
@@ -842,11 +837,10 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     <option value="internal">Verraco de la granja</option>
                     <option value="external">Material externo</option>
                   </select>
-                </div>
+                </FormField>
 
                 {form.materialSource === 'internal' ? (
-                  <div className="form-group">
-                    <label className="form-label">Verraco</label>
+                  <FormField label="Verraco">
                     <select
                       className="form-select"
                       required
@@ -861,10 +855,9 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         </option>
                       ))}
                     </select>
-                  </div>
+                  </FormField>
                 ) : (
-                  <div className="form-group">
-                    <label className="form-label">Procedencia externa</label>
+                  <FormField label="Procedencia externa">
                     <input
                       className="form-input"
                       required
@@ -872,18 +865,17 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       onChange={(e) => setForm((prev) => ({ ...prev, externalSource: e.target.value }))}
                       maxLength={160}
                     />
-                  </div>
+                  </FormField>
                 )}
 
-                <div className="form-group">
-                  <label className="form-label">Raza del padre/material</label>
+                <FormField label="Raza del padre/material">
                   <input
                     className="form-input"
                     value={form.sireBreed}
                     onChange={(e) => setForm((prev) => ({ ...prev, sireBreed: e.target.value }))}
                     maxLength={80}
                   />
-                </div>
+                </FormField>
               </div>
             </fieldset>
             )}
@@ -891,10 +883,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
             <fieldset className="form-section">
               <legend>Parto y antecedentes</legend>
             <div className="grid-3">
-              <div className="form-group">
-                <label className="form-label">
-                  {isAntecedent ? 'Fecha probable de parto' : 'Fecha probable manual (opcional)'}
-                </label>
+              <FormField label={isAntecedent ? 'Fecha probable de parto' : 'Fecha probable manual (opcional)'}>
                 <input
                   type="date"
                   className="form-input"
@@ -902,11 +891,10 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                   value={form.dueDate}
                   onChange={(e) => setForm((prev) => ({ ...prev, dueDate: e.target.value }))}
                 />
-              </div>
+              </FormField>
 
               {form.dueDate && (
-                <div className="form-group">
-                  <label className="form-label">Motivo de fecha manual</label>
+                <FormField label="Motivo de fecha manual">
                   <input
                     className="form-input"
                     required
@@ -914,22 +902,20 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     onChange={(e) => setForm((prev) => ({ ...prev, dueDateReason: e.target.value }))}
                     maxLength={300}
                   />
-                </div>
+                </FormField>
               )}
 
-              <div className="form-group">
-                <label className="form-label">Último parto conocido</label>
+              <FormField label="Último parto conocido">
                 <input
                   type="date"
                   className="form-input"
                   value={form.lastFarrowingDate}
                   onChange={(e) => setForm((prev) => ({ ...prev, lastFarrowingDate: e.target.value }))}
                 />
-              </div>
+              </FormField>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Observaciones / antecedentes</label>
+            <FormField label="Observaciones / antecedentes">
               <textarea
                 className="form-textarea"
                 rows={2}
@@ -937,7 +923,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 onChange={(e) => setForm((prev) => ({ ...prev, observations: e.target.value }))}
                 maxLength={1000}
               />
-            </div>
+            </FormField>
             </fieldset>
             </div>
 
@@ -1023,16 +1009,13 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
             }
           >
         <div className="grid-3 mb-4">
-          <div className="form-group">
-            <label className="form-label">Desde</label>
+          <FormField label="Desde">
             <input type="date" className="form-input" value={from} onChange={(e) => setFrom(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Hasta</label>
+          </FormField>
+          <FormField label="Hasta">
             <input type="date" className="form-input" value={to} onChange={(e) => setTo(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Estado</label>
+          </FormField>
+          <FormField label="Estado">
             <select className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="pending">Pendientes</option>
               <option value="all">Todos</option>
@@ -1040,7 +1023,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
               <option value="farrowed">Paridos</option>
               <option value="closed">Cerrados</option>
             </select>
-          </div>
+          </FormField>
         </div>
 
         {loading && !cycles.length ? (
@@ -1296,10 +1279,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           Fecha vigente al abrir: <strong>{dateCorrection.expectedCurrentDate}</strong>. Indique el
                           motivo de la corrección para conservarlo en el historial.
                         </p>
-                        <div className="form-group">
-                          <label className="form-label text-xs" htmlFor={`litter-date-${cycle.litter.id}`}>
-                            Nueva fecha real del parto
-                          </label>
+                        <FormField label="Nueva fecha real del parto" htmlFor={`litter-date-${cycle.litter.id}`} labelClassName="text-xs">
                           <input
                             id={`litter-date-${cycle.litter.id}`}
                             type="date"
@@ -1313,11 +1293,8 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                               )
                             }
                           />
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label text-xs" htmlFor={`litter-date-reason-${cycle.litter.id}`}>
-                            Motivo de la corrección de fecha
-                          </label>
+                        </FormField>
+                        <FormField label="Motivo de la corrección de fecha" htmlFor={`litter-date-reason-${cycle.litter.id}`} labelClassName="text-xs">
                           <textarea
                             id={`litter-date-reason-${cycle.litter.id}`}
                             className="form-textarea"
@@ -1332,7 +1309,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                               )
                             }
                           />
-                        </div>
+                        </FormField>
                         <div className="form-actions">
                           <button
                             className="btn btn-primary btn-sm"
@@ -1381,8 +1358,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         </p>
                         <div className="grid-3">
                           {birthCountFields.map((field) => (
-                            <div key={field.key} className="form-group">
-                              <label className="form-label text-xs" htmlFor={`litter-count-${field.key}`}>{field.label}</label>
+                            <FormField key={field.key} label={field.label} htmlFor={`litter-count-${field.key}`} labelClassName="text-xs">
                               <input
                                 id={`litter-count-${field.key}`}
                                 type="number"
@@ -1402,11 +1378,10 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                                   )
                                 }
                               />
-                            </div>
+                            </FormField>
                           ))}
                         </div>
-                        <div className="form-group">
-                          <label className="form-label text-xs" htmlFor="litter-count-reason">Motivo de corrección de cantidades</label>
+                        <FormField label="Motivo de corrección de cantidades" htmlFor="litter-count-reason" labelClassName="text-xs">
                           <textarea
                             id="litter-count-reason"
                             className="form-textarea"
@@ -1421,7 +1396,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                               )
                             }
                           />
-                        </div>
+                        </FormField>
                         <div className="form-actions">
                           <button
                             className="btn btn-primary btn-sm"
@@ -1500,8 +1475,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     {error && <InlineAlert tone="error">{error}</InlineAlert>}
                     <p className="text-xs text-muted mb-2">{cycle.femaleCode} · ajusta el destete de referencia y los intervalos de celo y repeticiones.</p>
                     <div className="grid-2">
-                      <div className="form-group">
-                        <label className="form-label text-xs">Fecha real del destete anterior</label>
+                      <FormField label="Fecha real del destete anterior" labelClassName="text-xs">
                         <input
                           name="referenceWeaningDate"
                           type="date"
@@ -1513,9 +1487,8 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         {cycle.previousWeaningDate && (
                           <small className="text-muted">Fecha registrada en camada anterior: {cycle.previousWeaningDate}</small>
                         )}
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Intervalo a celo (días)</label>
+                      </FormField>
+                      <FormField label="Intervalo a celo (días)" labelClassName="text-xs">
                         <input
                           name="heatIntervalDays"
                           type="number"
@@ -1525,7 +1498,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           className="form-input"
                           required
                         />
-                      </div>
+                      </FormField>
                     </div>
 
                     <div className="grid-3">
@@ -1533,8 +1506,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         ['firstRepeatIntervalDays', 'Intervalo primera repetición', cycle.weaningPlan?.firstRepeatIntervalDays ?? 10],
                         ['secondRepeatIntervalDays', 'Intervalo segunda repetición', cycle.weaningPlan?.secondRepeatIntervalDays ?? 20],
                       ].map(([name, label, value]) => (
-                        <div className="form-group" key={String(name)}>
-                          <label className="form-label text-xs">{String(label)}</label>
+                        <FormField key={String(name)} label={String(label)} labelClassName="text-xs">
                           <input
                             name={String(name)}
                             type="number"
@@ -1544,7 +1516,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                             className="form-input"
                             required
                           />
-                        </div>
+                        </FormField>
                       ))}
                     </div>
 
@@ -1554,15 +1526,14 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         ['actualFirstRepeatDate', 'Primera repetición observada', cycle.weaningPlan?.actualFirstRepeatDate],
                         ['actualSecondRepeatDate', 'Segunda repetición observada', cycle.weaningPlan?.actualSecondRepeatDate],
                       ].map(([name, label, value]) => (
-                        <div className="form-group" key={String(name)}>
-                          <label className="form-label text-xs">{String(label)}</label>
+                        <FormField key={String(name)} label={String(label)} labelClassName="text-xs">
                           <input
                             name={String(name)}
                             type="date"
                             defaultValue={String(value ?? '')}
                             className="form-input"
                           />
-                        </div>
+                        </FormField>
                       ))}
                     </div>
 
@@ -1609,16 +1580,14 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     {error && <InlineAlert tone="error">{error}</InlineAlert>}
                     <p className="text-xs text-muted mb-2">{cycle.femaleCode} · camada {cycle.litter.id.slice(0, 8)}</p>
                     <div className="grid-3">
-                      <div className="form-group">
-                        <label className="form-label text-xs">Evento</label>
+                      <FormField label="Evento" labelClassName="text-xs">
                         <select name="eventType" className="form-select">
                           <option value="weaning">Destete parcial</option>
                           <option value="death">Baja en lactancia</option>
                           <option value="adoption">Adopción hacia otra camada</option>
                         </select>
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Fecha</label>
+                      </FormField>
+                      <FormField label="Fecha" labelClassName="text-xs">
                         <input
                           name="effectiveDate"
                           type="date"
@@ -1629,30 +1598,26 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           onChange={(event) => setLitterEventEffectiveDate(event.target.value)}
                           required
                         />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Sexo</label>
+                      </FormField>
+                      <FormField label="Sexo" labelClassName="text-xs">
                         <select name="sex" className="form-select">
                           <option value="hembra">Hembra · quedan {cycle.litter.femaleAlive}</option>
                           <option value="macho">Macho · quedan {cycle.litter.maleAlive}</option>
                           <option value="pendiente">Sin sexar · quedan {cycle.litter.unsexedAlive}</option>
                         </select>
-                      </div>
+                      </FormField>
                     </div>
 
                     <div className="grid-3">
-                      <div className="form-group">
-                        <label className="form-label text-xs">Cantidad</label>
+                      <FormField label="Cantidad" labelClassName="text-xs">
                         <input name="quantity" type="number" min="1" step="1" className="form-input" required />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Peso promedio al destete (kg)</label>
+                      </FormField>
+                      <FormField label="Peso promedio al destete (kg)" labelClassName="text-xs">
                         <input name="weightKg" type="number" min="0.01" step="0.01" className="form-input" />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Causa de baja (si aplica)</label>
+                      </FormField>
+                      <FormField label="Causa de baja (si aplica)" labelClassName="text-xs">
                         <input name="cause" className="form-input" />
-                      </div>
+                      </FormField>
                     </div>
 
                     {!!cycle.litter.identifiedAnimals?.length && (
@@ -1673,12 +1638,10 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     )}
 
                     <div className="grid-3">
-                      <div className="form-group">
-                        <label className="form-label text-xs">Etapa destino (destete)</label>
+                      <FormField label="Etapa destino (destete)" labelClassName="text-xs">
                         <input name="destinationStageCode" className="form-input" defaultValue="inicio" />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Galpón destino</label>
+                      </FormField>
+                      <FormField label="Galpón destino" labelClassName="text-xs">
                         <input
                           name="destinationBarnId"
                           type="number"
@@ -1686,20 +1649,17 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           className="form-input"
                           defaultValue={cycle.barnId}
                         />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Ubicación destino (destete)</label>
+                      </FormField>
+                      <FormField label="Ubicación destino (destete)" labelClassName="text-xs">
                         <input name="destinationLocationCode" className="form-input" />
-                      </div>
+                      </FormField>
                     </div>
 
                     <div className="grid-2">
-                      <div className="form-group">
-                        <label className="form-label text-xs">Lote destino (destete)</label>
+                      <FormField label="Lote destino (destete)" labelClassName="text-xs">
                         <input name="destinationLotCode" className="form-input" />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Camada destino (adopción)</label>
+                      </FormField>
+                      <FormField label="Camada destino (adopción)" labelClassName="text-xs">
                         <select name="destinationLitterId" className="form-select">
                           <option value="">Seleccione</option>
                           {targetLitters
@@ -1714,13 +1674,12 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                               </option>
                             ))}
                         </select>
-                      </div>
+                      </FormField>
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label text-xs">Motivo</label>
+                    <FormField label="Motivo" labelClassName="text-xs">
                       <input name="reason" className="form-input" required minLength={5} />
-                    </div>
+                    </FormField>
 
                     <div className="form-actions">
                       <button
@@ -1858,8 +1817,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     onSubmit={(event) => void saveFarrowing(event, cycle)}
                   >
                     <div className="grid-3">
-                      <div className="form-group">
-                        <label className="form-label text-xs">Fecha del parto</label>
+                      <FormField label="Fecha del parto" labelClassName="text-xs">
                         <input
                           name="farrowingDate"
                           type="date"
@@ -1868,13 +1826,11 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           defaultValue={cycle.probableFarrowingDate}
                           required
                         />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Número de parto (opcional)</label>
+                      </FormField>
+                      <FormField label="Número de parto (opcional)" labelClassName="text-xs">
                         <input name="parityNumber" type="number" min="1" step="1" className="form-input" />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Peso promedio vivo (kg)</label>
+                      </FormField>
+                      <FormField label="Peso promedio vivo (kg)" labelClassName="text-xs">
                         <input
                           name="averageWeightKg"
                           type="number"
@@ -1883,7 +1839,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           step="0.01"
                           className="form-input"
                         />
-                      </div>
+                      </FormField>
                     </div>
 
                     <div className="grid-3">
@@ -1895,8 +1851,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         ['femaleStillborn', 'Hembras nacidas muertas'],
                         ['unsexedStillborn', 'Muertos sin sexar'],
                       ].map(([name, label]) => (
-                        <div className="form-group" key={name}>
-                          <label className="form-label text-xs">{label}</label>
+                        <FormField key={name} label={label} labelClassName="text-xs">
                           <input
                             name={name}
                             type="number"
@@ -1906,19 +1861,17 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                             className="form-input"
                             required
                           />
-                        </div>
+                        </FormField>
                       ))}
                     </div>
 
                     <div className="grid-2">
-                      <div className="form-group">
-                        <label className="form-label text-xs">Motivo / referencia</label>
+                      <FormField label="Motivo / referencia" labelClassName="text-xs">
                         <input name="reason" className="form-input" required minLength={5} maxLength={300} />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Observaciones</label>
+                      </FormField>
+                      <FormField label="Observaciones" labelClassName="text-xs">
                         <input name="observations" className="form-input" maxLength={1000} />
-                      </div>
+                      </FormField>
                     </div>
 
                     <p className="text-xs text-muted">
@@ -1964,10 +1917,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       void recordEvent(cycle, closureForm.eventType, undefined, closureForm.reason);
                     }}
                   >
-                    <div className="form-group">
-                      <label className="form-label text-xs">
-                        {closureForm.eventType === 'abortion' ? 'Motivo del aborto' : 'Motivo del cierre'}
-                      </label>
+                    <FormField label={closureForm.eventType === 'abortion' ? 'Motivo del aborto' : 'Motivo del cierre'} labelClassName="text-xs">
                       <input
                         className="form-input"
                         required
@@ -1980,7 +1930,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           )
                         }
                       />
-                    </div>
+                    </FormField>
                     <div className="form-actions">
                       <button
                         type="submit"
@@ -2019,8 +1969,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     onSubmit={(e) => void addRepeatService(e, cycle)}
                   >
                     <div className="grid-3">
-                      <div className="form-group">
-                        <label className="form-label text-xs">Fecha</label>
+                      <FormField label="Fecha" labelClassName="text-xs">
                         <input
                           name="serviceDate"
                           type="date"
@@ -2029,27 +1978,24 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           max={farmToday()}
                           required
                         />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Tipo</label>
+                      </FormField>
+                      <FormField label="Tipo" labelClassName="text-xs">
                         <select name="serviceType" className="form-select">
                           <option value="inseminacion_artificial">Inseminación artificial</option>
                           <option value="monta_natural">Monta natural</option>
                           <option value="transferencia_embriones">Transferencia de embriones</option>
                         </select>
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Origen</label>
+                      </FormField>
+                      <FormField label="Origen" labelClassName="text-xs">
                         <select name="materialSource" className="form-select">
                           <option value="internal">Verraco interno</option>
                           <option value="external">Material externo</option>
                         </select>
-                      </div>
+                      </FormField>
                     </div>
 
                     <div className="grid-3">
-                      <div className="form-group">
-                        <label className="form-label text-xs">Código del verraco</label>
+                      <FormField label="Código del verraco" labelClassName="text-xs">
                         <select name="sireCode" className="form-select">
                           <option value="">Seleccione si aplica</option>
                           {sires.map((item) => (
@@ -2058,15 +2004,13 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                             </option>
                           ))}
                         </select>
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Material externo</label>
+                      </FormField>
+                      <FormField label="Material externo" labelClassName="text-xs">
                         <input name="externalSource" className="form-input" />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Observaciones</label>
+                      </FormField>
+                      <FormField label="Observaciones" labelClassName="text-xs">
                         <input name="observations" className="form-input" />
-                      </div>
+                      </FormField>
                     </div>
 
                     <div className="form-actions">
@@ -2105,8 +2049,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     onSubmit={(e) => void saveManualDue(e, cycle)}
                   >
                     <div className="grid-2">
-                      <div className="form-group">
-                        <label className="form-label text-xs">Fecha probable</label>
+                      <FormField label="Fecha probable" labelClassName="text-xs">
                         <input
                           name="dueDate"
                           type="date"
@@ -2115,11 +2058,10 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           defaultValue={cycle.probableFarrowingDate}
                           required
                         />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label text-xs">Motivo</label>
+                      </FormField>
+                      <FormField label="Motivo" labelClassName="text-xs">
                         <input name="dueDateReason" className="form-input" required minLength={5} />
-                      </div>
+                      </FormField>
                     </div>
 
                     <div className="form-actions">
