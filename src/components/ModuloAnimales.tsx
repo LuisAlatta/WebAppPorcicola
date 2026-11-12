@@ -13,6 +13,7 @@ import {
   IconEye,
   IconEyeOff,
   IconFilter,
+  IconList,
   IconPig,
   IconPlus,
   IconRefreshCw,
@@ -29,6 +30,20 @@ import { ModuleTabs } from './ModuleTabs';
 import { Pagination } from './Pagination';
 import { availabilityForStatus } from '../utils/animal-filters';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
+import { errorMessage, formatWeight } from '../utils/format';
+import { useCompactLayout } from '../hooks/useCompactLayout';
+import {
+  InlineAlert,
+  KpiCard,
+  StatusBadge,
+  type BadgeTone,
+  DataCardList,
+  DataCard,
+  DataCardHead,
+  DataCardMeta,
+  DataCardNote,
+  DataCardActions,
+} from './ui';
 import type { Perfil } from '../types';
 
 type AnimalType = 'cerda' | 'verraco' | 'lechon' | 'reemplazo';
@@ -208,11 +223,11 @@ interface AnimalForm {
 
 type Section = 'padron' | 'alta' | 'ficha';
 
-const STATUS_BADGE: Record<string, string> = {
-  activo: 'badge-status badge-success',
-  vendido: 'badge-status badge-warning',
-  descartado: 'badge-status badge-warning',
-  muerto: 'badge-status badge-danger',
+const STATUS_BADGE: Record<string, BadgeTone> = {
+  activo: 'success',
+  vendido: 'warning',
+  descartado: 'warning',
+  muerto: 'danger',
 };
 
 const ORIGIN_HINTS: Record<OriginType, string> = {
@@ -252,50 +267,6 @@ function emptyForm(): AnimalForm {
     observations: '',
     reason: '',
   };
-}
-
-function formatWeight(value: number | null): string {
-  if (value === null || value === undefined) return 'Sin dato';
-  return `${Number(value).toFixed(2)} kg`;
-}
-
-function useCompactLayout() {
-  const query = '(max-width: 900px)';
-  const [compact, setCompact] = useState(() =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : false,
-  );
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    const media = window.matchMedia(query);
-    const sync = () => setCompact(media.matches);
-    sync();
-    media.addEventListener('change', sync);
-    return () => media.removeEventListener('change', sync);
-  }, []);
-  return compact;
-}
-
-function Metric({
-  label,
-  value,
-  detail,
-  icon,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="kpi-card">
-      <span className="kpi-label inline-flex items-center gap-1.5 leading-none">
-        {icon}
-        <span>{label}</span>
-      </span>
-      <span className="kpi-value font-numeric tabular-nums font-bold">{value}</span>
-      <span className="kpi-detail">{detail}</span>
-    </div>
-  );
 }
 
 export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onChangeBarns }: { perfil: Perfil; initialAnimalKey?: string; barnNames?: string[]; onChangeBarns?: () => void }) {
@@ -643,7 +614,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       setDeleteTarget(null);
       setSuccess(`Ficha ${deleteTarget.code} eliminada del padrón activo. Su historial se conserva y puede reactivarse.`);
       await loadList();
-    } catch (err) { setDeleteError(err instanceof Error ? err.message : 'No se pudo eliminar la ficha'); }
+    } catch (err) { setDeleteError(errorMessage(err, 'No se pudo eliminar la ficha')); }
     finally { setBusy(false); }
   };
 
@@ -798,7 +769,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       setSuccess(`Arete actualizado a ${body.animal.currentTag}. El anterior se conserva con su fecha.`);
       await loadList();
     } catch (e) {
-      setTagError(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.');
+      setTagError(errorMessage(e, 'No se pudo conectar con el servidor.'));
     } finally {
       setBusy(false);
     }
@@ -837,7 +808,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         : `La ficha ${body.animal.code} quedó inactiva sin registrar venta ni muerte.`);
       await loadList();
     } catch (e) {
-      setToggleError(e instanceof Error ? e.message : 'No se pudo conectar con el servidor.');
+      setToggleError(errorMessage(e, 'No se pudo conectar con el servidor.'));
     } finally {
       setBusy(false);
     }
@@ -903,7 +874,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       setSaleReturnReason('');
       await loadList();
     } catch (error) {
-      setPhysicalActionError(error instanceof Error ? error.message : 'No se pudo confirmar la devolución. Reintente con la misma clave.');
+      setPhysicalActionError(errorMessage(error, 'No se pudo confirmar la devolución. Reintente con la misma clave.'));
     } finally {
       setBusy(false);
     }
@@ -977,7 +948,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               />
               <p className="form-helper">Queda registrado en la auditoría con tu usuario.</p>
             </div>
-            {deleteError && <p role="alert" className="alert alert-error">{deleteError}</p>}
+            {deleteError && <InlineAlert tone="error">{deleteError}</InlineAlert>}
             {busy && <p className="animal-action-loading inline-flex items-center gap-2" role="status"><IconRefreshCw size={18} className="spinner-icon" /><span>Eliminando animal… Espera un momento.</span></p>}
           </div>
           <footer className="modal-actions">
@@ -989,41 +960,26 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       <AnimalToolbar barns={barnNames} onChangeBarns={onChangeBarns} onRefresh={() => void loadList()} loading={loading} />
 
       {error && !animalModalOpen && (
-        <div className="alert alert-error mb-4" role="alert" aria-live="assertive">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconAlertCircle size={16} />
-            <span>{error}</span>
-          </span>
-        </div>
+        <InlineAlert tone="error" className="mb-4">{error}</InlineAlert>
       )}
 
       {success && !animalModalOpen && (
-        <div className="alert alert-success mb-4" role="status" aria-live="polite">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconCheck size={16} />
-            <span>{success}</span>
-          </span>
-        </div>
+        <InlineAlert tone="success" className="mb-4">{success}</InlineAlert>
       )}
 
       {soloLectura && (
-        <div className="alert alert-warning mb-4" role="status" aria-live="polite">
-          <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconEye size={16} />
-            <span>El perfil Veterinario puede consultar fichas y cronología, pero no modificarlas.</span>
-          </span>
-        </div>
+        <InlineAlert tone="warning" className="mb-4">El perfil Veterinario puede consultar fichas y cronología, pero no modificarlas.</InlineAlert>
       )}
 
-      {section !== 'padron' && !animalModalOpen && <nav className="admin-tabs mb-4" aria-label="Navegación de animales">
+      {section !== 'padron' && !animalModalOpen && <nav className="admin-tabs animal-section-nav mb-4" aria-label="Navegación de animales">
         <button
           type="button"
           className="btn btn-sm btn-outline"
           onClick={() => setSection('padron')}
-          aria-label="Ir a sección padrón de animales"
+          aria-label="Volver al padrón de animales"
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
-            <IconArrowLeft size={14} />
+            <IconList size={14} />
             <span>Volver al padrón</span>
             {total > 0 && (
               <span className="badge-status badge-outline tabular-nums font-numeric ml-1">{total}</span>
@@ -1328,9 +1284,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                             <span className="animal-card-code">{animal.code}</span>
                             {animal.alias ? <span className="animal-card-alias">{animal.alias}</span> : null}
                           </div>
-                          <span className={animal.isActive ? (STATUS_BADGE[animal.status] ?? 'badge-status') : 'badge-status badge-outline'}>
+                          <StatusBadge tone={animal.isActive ? STATUS_BADGE[animal.status] : undefined}>
                             {animal.isActive ? animal.statusLabel : 'Inactiva'}
-                          </span>
+                          </StatusBadge>
                         </header>
 
                         <dl className="animal-card-meta">
@@ -1411,9 +1367,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           {animal.lotName ? ` · Lote ${animal.lotName}` : ''}
                         </td>
                         <td className="text-center">
-                          <span className={animal.isActive ? (STATUS_BADGE[animal.status] ?? 'badge-status') : 'badge-status badge-outline'}>
+                          <StatusBadge tone={animal.isActive ? STATUS_BADGE[animal.status] : undefined}>
                             {animal.isActive ? animal.statusLabel : 'Inactiva'}
-                          </span>
+                          </StatusBadge>
                         </td>
                         <td className="text-center">
                           <div className="animal-row-actions animal-table-actions">
@@ -1460,8 +1416,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       )}
 
       <AnimalWorkspace modal={animalModalOpen} loading={loadingDetail} title={loadingDetail ? `Cargando animal ${requestedAnimalCode}` : section === 'alta' ? `Editar animal ${editingCode ?? ''}` : `Ficha del animal ${detail?.code ?? requestedAnimalCode}`} onClose={closeAnimalWorkspace} busy={saving || busy}>
-      {animalModalOpen && error && <p className="alert alert-error" role="alert">{error}</p>}
-      {animalModalOpen && success && <p className="alert alert-success" role="status">{success}</p>}
+      {animalModalOpen && error && <InlineAlert tone="error">{error}</InlineAlert>}
+      {animalModalOpen && success && <InlineAlert tone="success">{success}</InlineAlert>}
       {section === 'alta' && !soloLectura && (
         <div className="card">
           <div className="card-header-clean mb-3 flex-wrap gap-2 justify-between">
@@ -1476,33 +1432,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   : 'El código es permanente y conserva sus ceros iniciales'}
               </p>
             </div>
-            {!animalModalOpen && <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => {
-                if (editingCode && detail) {
-                  setSection('ficha');
-                } else {
-                  closeAnimalWorkspace();
-                }
-              }}
-              aria-label="Volver al padrón de animales"
-            >
-              <span className="inline-flex items-center justify-center gap-2 leading-none">
-                <IconArrowLeft size={14} />
-                <span>Volver al padrón</span>
-              </span>
-            </button>}
           </div>
 
           <form onSubmit={handleSubmit} className="form-stack">
             {formError && (
-              <div className="alert alert-error" role="alert" aria-live="assertive">
-                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconAlertCircle size={16} />
-                  <span>{formError}</span>
-                </span>
-              </div>
+              <InlineAlert tone="error">{formError}</InlineAlert>
             )}
 
             <div className="form-sections">
@@ -1976,7 +1910,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 aria-label={editingCode ? 'Volver a la ficha del animal' : 'Limpiar formulario'}
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconArrowLeft size={14} />
+                  {editingCode ? <IconArrowLeft size={14} /> : <IconRefreshCw size={14} />}
                   <span>{editingCode ? 'Volver a la ficha' : 'Limpiar'}</span>
                 </span>
               </button>
@@ -1996,37 +1930,26 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   <span>Ficha {detail.code}</span>
                   {detail.alias ? <span className="text-sm text-muted">({detail.alias})</span> : null}
                 </span>
-                <span className={detail.isActive ? 'badge-status badge-success' : 'badge-status badge-outline'}>
+                <StatusBadge tone={detail.isActive ? 'success' : 'outline'}>
                   {detail.isActive ? 'Disponible' : 'Inactiva'}
-                </span>
+                </StatusBadge>
               </div>
-              {!animalModalOpen && <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                onClick={closeAnimalWorkspace}
-                aria-label="Volver al padrón general"
-              >
-                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconArrowLeft size={14} />
-                  <span>Volver al padrón</span>
-                </span>
-              </button>}
             </div>
 
             <div className="grid-3">
-              <Metric
+              <KpiCard
                 label="Edad"
                 value={detail.ageLabel ?? 'Sin dato'}
                 detail={detail.birthDate ? `Nacimiento ${detail.birthDate} · referencia ${detail.ageReference}` : 'Fecha de nacimiento desconocida'}
                 icon={<IconCalendar size={14} />}
               />
-              <Metric
+              <KpiCard
                 label="Peso actual"
                 value={formatWeight(detail.currentWeightKg)}
                 detail={detail.currentWeightDate ? `Último pesaje ${detail.currentWeightDate}` : 'Sin pesajes registrados'}
                 icon={<IconScale size={14} />}
               />
-              <Metric
+              <KpiCard
                 label="Estado"
                 value={detail.statusLabel}
                 detail={`${detail.barnName} · ${detail.stageName}`}
@@ -2120,12 +2043,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 <span className="text-xs text-muted">Ordenados por fecha y hora; ubicación física preservada</span>
               </div>
               {weightError && (
-                <div className="alert alert-error mb-3" role="alert" aria-live="assertive">
-                  <span className="inline-flex items-center justify-center gap-2 leading-none">
-                    <IconAlertCircle size={16} />
-                    <span>{weightError}</span>
-                  </span>
-                </div>
+                <InlineAlert tone="error" className="mb-3">{weightError}</InlineAlert>
               )}
               {!soloLectura && detail.exitDate === null && (
                 <form onSubmit={handleWeightSave} className="form-stack mb-4">
@@ -2212,52 +2130,42 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 </form>
               )}
               {detail.weights.length === 0 ? (
-                <div className="card empty-state-card mt-3">
-                  <div className="empty-icon-wrap">
-                    <IconScale size={28} className="text-muted" />
-                  </div>
-                  <p className="font-semibold text-base">Sin pesajes registrados</p>
-                  <p className="text-sm text-muted">
-                    Registra el primer pesaje para monitorear la curva de crecimiento y la ganancia media diaria (GMD) de este animal.
-                  </p>
-                </div>
+                <DataState
+                  variant="empty"
+                  className="mt-3"
+                  title="Sin pesajes registrados"
+                  description="Registra el primer pesaje para monitorear la curva de crecimiento y la ganancia media diaria (GMD) de este animal."
+                  icon={<IconScale size={26} className="text-muted" />}
+                />
               ) : (
-                <ul className="data-card-list" aria-label="Historial de pesajes">
+                <DataCardList label="Historial de pesajes">
                   {detail.weights.map((weight) => (
-                    <li key={weight.id}>
-                      <article className="data-card weight-card" data-state={weight.corrected ? 'corrected' : 'active'}>
-                        <header className="data-card-head">
-                          <div className="data-card-identity">
-                            <span className="data-card-title font-mono">{weight.weighedOn}</span>
-                            <span className="data-card-subtitle font-mono">{weight.weighedTime}</span>
-                          </div>
-                          <span className="badge-status badge-outline">{weight.corrected ? 'Corregido' : 'Registrado'}</span>
-                        </header>
-                        <dl className="data-card-meta">
-                          <div>
-                            <dt>Peso vivo</dt>
-                            <dd className="font-mono font-bold tabular-nums">{weight.weightKg.toFixed(2)} kg</dd>
-                          </div>
-                          <div>
-                            <dt>Ganancia (GMD)</dt>
-                            <dd className="font-mono tabular-nums">
-                              {weight.corrected ? (
-                                <span className="text-muted">Sin cálculo</span>
-                              ) : weight.gainDays === null ? (
-                                'Sin dato'
-                              ) : (
-                                <>+{weight.gainKg} kg <span className="text-xs text-muted">({(Number(weight.gainKg) / weight.gainDays).toFixed(2)} kg/d)</span></>
-                              )}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Ubicación histórica</dt>
-                            <dd>{[weight.barnId ? data?.options.barns.find((barn) => barn.id === weight.barnId)?.name : null, weight.locationCode, weight.lotCode].filter(Boolean).join(' · ') || 'Sin dato'}</dd>
-                          </div>
-                        </dl>
-                        {weight.note && <p className="data-card-note">{weight.note}</p>}
-                        {!soloLectura && !weight.corrected && detail.exitDate === null && (
-                          <div className="data-card-actions">
+                    <DataCard key={weight.id} className="weight-card" state={weight.corrected ? 'corrected' : 'active'}>
+                      <DataCardHead
+                        title={<span className="font-mono">{weight.weighedOn}</span>}
+                        subtitle={<span className="font-mono">{weight.weighedTime}</span>}
+                        badge={<StatusBadge tone="outline">{weight.corrected ? 'Corregido' : 'Registrado'}</StatusBadge>}
+                      />
+                      <DataCardMeta
+                        items={[
+                          { label: 'Peso vivo', value: `${weight.weightKg.toFixed(2)} kg`, className: 'font-mono font-bold tabular-nums' },
+                          {
+                            label: 'Ganancia (GMD)',
+                            className: 'font-mono tabular-nums',
+                            value: weight.corrected ? (
+                              <span className="text-muted">Sin cálculo</span>
+                            ) : weight.gainDays === null ? (
+                              'Sin dato'
+                            ) : (
+                              <>+{weight.gainKg} kg <span className="text-xs text-muted">({(Number(weight.gainKg) / weight.gainDays).toFixed(2)} kg/d)</span></>
+                            ),
+                          },
+                          { label: 'Ubicación histórica', value: [weight.barnId ? data?.options.barns.find((barn) => barn.id === weight.barnId)?.name : null, weight.locationCode, weight.lotCode].filter(Boolean).join(' · ') || 'Sin dato' },
+                        ]}
+                      />
+                      {weight.note && <DataCardNote>{weight.note}</DataCardNote>}
+                      {!soloLectura && !weight.corrected && detail.exitDate === null && (
+                        <DataCardActions>
                             <button
                               type="button"
                               className="btn btn-outline btn-sm"
@@ -2272,8 +2180,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                               <IconEdit size={14} />
                               <span>Corregir</span>
                             </button>
-                          </div>
-                        )}
+                        </DataCardActions>
+                      )}
                         {weightCorrection?.id === weight.id && (
                           <form onSubmit={handleWeightCorrection} className="form-stack weight-correction-form">
                             <div className="grid-2">
@@ -2320,10 +2228,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                             </div>
                           </form>
                         )}
-                      </article>
-                    </li>
+                    </DataCard>
                   ))}
-                </ul>
+                </DataCardList>
               )}
             </div>
           )}
@@ -2377,22 +2284,22 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     icon={<IconClipboard size={26} className="text-primary" />}
                   />
                 ) : (
-                  <ul className="data-card-list tag-history" aria-label="Aretes históricos">
+                  <DataCardList label="Aretes históricos" className="tag-history">
                     {detail.tags.map((tag) => (
-                      <li key={tag.id}>
-                        <article className="data-card tag-card">
-                          <header className="data-card-head">
-                            <span className="data-card-title font-mono">{tag.tag}</span>
-                            <span className={`badge-status ${tag.validTo ? 'badge-outline' : 'badge-success'}`}>{tag.validTo ? 'Histórico' : 'Vigente'}</span>
-                          </header>
-                          <dl className="data-card-meta">
-                            <div><dt>Vigente desde</dt><dd className="font-mono tabular-nums">{tag.validFrom}</dd></div>
-                            <div><dt>Vigente hasta</dt><dd className="font-mono tabular-nums">{tag.validTo ?? 'Sin fecha de cierre'}</dd></div>
-                          </dl>
-                        </article>
-                      </li>
+                      <DataCard key={tag.id} className="tag-card">
+                        <DataCardHead
+                          title={<span className="font-mono">{tag.tag}</span>}
+                          badge={<StatusBadge tone={tag.validTo ? 'outline' : 'success'}>{tag.validTo ? 'Histórico' : 'Vigente'}</StatusBadge>}
+                        />
+                        <DataCardMeta
+                          items={[
+                            { label: 'Vigente desde', value: tag.validFrom, className: 'font-mono tabular-nums' },
+                            { label: 'Vigente hasta', value: tag.validTo ?? 'Sin fecha de cierre', className: 'font-mono tabular-nums' },
+                          ]}
+                        />
+                      </DataCard>
                     ))}
-                  </ul>
+                  </DataCardList>
                 )}
               </div>
             </>
@@ -2412,12 +2319,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     </div>
                     <form onSubmit={handleTagChange} className="form-stack">
                       {tagError && (
-                        <div className="alert alert-error" role="alert" aria-live="assertive">
-                          <span className="inline-flex items-center justify-center gap-2 leading-none">
-                            <IconAlertCircle size={16} />
-                            <span>{tagError}</span>
-                          </span>
-                        </div>
+                        <InlineAlert tone="error">{tagError}</InlineAlert>
                       )}
                       <div className="form-group">
                         <label className="form-label" htmlFor="ani-new-tag">Nuevo arete oficial</label>
@@ -2483,12 +2385,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     </div>
                     <div className="form-stack">
                       {toggleError && (
-                        <div className="alert alert-error" role="alert" aria-live="assertive">
-                          <span className="inline-flex items-center justify-center gap-2 leading-none">
-                            <IconAlertCircle size={16} />
-                            <span>{toggleError}</span>
-                          </span>
-                        </div>
+                        <InlineAlert tone="error">{toggleError}</InlineAlert>
                       )}
                       <div className="form-group">
                         <label className="form-label" htmlFor="ani-toggle-reason">Motivo</label>
@@ -2543,12 +2440,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     </div>
                     <form className="form-stack" onSubmit={(event) => void handlePhysicalTransfer(event)}>
                       {physicalActionError && (
-                        <div className="alert alert-error mb-3" role="alert" aria-live="assertive">
-                          <span className="inline-flex items-center justify-center gap-2 leading-none">
-                            <IconAlertCircle size={16} />
-                            <span>{physicalActionError}</span>
-                          </span>
-                        </div>
+                        <InlineAlert tone="error" className="mb-3">{physicalActionError}</InlineAlert>
                       )}
                       <div className="form-grid">
                         <div className="form-group">
@@ -2657,12 +2549,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     </div>
                     <form className="form-stack" onSubmit={(event) => void handlePhysicalExit(event)}>
                       {physicalActionError && (
-                        <div className="alert alert-error mb-3" role="alert" aria-live="assertive">
-                          <span className="inline-flex items-center justify-center gap-2 leading-none">
-                            <IconAlertCircle size={16} />
-                            <span>{physicalActionError}</span>
-                          </span>
-                        </div>
+                        <InlineAlert tone="error" className="mb-3">{physicalActionError}</InlineAlert>
                       )}
                       <div className="form-grid">
                         <div className="form-group">
@@ -2805,15 +2692,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   </div>
                 </div>
               ) : (
-                <div className="card empty-state-card">
-                  <div className="empty-icon-wrap">
-                    <IconAlertCircle size={28} className="text-warning" />
-                  </div>
-                  <p className="font-semibold text-base">Ficha con baja registrada</p>
-                  <p className="text-sm text-muted">
-                    El animal registra salida ({detail.exitType === 'sale' ? 'Venta' : detail.exitType === 'death' ? 'Muerte' : 'Descarte'}) el {detail.exitDate}.
-                  </p>
-                </div>
+                <DataState
+                  variant="empty"
+                  title="Ficha con baja registrada"
+                  description={`El animal registra salida (${detail.exitType === 'sale' ? 'Venta' : detail.exitType === 'death' ? 'Muerte' : 'Descarte'}) el ${detail.exitDate}.`}
+                  icon={<IconAlertCircle size={26} className="text-warning" />}
+                />
               )}
 
               {detail.exitDate !== null && detail.exitType === 'sale' && ['administrador', 'responsable'].includes(perfil) && (
@@ -2826,12 +2710,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <span className="text-xs text-muted">Restaura la ficha y el inventario, y enlaza el asiento compensatorio con la venta original.</span>
                   </div>
                   {physicalActionError && (
-                    <div className="alert alert-error mb-3" role="alert" aria-live="assertive">
-                      <span className="inline-flex items-center justify-center gap-2 leading-none">
-                        <IconAlertCircle size={16} />
-                        <span>{physicalActionError}</span>
-                      </span>
-                    </div>
+                    <InlineAlert tone="error" className="mb-3">{physicalActionError}</InlineAlert>
                   )}
                   <button
                     type="button"
