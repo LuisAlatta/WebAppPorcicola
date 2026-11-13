@@ -717,7 +717,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         entryDate: form.entryDate,
         entryStageCode: form.entryStageCode,
         barnId: Number(form.barnId),
-        locationCode: form.locationCode || null,
+        locationCode: null,
         lotCode: form.lotCode || null,
       };
 
@@ -1048,11 +1048,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         <div className="section-block">
           <div className="card">
             <form className="animal-search-bar" onSubmit={event => { event.preventDefault(); applyFilters(true); }}>
-              <div className="form-group animal-search-field">
-                <label className="sr-only" htmlFor="ani-q">Buscar</label>
+              <FormField label="Buscar" htmlFor="ani-q" className="animal-search-field">
                 <input id="ani-q" type="search" className="form-input" value={filters.q}
                   onChange={event => setFilter('q', event.target.value)} placeholder="Código o nombre del animal" />
-              </div>
+              </FormField>
               <button type="submit" className="btn btn-primary animal-icon-button" aria-label="Buscar" title="Buscar" disabled={loading}><IconSearch size={18} /></button>
               <button type="button" className="btn btn-outline animal-icon-button" aria-label="Filtros" title="Filtros" aria-expanded={filtersOpen} aria-controls="animal-filters-panel" onClick={() => setFiltersOpen(open => !open)}>
                 <IconFilter size={18} />
@@ -1605,7 +1604,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             </fieldset>
 
             <fieldset className="form-section">
-              <legend>Origen y ubicación</legend>
+              <legend>Origen e ingreso</legend>
               <div className="form-grid">
               {!editingCode && (
                 <>
@@ -1729,21 +1728,6 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                       <option value="">Seleccione una etapa</option>
                       {(options?.stages ?? []).map((stage) => (
                         <option key={stage.code} value={stage.code}>{stage.name}</option>
-                      ))}
-                    </select>
-                  </FormField>
-
-                  <FormField label="Ubicación" htmlFor="ani-location" error={fieldErrors.locationCode} errorId="ani-location-error" helper="Opcional: corral o espacio dentro del galpón. Si no hay opciones, un administrador debe crearlas en Configuración, Ubicaciones, y asociarlas a este galpón.">
-                    <select
-                      {...inputError('locationCode')}
-                      id="ani-location"
-                      className="form-select"
-                      value={form.locationCode}
-                      onChange={(event) => setField('locationCode', event.target.value)}
-                    >
-                      <option value="">Sin asignar</option>
-                      {(options?.locations ?? []).filter(location => location.barnId === undefined || location.barnId === Number(form.barnId)).map((location) => (
-                        <option key={location.code} value={location.code}>{location.name}</option>
                       ))}
                     </select>
                   </FormField>

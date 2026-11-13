@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ModalDialog } from './ModalDialog';
+import { FormField } from './ui/FormField';
 import { BarnBackupExport } from './BarnBackupExport';
 import { IconAlertTriangle, IconX } from './icons';
 import { fetchOperation, newOperationKey } from '../utils/operations';
@@ -324,8 +325,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: Bar
 
         {groups.length > 0 && (
           <div className="barn-assoc-controls card p-3">
-            <div>
-              <label htmlFor="barn-assoc-target" className="form-label">Galpón destino</label>
+            <FormField label="Galpón destino" htmlFor="barn-assoc-target">
               <select
                 id="barn-assoc-target"
                 className="form-select"
@@ -338,9 +338,8 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: Bar
                   <option key={item.id} value={item.id}>{item.code} · {item.name}</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label htmlFor="barn-assoc-reason" className="form-label">Motivo</label>
+            </FormField>
+            <FormField label="Motivo" htmlFor="barn-assoc-reason">
               <input
                 id="barn-assoc-reason"
                 className="form-input"
@@ -351,7 +350,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: Bar
                 onChange={(event) => setReason(event.target.value)}
                 placeholder="Ej. el galpón se abrió por error y sus registros son de otro"
               />
-            </div>
+            </FormField>
             {showRequirements && (
               <p id="barn-assoc-requirements" className="barn-assoc-requirements">
                 <IconAlertTriangle size={14} />

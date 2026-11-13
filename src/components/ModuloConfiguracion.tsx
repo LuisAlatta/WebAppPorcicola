@@ -663,8 +663,7 @@ export function ModuloConfiguracion() {
               <form onSubmit={handleSaveSettings}>
                 <div className="data-card-list data-card-grid mb-3">
                   {SETTING_FIELDS.map((field) => (
-                    <div className="data-card" key={field.key}>
-                      <label className="form-label" htmlFor={`setting-${field.key}`}>{field.label}</label>
+                    <FormField className="data-card" key={field.key} label={field.label} htmlFor={`setting-${field.key}`}>
                       <input
                         id={`setting-${field.key}`}
                         type="text"
@@ -673,7 +672,7 @@ export function ModuloConfiguracion() {
                         onChange={(e) => setSettings((current) => ({ ...current, [field.key]: e.target.value }))}
                         placeholder={field.placeholder}
                       />
-                    </div>
+                    </FormField>
                   ))}
                   <FormField labelClassName="inline-flex items-center gap-1" label={<><IconCalendar size={14} /><span>Vigente desde:</span></>}>
                     <input type="date" className="form-input" required value={settingsDate} onChange={(e) => setSettingsDate(e.target.value)} />
@@ -732,7 +731,7 @@ export function ModuloConfiguracion() {
               </p>
 
               <div className="form-group mb-3" style={{ maxWidth: '340px' }}>
-                <label className="form-label">Catálogo:</label>
+                <FormField label="Catálogo:">
                 <select className="form-select" value={catalogKey} onChange={(e) => setCatalogKey(e.target.value)}>
                   {data.catalogs.map((catalog) => (
                     <option key={catalog.key} value={catalog.key}>
@@ -740,6 +739,7 @@ export function ModuloConfiguracion() {
                     </option>
                   ))}
                 </select>
+                </FormField>
               </div>
 
               {!selectedCatalog || selectedCatalog.items.length === 0 ? (

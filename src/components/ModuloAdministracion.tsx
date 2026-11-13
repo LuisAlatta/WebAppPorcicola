@@ -833,10 +833,11 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
             <form onSubmit={event => void handleSaveBarnStatus(event)}>
               <h4 id="barn-status-title">Estado de {statusBarn.name}</h4>
               <p className="text-sm text-muted">Para activar se necesita el equipo completo. Un galpón con animales no puede cerrarse.</p>
-              <label htmlFor="barn-status" className="form-label">Estado del galpón</label>
+              <FormField label="Estado del galpón" htmlFor="barn-status">
               <select id="barn-status" className="form-select" value={nextBarnStatus} disabled={barnSaving} onChange={event => setNextBarnStatus(event.target.value as BarnItem['status'])}>
                 <option value="preparacion">En preparación</option><option value="operativo">Operativo</option><option value="inactivo">Inactivo</option>
               </select>
+              </FormField>
               {barnError && <InlineAlert tone="error">{barnError}</InlineAlert>}
               <div className="form-actions form-actions-sticky"><button type="button" className="btn btn-outline" disabled={barnSaving} onClick={() => setStatusBarn(null)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={barnSaving}>{barnSaving ? 'Guardando…' : 'Guardar estado'}</button></div>
             </form>
@@ -962,9 +963,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
 
             <div className="grid-3 gap-3 mb-4">
               <div className="form-group card p-3 team-role-card" data-role="responsable">
-                <label className="form-label font-bold text-primary">
-                  1. Usuario Responsable:
-                </label>
+                <FormField label="1. Usuario Responsable:" labelClassName="font-bold text-primary">
                 <select
                   className="form-select"
                   required
@@ -978,13 +977,12 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                     </option>
                   ))}
                 </select>
+                </FormField>
                 <span className="text-xs text-muted mt-1">Supervisa galpones y finanzas</span>
               </div>
 
               <div className="form-group card p-3 team-role-card" data-role="operario">
-                <label className="form-label font-bold text-warning">
-                  2. Operario de Campo:
-                </label>
+                <FormField label="2. Operario de Campo:" labelClassName="font-bold text-warning">
                 <select
                   className="form-select"
                   required
@@ -998,14 +996,12 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                     </option>
                   ))}
                 </select>
+                </FormField>
                 <span className="text-xs text-muted mt-1">Registra movimientos y pesajes</span>
               </div>
 
               <div className="form-group card p-3 team-role-card" data-role="veterinario">
-                <label className="form-label font-bold text-success inline-flex items-center gap-1">
-                  <IconStethoscope size={16} />
-                  <span>3. Médico Veterinario:</span>
-                </label>
+                <FormField label={<><IconStethoscope size={16} /><span>3. Médico Veterinario:</span></>} labelClassName="font-bold text-success inline-flex items-center gap-1">
                 <select
                   className="form-select"
                   required
@@ -1019,6 +1015,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                     </option>
                   ))}
                 </select>
+                </FormField>
                 <span className="text-xs text-muted mt-1">Gestiona sanidad y reproducción</span>
               </div>
             </div>

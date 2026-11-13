@@ -2,11 +2,13 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { FormField, DataTable, DataCardNote } from '../src/components/ui';
+import { SearchField } from '../src/components/ui/SearchField';
+import { AnimalPicker } from '../src/components/AnimalPicker';
 
 describe('FormField', () => {
-  it('reproduce el form-group con label y control', () => {
+  it('integra el título en el borde conservando la etiqueta del control', () => {
     const html = renderToStaticMarkup(createElement(FormField, { label: 'Código', htmlFor: 'ani-code', children: createElement('input', { id: 'ani-code', className: 'form-input' }) }));
-    expect(html).toBe('<div class="form-group"><label class="form-label" for="ani-code">Código</label><input id="ani-code" class="form-input"/></div>');
+    expect(html).toBe('<div class="form-group"><fieldset class="field-outline"><legend><label class="form-label" for="ani-code">Código</label></legend><div class="field-control"><input id="ani-code" class="form-input"/></div></fieldset></div>');
   });
   it('añade variantes de clase al form-group', () => {
     const html = renderToStaticMarkup(createElement(FormField, { label: 'X', className: 'form-span-2 mb-3', children: createElement('input', null) }));
@@ -21,6 +23,41 @@ describe('FormField', () => {
   it('omite label, error y helper cuando no se pasan', () => {
     const html = renderToStaticMarkup(createElement(FormField, { children: createElement('input', null) }));
     expect(html).toBe('<div class="form-group"><input/></div>');
+  });
+  it('asocia automáticamente la etiqueta a un control sin id', () => {
+    const html = renderToStaticMarkup(createElement(FormField, { label: 'Galpón', children: createElement('select', { disabled: true }, createElement('option', null, 'A')) }));
+    const id = html.match(/<label[^>]*for="([^"]+)"/)?.[1];
+    expect(id).toBeTruthy();
+    expect(html).toContain(`id="${id}"`);
+    expect(html).toContain('<select disabled=""');
+  });
+  it('asigna el id explícito al input cuando no lo tenía', () => {
+    const html = renderToStaticMarkup(createElement(FormField, { label: 'Raza', htmlFor: 'breed', children: createElement('input', { required: true }) }));
+    expect(html).toContain('for="breed"');
+    expect(html).toContain('id="breed"');
+    expect(html).toContain('required=""');
+  });
+  it('conserva el id existente y admite títulos largos y áreas de texto', () => {
+    const html = renderToStaticMarkup(createElement(FormField, { label: 'Motivo detallado de la corrección', children: createElement('textarea', { id: 'reason', rows: 3, defaultValue: 'Dato existente' }) }));
+    expect(html).toContain('for="reason"');
+    expect(html).toContain('<textarea id="reason" rows="3"');
+    expect(html).toContain('Dato existente</textarea>');
+  });
+});
+
+describe('Campos compartidos con título integrado', () => {
+  it('aplica el borde con título al buscador conservando su icono y valor', () => {
+    const html = renderToStaticMarkup(createElement(SearchField, { label: 'Buscar alimento', placeholder: 'Código o nombre', value: 'Maíz', onChange: () => {} }));
+    expect(html).toContain('<fieldset class="field-outline">');
+    expect(html).toContain('Buscar alimento</label></legend>');
+    expect(html).toContain('class="search-icon"');
+    expect(html).toContain('value="Maíz"');
+  });
+  it('aplica el mismo componente a la búsqueda y selección de progenitores', () => {
+    const html = renderToStaticMarkup(createElement(AnimalPicker, { label: 'Madre interna', searchLabel: 'Buscar madre interna', value: [], onChange: () => {} }));
+    expect(html.match(/class="field-outline"/g)).toHaveLength(2);
+    expect(html).toContain('Buscar madre interna</label></legend>');
+    expect(html).toContain('Madre interna</label></legend>');
   });
 });
 

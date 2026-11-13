@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { IconAlertCircle, IconRefreshCw, IconSearch, IconX } from './icons';
+import { FormField } from './ui/FormField';
 
 type Option = { id: number; code: string; alias?: string | null; barnName?: string };
 type Props = {
@@ -60,11 +61,12 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
 
   return (
     <div className="animal-picker">
-      <label className="form-label" htmlFor={`${id}-search`}>{searchLabel}</label>
-      <div className="animal-picker-search">
-        <span className="animal-picker-search-icon" aria-hidden="true"><IconSearch size={16} /></span>
-        <input id={`${id}-search`} className="form-input" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Código, alias o arete" />
-      </div>
+      <FormField label={searchLabel} htmlFor={`${id}-search`}>
+        <div className="animal-picker-search">
+          <span className="animal-picker-search-icon" aria-hidden="true"><IconSearch size={16} /></span>
+          <input id={`${id}-search`} className="form-input" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Código, alias o arete" />
+        </div>
+      </FormField>
       {value.length > 0 && (
         <ul className="animal-picker-chips" aria-label="Animales seleccionados">
           {value.map(key => (
@@ -83,12 +85,13 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
           ))}
         </ul>
       )}
-      <label className="form-label" htmlFor={id}>{label}</label>
-      <select id={id} className="form-select" multiple={multiple} required={required} value={multiple ? value : value[0] ?? ''} onChange={event => onChange(Array.from(event.currentTarget.selectedOptions).map(option => option.value).filter(Boolean))}>
-        {!multiple && <option value="">{emptyLabel}</option>}
-        {value.filter(key => !options.some(item => (useIdValue ? String(item.id) : item.code) === key)).map(key => <option key={`selected-${key}`} value={key}>{key} · seleccionado</option>)}
-        {options.map(item => <option key={item.code} value={useIdValue ? String(item.id) : item.code}>{item.code}{item.alias ? ` · ${item.alias}` : ''}{item.barnName ? ` · ${item.barnName}` : ''}</option>)}
-      </select>
+      <FormField label={label} htmlFor={id}>
+        <select id={id} className="form-select" multiple={multiple} required={required} value={multiple ? value : value[0] ?? ''} onChange={event => onChange(Array.from(event.currentTarget.selectedOptions).map(option => option.value).filter(Boolean))}>
+          {!multiple && <option value="">{emptyLabel}</option>}
+          {value.filter(key => !options.some(item => (useIdValue ? String(item.id) : item.code) === key)).map(key => <option key={`selected-${key}`} value={key}>{key} · seleccionado</option>)}
+          {options.map(item => <option key={item.code} value={useIdValue ? String(item.id) : item.code}>{item.code}{item.alias ? ` · ${item.alias}` : ''}{item.barnName ? ` · ${item.barnName}` : ''}</option>)}
+        </select>
+      </FormField>
       <small className={`animal-picker-status${busy ? ' is-busy' : ''}`} role="status">
         {busy ? (
           <><IconRefreshCw size={12} className="spinner-icon" /><span>Buscando animales…</span></>

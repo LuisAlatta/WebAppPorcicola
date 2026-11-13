@@ -13,7 +13,7 @@ import {
   IconStethoscope,
 } from './icons';
 import { PwaInstallButton } from './PwaInstallButton';
-import { InlineAlert } from './ui';
+import { FormField, InlineAlert } from './ui';
 import { errorMessage } from '../utils/format';
 
 export interface DemoAccount {
@@ -226,10 +226,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
         </header>
 
         <form onSubmit={submit} className="login-form" autoComplete="on">
-          <div className="form-group">
-            <label htmlFor="login-username" className="login-label">
-              Usuario
-            </label>
+          <FormField label="Usuario" htmlFor="login-username" labelClassName="login-label">
             <div className="input-with-icon-wrapper">
               <span className="input-icon-lead" aria-hidden="true">
                 <IconUser size={18} />
@@ -260,12 +257,9 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                  aria-describedby={error ? 'login-error' : undefined}
               />
             </div>
-          </div>
+          </FormField>
 
-          <div className="form-group">
-            <label htmlFor="login-password" className="login-label">
-              Contraseña
-            </label>
+          <FormField label="Contraseña" htmlFor="login-password" labelClassName="login-label">
             <div className="input-with-icon-wrapper">
               <span className="input-icon-lead" aria-hidden="true">
                 <IconLock size={18} />
@@ -295,7 +289,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
               </button>
             </div>
-          </div>
+          </FormField>
 
           <div className={`login-remember-row ${remember ? 'is-active' : ''}`}>
             <label htmlFor="login-remember" className="login-remember-label">

@@ -7,6 +7,7 @@ import { generarReporteXlsx } from '../utils/exportXlsx';
 import { errorMessage } from '../utils/format';
 import {
   InlineAlert,
+  FormField,
   KpiCard,
   SectionCard,
   DataCardList,
@@ -218,62 +219,54 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
       />
       <form onSubmit={event => void consult(event)} className="form-stack">
         <div className="form-grid">
-          <div className="form-group">
-            <label className="form-label" htmlFor="productive-report-from">Desde</label>
+          <FormField label="Desde" htmlFor="productive-report-from">
             <input id="productive-report-from" className="form-input tabular-nums" type="date" value={filters.from} onChange={event => update('from', event.target.value)} />
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="productive-report-to">Hasta</label>
+          </FormField>
+          <FormField label="Hasta" htmlFor="productive-report-to">
             <input id="productive-report-to" className="form-input tabular-nums" type="date" value={filters.to} onChange={event => update('to', event.target.value)} />
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="productive-report-barn">Galpón productivo</label>
+          </FormField>
+          <FormField label="Galpón productivo" htmlFor="productive-report-barn">
             <select id="productive-report-barn" className="form-select" value={filters.barnId} onChange={event => update('barnId', event.target.value)}>
               <option value="">Todos los galpones autorizados</option>
               {barns.map(barn => (
                 <option key={barn.id} value={barn.id}>{barn.name}</option>
               ))}
             </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="productive-report-location">Ubicación / Corral</label>
+          </FormField>
+          <FormField label="Ubicación / Corral" htmlFor="productive-report-location">
             <select id="productive-report-location" className="form-select" value={filters.locationCode} onChange={event => update('locationCode', event.target.value)}>
               <option value="">Todas las ubicaciones</option>
               {options.locations.map(option => (
                 <option key={option.code} value={option.code}>{option.name}</option>
               ))}
             </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="productive-report-lot">Lote porcino</label>
+          </FormField>
+          <FormField label="Lote porcino" htmlFor="productive-report-lot">
             <select id="productive-report-lot" className="form-select" value={filters.lotCode} onChange={event => update('lotCode', event.target.value)}>
               <option value="">Todos los lotes</option>
               {options.lots.map(option => (
                 <option key={option.code} value={option.code}>{option.name}</option>
               ))}
             </select>
-          </div>
+          </FormField>
           {kind === 'weights' ? (
             <>
-              <div className="form-group">
-                <label className="form-label" htmlFor="productive-report-stage">Etapa productiva</label>
+              <FormField label="Etapa productiva" htmlFor="productive-report-stage">
                 <select id="productive-report-stage" className="form-select" value={filters.stageCode} onChange={event => update('stageCode', event.target.value)}>
                   <option value="">Todas las etapas</option>
                   {options.stages.map(option => (
                     <option key={option.code} value={option.code}>{option.name}</option>
                   ))}
                 </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="productive-report-animal">Arete / Código de animal</label>
+              </FormField>
+              <FormField label="Arete / Código de animal" htmlFor="productive-report-animal">
                 <input id="productive-report-animal" className="form-input" placeholder="ej. ENG-012" value={filters.animalCode} onChange={event => update('animalCode', event.target.value)} />
-              </div>
+              </FormField>
             </>
           ) : (
-            <div className="form-group">
-              <label className="form-label" htmlFor="productive-report-mother">Arete de la madre (Marrana)</label>
+            <FormField label="Arete de la madre (Marrana)" htmlFor="productive-report-mother">
               <input id="productive-report-mother" className="form-input" placeholder="ej. MAR-005" value={filters.motherCode} onChange={event => update('motherCode', event.target.value)} />
-            </div>
+            </FormField>
           )}
         </div>
         <button

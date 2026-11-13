@@ -657,11 +657,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                 />
 
                 {warehouses.length > 0 && (
-                  <div className="inline-flex items-center gap-1">
-                    <label className="text-xs text-muted inline-flex items-center gap-1" htmlFor="stock-wh-filter">
-                      <IconFilter size={14} />
-                      <span>Almacén:</span>
-                    </label>
+                  <FormField label={<><IconFilter size={14} /><span>Almacén:</span></>} labelClassName="inline-flex items-center gap-1" htmlFor="stock-wh-filter">
                     <select
                       id="stock-wh-filter"
                       className="form-select form-select-sm"
@@ -673,7 +669,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                         <option key={w.id} value={w.id}>{w.name}</option>
                       ))}
                     </select>
-                  </div>
+                  </FormField>
                 )}
 
                 {(stockSearch || stockWarehouseFilter) && (
@@ -744,11 +740,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                   label="Buscar en historial de movimientos"
                 />
 
-                <div className="inline-flex items-center gap-1">
-                  <label className="text-xs text-muted inline-flex items-center gap-1" htmlFor="m-type-filter">
-                    <IconFilter size={14} />
-                    <span>Operación:</span>
-                  </label>
+                <FormField label={<><IconFilter size={14} /><span>Operación:</span></>} labelClassName="inline-flex items-center gap-1" htmlFor="m-type-filter">
                   <select
                     id="m-type-filter"
                     className="form-select form-select-sm"
@@ -760,7 +752,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                       <option key={k} value={k}>{v}</option>
                     ))}
                   </select>
-                </div>
+                </FormField>
 
                 {(movementSearch || movementFilterType) && (
                   <button

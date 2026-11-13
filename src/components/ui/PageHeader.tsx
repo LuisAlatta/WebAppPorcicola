@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { IconRefreshCw } from '../icons';
+import { FormField } from './FormField';
 
 interface PageHeaderProps {
   title: string;
@@ -19,8 +20,7 @@ export function PageHeader({ title, subtitle, actions, cutoff, onRefresh, refres
       </div>
       <div className="module-heading-actions">
         {cutoff && (
-          <label className="module-heading-cutoff">
-            <span>{cutoff.label ?? 'Corte:'}</span>
+          <FormField label={cutoff.label ?? 'Corte:'} className="module-heading-cutoff">
             <input
               type="date"
               className="form-input form-select-sm"
@@ -29,7 +29,7 @@ export function PageHeader({ title, subtitle, actions, cutoff, onRefresh, refres
               onChange={(event) => cutoff.onChange(event.target.value)}
               aria-label={cutoff.label ?? 'Fecha de corte'}
             />
-          </label>
+          </FormField>
         )}
         {actions}
         {onRefresh && (

@@ -1286,11 +1286,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                 label="Buscar en historial de movimientos"
               />
 
-              <div className="inline-flex items-center gap-1">
-                <label className="text-xs text-muted inline-flex items-center gap-1" htmlFor="inv-filter">
-                  <IconFilter size={14} />
-                  <span>Tipo:</span>
-                </label>
+              <FormField label={<><IconFilter size={14} /><span>Tipo:</span></>} labelClassName="inline-flex items-center gap-1" htmlFor="inv-filter">
                 <select
                   id="inv-filter"
                   className="form-select form-select-sm"
@@ -1304,7 +1300,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                   <option value="transfer_in">Traslado recibido</option>
                   <option value="transfer_out">Traslado enviado</option>
                 </select>
-              </div>
+              </FormField>
 
               {(filterType || movementSearch) && (
                 <button
