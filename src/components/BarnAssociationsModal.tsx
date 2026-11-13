@@ -180,13 +180,15 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: Bar
   const groups = (data?.groups ?? []).filter((group) => group.count > 0);
   const blockingCount = groups.filter((group) => group.blocking).length;
   const sumOf = (items: AssociationGroup[]) => items.reduce((total, item) => total + item.count, 0);
-  const livestock = groups.filter((group) => group.actions.includes('transfer'));
+  const livestock = (data?.groups ?? []).filter((group) => group.key === 'animals');
+  const animalCount = sumOf(livestock);
+  const hasOperationalStock = groups.some((group) => group.key === 'stock');
   const detachable = groups.filter((group) => group.blocking && group.actions.includes('detach'));
   const migratable = groups.filter(
     (group) => group.blocking && group.actions.includes('reassign') && !group.actions.includes('detach'),
   );
   const ownedByBarn = groups.filter((group) => !group.blocking && group.actions.length === 0);
-  const headsLabel = livestock.map((group) => `${group.count} ${unitOf(group.count, group.unit)}`).join(' · ');
+  const headsLabel = animalCount > 0 ? oneOrMany(animalCount, 'cabeza', 'cabezas') : '';
   const headsVerb = livestock.every((group) => group.count === 1) ? 'se traslada' : 'se trasladan';
   const detachCount = sumOf(detachable);
   const migrateCount = sumOf(migratable);
@@ -207,6 +209,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: Bar
   const showDeleteWarning = !loading && !!data && !data.canDelete && !hasTarget && groups.length > 0;
   const evacuateSummary = [
     headsLabel ? `${headsLabel} ${headsVerb} a ${destinationName}` : null,
+    hasOperationalStock ? 'el saldo operativo del libro también se traslada al destino' : null,
     migrateCount > 0 ? `${migratePhrase} ${migrateVerb} a ese galpón` : null,
     detachCount > 0 ? `${oneOrMany(detachCount, 'traza', 'trazas')} ${detachCount === 1 ? 'queda' : 'quedan'} en el libro sin galpón` : null,
   ].filter((item): item is string => item !== null).join('; ');
@@ -257,10 +260,10 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: Bar
                   title="Ver los registros reales detrás de este conteo"
                   onClick={() => openDetail(group.label, [group])}
                 >
-                  <strong>{group.count} {unitOf(group.count, group.unit)}</strong>
+                  <strong>{oneOrMany(group.count, 'cabeza', 'cabezas')}</strong>
                 </button>
                 <span>
-                  en el galpón; {hasTarget
+                  en el Padrón de Animales; {group.count === 0 ? 'no hay animales registrados.' : hasTarget
                     ? (group.count === 1 ? 'se traslada al destino con un movimiento real.' : 'se trasladan al destino con movimientos reales.')
                     : 'se eliminarán permanentemente sin traslado.'}
                 </span>
