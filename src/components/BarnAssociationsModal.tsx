@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ModalDialog } from './ModalDialog';
+import { BarnBackupExport } from './BarnBackupExport';
 import { IconAlertTriangle, IconX } from './icons';
 import { fetchOperation, newOperationKey } from '../utils/operations';
 
@@ -358,6 +359,10 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: Bar
               </p>
             )}
           </div>
+        )}
+
+        {data && !loading && !confirm && (
+          <BarnBackupExport barnId={barn.id} disabled={busy !== null} onBusyChange={(exporting) => setBusy(exporting ? 'backup' : null)} />
         )}
 
         <div className="barn-assoc-footer">

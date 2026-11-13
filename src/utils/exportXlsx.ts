@@ -16,7 +16,7 @@ export interface XlsxOptions {
   moneyTotals?: Record<string,{income:number;expense:number;balance:number}>;
 }
 
-const xml=(value:string)=>Array.from(value).filter(character=>{const code=character.charCodeAt(0);return code>=32||code===9||code===10||code===13;}).join('').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+const xml=(value:string)=>Array.from(value).filter(character=>{const code=character.charCodeAt(0);return code>=32||code===9||code===10||code===13;}).join('').replace(/_x[0-9a-f]{4}_/gi,match=>`_x005F_${match.slice(1)}`).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 const columnName=(index:number)=>{let name='';for(let n=index+1;n;n=Math.floor((n-1)/26))name=String.fromCharCode(65+(n-1)%26)+name;return name;};
 const serialDate=(value:unknown)=>{
   if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value))return null;

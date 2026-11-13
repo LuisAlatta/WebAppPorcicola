@@ -22,6 +22,7 @@ import { formatDate, formatDateTime, errorMessage } from '../utils/format';
 import { ModalDialog } from './ModalDialog';
 import { DataState } from './DataState';
 import { BarnAssociationsModal } from './BarnAssociationsModal';
+import { BarnBackupImport } from './BarnBackupImport';
 import { ModuloConfiguracion } from './ModuloConfiguracion';
 import { ModuleTabs } from './ModuleTabs';
 import {
@@ -148,6 +149,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
 
   // Formulario nuevo galpón
   const [showBarnModal, setShowBarnModal] = useState<boolean>(false);
+  const [showBackupImport, setShowBackupImport] = useState(false);
   const [editingBarn, setEditingBarn] = useState<BarnItem | null>(null);
   const [barnSaving, setBarnSaving] = useState(false);
   const [barnError, setBarnError] = useState('');
@@ -591,6 +593,8 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
         />
       )}
 
+      {showBackupImport && <BarnBackupImport onDismiss={() => setShowBackupImport(false)} onImported={(name) => { setShowBackupImport(false); setSuccessMsg(`${name} y su historial se restauraron correctamente.`); void refreshData(); }} />}
+
       {errorMsg && <InlineAlert tone="error" onDismiss={() => setErrorMsg(null)}>{errorMsg}</InlineAlert>}
       {successMsg && <InlineAlert tone="success" onDismiss={() => setSuccessMsg(null)} autoDismissMs={6000}>{successMsg}</InlineAlert>}
 
@@ -761,6 +765,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
               <h3 className="font-bold text-lg">Galpones e Instalaciones</h3>
               <p className="text-xs text-muted">Gestión de ubicaciones, capacidad y estado operativo.</p>
             </div>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowBackupImport(true)} disabled={loading}>Importar respaldo Excel</button>
             <button
               type="button"
               className="btn btn-primary btn-sm admin-primary-action"

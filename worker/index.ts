@@ -31,6 +31,7 @@ import {
   getTeamHistory,
 } from './admin';
 import { ApiError, listAuditLog } from './events';
+import { exportBarnBackup, importBarnBackup, readBarnBackupRequest } from './barn-backup';
 import {
   getBarnAssociations,
   resolveBarnAssociation,
@@ -1012,6 +1013,16 @@ const worker = {
           const body = await request.json() as Parameters<typeof createBarn>[1];
           const barn = await createBarn(env.DB, body);
           return Response.json({ ok: true, barn }, { status: 201 });
+        }
+
+        const backupRoute = path.match(/^\/api\/admin\/barns\/([1-9]\d*)\/backup$/);
+        if (backupRoute && request.method === 'GET') {
+          const backup = await exportBarnBackup(env.DB, session.user.id, Number(backupRoute[1]));
+          return Response.json(backup, { headers: { 'Cache-Control': 'no-store' } });
+        }
+        if (path === '/api/admin/barns/import-backup' && request.method === 'POST') {
+          const result = await importBarnBackup(env.DB, session.user.id, await readBarnBackupRequest(request));
+          return Response.json(result, { status: result.replayed ? 200 : 201 });
         }
 
         // GET /api/admin/barns/:id/associations: qué datos tiene el galpón y qué bloquea su eliminación
