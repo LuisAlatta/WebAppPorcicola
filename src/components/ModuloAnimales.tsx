@@ -29,7 +29,7 @@ import { DataState } from './DataState';
 import { ModuleTabs } from './ModuleTabs';
 import { Pagination } from './Pagination';
 import { availabilityForStatus } from '../utils/animal-filters';
-import { animalErrorField, animalFieldIds } from '../utils/animal-form-errors';
+import { animalErrorField, animalFieldIds, animalSaveError } from '../utils/animal-form-errors';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
 import { errorMessage, formatWeight } from '../utils/format';
 import { useCompactLayout } from '../hooks/useCompactLayout';
@@ -237,7 +237,7 @@ const ORIGIN_HINTS: Record<OriginType, string> = {
   nacimiento: 'El lechón nace en la granja: suma una cabeza al inventario.',
   compra: 'El animal llega de fuera: suma una cabeza al inventario. Registre el importe para enlazar la compra con Finanzas.',
   inicial: 'Existencia que ya estaba al empezar: suma una cabeza al inventario.',
-  interna: 'Ya estaba en un grupo sin arete: identifica la ficha sin sumar cabezas.',
+  interna: 'Solo para animales ya contados en inventario y aún sin ficha. Deben coincidir galpón, etapa, sexo, lote y fecha. No suma cabezas; si es un ingreso nuevo, elija otra procedencia.',
 };
 
 function emptyForm(): AnimalForm {
@@ -289,6 +289,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   const detailRequest = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>({
     q: '',
     type: '',
@@ -473,6 +474,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   };
 
   const setField = <K extends keyof AnimalForm>(key: K, value: AnimalForm[K]) => {
+    setFormError(null);
     setForm((prev) => ({ ...prev, [key]: value, ...(key === 'barnId' ? {locationCode: ''} : {}) }));
     if (fieldErrors[key] || fieldErrors.mother || fieldErrors.father || fieldErrors.weaningDate) {
       setFieldErrors((prev) => {
@@ -488,19 +490,20 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
 
   const registrationForm = useRef<HTMLFormElement>(null);
   const pendingErrorFocus = useRef(false);
-  useEffect(() => {
-    if (!formError || !pendingErrorFocus.current) return;
-    pendingErrorFocus.current = false;
+  const focusRegistrationField = useCallback((key?: string) => {
     const formElement = registrationForm.current;
-    if (!formElement) return;
-    const firstKey = Object.keys(fieldErrors)[0];
-    const wrapper = firstKey ? formElement.querySelector<HTMLElement>(`#${animalFieldIds[firstKey]}`) : null;
+    const wrapper = key ? formElement?.querySelector<HTMLElement>(`#${animalFieldIds[key]}`) : null;
     const target = wrapper?.matches('input, select, textarea')
       ? wrapper : wrapper?.querySelector<HTMLElement>('select, input, textarea');
-    const focusTarget = target ?? formElement.querySelector<HTMLElement>('[data-form-error]');
+    const focusTarget = target ?? formElement?.querySelector<HTMLElement>('[data-form-error]');
     focusTarget?.focus({ preventScroll: true });
     focusTarget?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [fieldErrors, formError]);
+  }, []);
+  useEffect(() => {
+    if (!formError || saving || !pendingErrorFocus.current) return;
+    pendingErrorFocus.current = false;
+    focusRegistrationField(Object.keys(fieldErrors)[0]);
+  }, [fieldErrors, formError, saving, focusRegistrationField]);
 
   const inputError = (key: string) => ({
     'aria-invalid': Boolean(fieldErrors[key]),
@@ -651,6 +654,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     setSuccess(null);
 
     const errors: Record<string, string> = {};
+    for (const control of Array.from(registrationForm.current?.elements ?? [])) {
+      if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement)) continue;
+      const key = Object.keys(animalFieldIds).find(key => animalFieldIds[key] === control.id);
+      if (key && !control.validity.valid) errors[key] = control.validationMessage;
+    }
     if (!editingCode) {
       if (!form.code.trim()) {
         errors.code = 'Indique el código o arete permanente.';
@@ -677,6 +685,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     if (form.weaningWeightKg.trim() && !form.weaningDate) {
       errors.weaningDate = 'El peso al destete requiere la fecha de destete.';
     }
+    if (form.animalType === 'cerda' && form.sex !== 'hembra') errors[editingCode ? 'animalType' : 'sex'] = 'Una cerda debe registrarse como hembra.';
+    if (form.animalType === 'verraco' && form.sex !== 'macho') errors[editingCode ? 'animalType' : 'sex'] = 'Un verraco debe registrarse como macho.';
+    if (!editingCode && form.birthDate && form.birthDate > form.entryDate) errors.birthDate = 'La fecha de nacimiento no puede ser posterior al ingreso.';
+    if (form.birthDate && form.weaningDate && form.weaningDate < form.birthDate) errors.weaningDate = 'La fecha de destete no puede ser anterior al nacimiento.';
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -727,6 +739,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         editingCode ? `/api/animals/${encodeURIComponent(editingCode)}` : '/api/animals',
         {
           method: editingCode ? 'PUT' : 'POST',
+          signal: AbortSignal.timeout(30_000),
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         },
@@ -737,8 +750,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         animal?: AnimalDetail;
       };
       if (!res.ok || !body.animal) {
-        const message = body.error ?? 'No se pudo guardar la ficha.';
-        const errorField = animalErrorField(message);
+        const message = animalSaveError(body.error ?? 'No se pudo guardar la ficha.');
+        const errorField = animalErrorField(body.error ?? message);
         const field = editingCode && errorField === 'sex' ? 'animalType' : errorField;
         if (field && (!editingCode || !['code', 'entryStageCode', 'locationCode', 'lotCode', 'barnId', 'originType', 'entryDate'].includes(field))) {
           setFieldErrors({ [field]: message });
@@ -748,11 +761,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       }
 
       setDetail(body.animal);
-      setSuccess(body.replayed
+      setSavedNotice(body.replayed
         ? `Reintento confirmado: la ficha ${body.animal.code} ya estaba guardada y no se duplicó.`
         : editingCode
-          ? `Ficha ${body.animal.code} actualizada.`
-          : `Animal ${body.animal.code} registrado con su ficha individual.`);
+          ? `Los cambios de la ficha ${body.animal.code} se guardaron correctamente.`
+          : `El animal ${body.animal.code} se registró correctamente en el padrón.`);
       setOperationKey(newOperationKey('ani'));
       setEditingCode(null);
       setForm((prev) => ({
@@ -760,10 +773,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         barnId: prev.barnId,
         entryStageCode: prev.entryStageCode,
       }));
-      await loadList();
       setSection('ficha');
+      await loadList();
     } catch {
-      setFormError('No se pudo confirmar el guardado. Reintente con el mismo formulario.');
+      setFormError('No se pudo confirmar el guardado por un problema de conexión o de respuesta del servidor. Sus datos se conservan: revise su conexión y reintente con el mismo formulario para comprobar el resultado sin duplicar la ficha.');
     } finally {
       setSaving(false);
     }
@@ -1005,6 +1018,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
           type="button"
           className="btn btn-sm btn-outline"
           onClick={() => setSection('padron')}
+          disabled={saving}
           aria-label="Volver al padrón de animales"
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1446,12 +1460,16 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             </div>
           </div>
 
-          <form ref={registrationForm} onSubmit={handleSubmit} className="form-stack animal-registration-form">
+          <form ref={registrationForm} onSubmit={handleSubmit} noValidate aria-busy={saving} className="form-stack animal-registration-form">
             {formError && (
-              <div data-form-error tabIndex={-1}><InlineAlert tone="error">{formError}</InlineAlert></div>
+              <div data-form-error tabIndex={-1}>
+                <InlineAlert tone="error">{formError}</InlineAlert>
+                {Object.keys(fieldErrors).length > 0 && <button type="button" className="btn btn-outline btn-sm mt-2" onClick={() => focusRegistrationField(Object.keys(fieldErrors)[0])}>Ir al campo que debo corregir</button>}
+              </div>
             )}
 
-            <div className="form-sections">
+            <p className="form-helper">{editingCode ? 'Revise los datos y describa el motivo de la corrección.' : 'Complete el código y revise sexo, procedencia, fecha, galpón y etapa de ingreso. El resto de los datos es opcional, salvo el importe si es una compra.'} Si hay un error, conservaremos sus datos y le llevaremos al campo que debe corregir.</p>
+            <fieldset className="form-sections animal-registration-fields" disabled={saving}>
             <fieldset className="form-section">
               <legend>Identificación</legend>
               <div className="form-grid">
@@ -1843,8 +1861,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               </FormField>}
               </div>
             </fieldset>
-            </div>
+            </fieldset>
 
+            <p role="status" aria-live="polite" className="form-helper">{saving ? 'Guardando la ficha. Espere la confirmación antes de salir; no necesita pulsar de nuevo.' : formError ? 'No se confirmó el guardado. Sus datos siguen en el formulario; revise el aviso y vuelva a intentarlo.' : 'La ficha se guardará al pulsar el botón y recibirá una confirmación en pantalla.'}</p>
             <div className="form-actions">
               <button
                 type="submit"
@@ -1853,7 +1872,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 aria-label={saving ? 'Guardando ficha…' : editingCode ? 'Guardar cambios de la ficha' : 'Registrar animal en el padrón'}
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconCheck size={16} />
+                  {saving ? <IconRefreshCw size={16} className="spinner-icon" /> : <IconCheck size={16} />}
                   <span>{saving ? 'Guardando…' : editingCode ? 'Guardar cambios' : 'Registrar animal'}</span>
                 </span>
               </button>
@@ -2699,6 +2718,16 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         </div>
       )}
       </AnimalWorkspace>
+      {savedNotice && (
+        <ModalDialog labelledBy="animal-saved-title" placement="center" onDismiss={() => setSavedNotice(null)}>
+          <div className="animal-saved-notice">
+            <span className="animal-saved-icon"><IconCheck size={28} /></span>
+            <h2 id="animal-saved-title">Guardado con éxito</h2>
+            <p>{savedNotice}</p>
+            <button type="button" className="btn btn-primary" onClick={() => setSavedNotice(null)}>Continuar a la ficha</button>
+          </div>
+        </ModalDialog>
+      )}
     </div>
   );
 }

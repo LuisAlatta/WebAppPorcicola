@@ -12,6 +12,7 @@ export const animalFieldIds: Record<string, string> = {
 // Las respuestas actuales de la API contienen mensajes, no nombres de campo.
 export function animalErrorField(message: string): string | undefined {
   const rules: [RegExp, string][] = [
+    [/cabezas.*sin identificar/i, 'originType'],
     [/madre/i, 'mother'], [/padre|progenitor|genealog/i, 'father'],
     [/cerda.*hembra|verraco.*macho|sexo/i, 'sex'],
     [/fecha de destete/i, 'weaningDate'], [/fecha de nacimiento/i, 'birthDate'],
@@ -24,4 +25,11 @@ export function animalErrorField(message: string): string | undefined {
     [/procedencia|cabezas sin identificar/i, 'originType'], [/motivo/i, 'reason'],
   ];
   return rules.find(([pattern]) => pattern.test(message))?.[1];
+}
+
+export function animalSaveError(message: string): string {
+  if (/cabezas.*sin identificar/i.test(message)) {
+    return 'No hay animales sin identificar disponibles en el grupo seleccionado. Revise Procedencia: use Interna solo si el animal ya está contado en inventario y coinciden su galpón, etapa, sexo, lote y fecha de ingreso. Si es un ingreso nuevo, elija Nacimiento, Compra o Existencia inicial según corresponda. No se ha guardado la ficha ni se han sumado cabezas.';
+  }
+  return message;
 }

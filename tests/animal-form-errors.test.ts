@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { animalErrorField, animalFieldIds } from '../src/utils/animal-form-errors';
+import { animalErrorField, animalFieldIds, animalSaveError } from '../src/utils/animal-form-errors';
 
 describe('Errores del registro individual', () => {
   it.each([
@@ -34,5 +34,21 @@ describe('Errores del registro individual', () => {
   it('no atribuye fallos de red o del servidor a un dato del usuario', () => {
     expect(animalErrorField('No se pudo conectar con el servidor')).toBeUndefined();
     expect(animalErrorField('No se pudo guardar la ficha.')).toBeUndefined();
+  });
+
+  it('explica el conflicto de inventario sin cambiar automáticamente la procedencia', () => {
+    const message = animalSaveError('No hay cabezas sin identificar en ese grupo para vincular la ficha');
+    expect(message).toContain('Revise Procedencia');
+    expect(message).toContain('galpón, etapa, sexo, lote y fecha');
+    expect(message).toContain('Nacimiento, Compra o Existencia inicial');
+    expect(message).toContain('No se ha guardado la ficha');
+  });
+
+  it('prioriza el conflicto de identificación aunque incluya otros campos', () => {
+    expect(animalErrorField('No hay cabezas sin identificar para ese galpón y etapa')).toBe('originType');
+  });
+
+  it('conserva la causa original para otros errores', () => {
+    expect(animalSaveError('Ya existe un animal con el código 80')).toBe('Ya existe un animal con el código 80');
   });
 });

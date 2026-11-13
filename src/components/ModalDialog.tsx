@@ -11,6 +11,7 @@ type ModalDialogProps = {
   dismissDisabled?: boolean;
   children: ReactNode;
   size?: 'default' | 'wide';
+  placement?: 'default' | 'center';
 };
 
 const FOCUSABLE_SELECTOR = [
@@ -22,7 +23,7 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
-export function ModalDialog({ labelledBy, onDismiss, dismissDisabled = false, children, size = 'default' }: ModalDialogProps) {
+export function ModalDialog({ labelledBy, onDismiss, dismissDisabled = false, children, size = 'default', placement = 'default' }: ModalDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(
     document.activeElement instanceof HTMLElement ? document.activeElement : null,
@@ -98,7 +99,7 @@ export function ModalDialog({ labelledBy, onDismiss, dismissDisabled = false, ch
   };
 
   return createPortal(
-    <div className="modal-backdrop">
+    <div className={`modal-backdrop${placement === 'center' ? ' modal-backdrop-centered' : ''}`}>
       <div
         ref={dialogRef}
         className={`modal-content card p-4${size === 'wide' ? ' modal-content-wide' : ''}`}
