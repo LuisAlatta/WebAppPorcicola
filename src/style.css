@@ -2914,3 +2914,13 @@ fieldset legend {
 .icon-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 2.75rem; width: 2.75rem; height: 2.75rem; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-muted); cursor: pointer; transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast); }
 .icon-button:hover:not(:disabled) { color: var(--color-primary); border-color: var(--color-primary-ring); background: var(--color-primary-light); }
 .icon-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* El radio compartido prevalece sobre las variantes de cada módulo. */
+button,
+.btn,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  border-radius: var(--radius-lg) !important;
+}
