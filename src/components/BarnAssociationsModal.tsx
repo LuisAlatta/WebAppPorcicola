@@ -372,8 +372,8 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: Bar
                 Después se elimina <strong>{barn.name}</strong> con sus accesos, historial de personal y corrales.
               </p>
               <div className="modal-actions">
-                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={() => setConfirm(null)}>Volver</button>
-                <button type="button" className="btn btn-danger" disabled={busy !== null} onClick={() => void runEvacuate()}>
+                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={() => setConfirm(null)} data-action="back">Volver</button>
+                <button type="button" className="btn btn-danger" disabled={busy !== null} onClick={() => void runEvacuate()} data-action="save">
                   {busy === 'evacuate' ? (hasTarget ? 'Vaciando…' : 'Eliminando…') : hasTarget ? `Sí, vaciar y eliminar ${barn.name}` : `Sí, eliminar y borrar datos de ${barn.name}`}
                 </button>
               </div>
@@ -385,15 +385,15 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: Bar
                 La trazabilidad desvinculada se conserva en el libro de auditoría.
               </p>
               <div className="modal-actions">
-                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={() => setConfirm(null)}>Volver</button>
-                <button type="button" className="btn btn-danger" disabled={busy !== null} onClick={() => void removeBarn()}>
+                <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={() => setConfirm(null)} data-action="back">Volver</button>
+                <button type="button" className="btn btn-danger" disabled={busy !== null} onClick={() => void removeBarn()} data-action="save">
                   {busy === 'delete' ? 'Eliminando…' : `Sí, eliminar ${barn.name}`}
                 </button>
               </div>
             </div>
           ) : (
             <div className="barn-assoc-actions">
-              <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={onDismiss}>Cancelar</button>
+              <button type="button" className="btn btn-outline" disabled={busy !== null} onClick={onDismiss} data-action="back">Cancelar</button>
               <div className="table-actions">
                 {data?.canDelete ? (
                   <button
@@ -466,7 +466,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: Bar
                 ))}
               </div>
               <div className="modal-actions">
-                <button type="button" className="btn btn-outline" onClick={() => setDetail(null)} disabled={busy !== null}>Cerrar</button>
+                <button type="button" className="btn btn-outline" onClick={() => setDetail(null)} disabled={busy !== null} data-action="back">Cerrar</button>
               </div>
             </div>
           </ModalDialog>

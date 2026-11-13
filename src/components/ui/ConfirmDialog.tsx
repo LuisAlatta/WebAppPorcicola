@@ -43,12 +43,13 @@ export function ConfirmDialog({
       </div>
       {children}
       <div className="modal-actions">
-        <button type="button" className="btn btn-outline" onClick={onDismiss} disabled={busy}>Cancelar</button>
+        <button type="button" className="btn btn-outline" onClick={onDismiss} disabled={busy} data-action="back">Cancelar</button>
         <button
           type="button"
           className={tone === 'danger' ? 'btn btn-danger' : 'btn btn-primary'}
           onClick={onConfirm}
           disabled={busy || confirmDisabled}
+          data-action="save"
         >
           {busy ? busyLabel : confirmLabel}
         </button>

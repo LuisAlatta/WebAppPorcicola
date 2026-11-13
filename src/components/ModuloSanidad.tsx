@@ -394,6 +394,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
           className="btn btn-outline btn-sm"
           onClick={() => setSection('retiros')}
           aria-label="Volver a retiros y pendientes"
+          data-action="back"
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconArrowLeft size={14} />
@@ -564,6 +565,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                 className="btn btn-primary"
                 disabled={busy || (!editing && !selected.length)}
                 aria-label={busy ? 'Guardando…' : editing ? 'Guardar corrección de actuación sanitaria' : 'Registrar tratamiento sanitario'}
+                data-action="save"
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconCheck size={16} />
@@ -590,6 +592,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                     className="btn btn-outline"
                     disabled={busy}
                     aria-label="Cancelar corrección de actuación sanitaria"
+                    data-action="back"
                     onClick={() => {
                       setEditing(null);
                       setOperationKey(newOperationKey('sanidad'));
@@ -624,12 +627,13 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
           <p className="text-xs text-muted mb-4 p-2.5 rounded card-subtle">
             Motivo indicado: <em>"{form.reason}"</em>. El evento quedará marcado como anulado y se preservará en la auditoría clínica.
           </p>
-          <div className="flex justify-end gap-2">
+          <div className="form-actions">
             <button
               type="button"
               className="btn btn-outline btn-sm"
               disabled={busy}
               aria-label="Cancelar anulación"
+              data-action="back"
               onClick={() => setShowAnnulModal(false)}
             >
               <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -642,6 +646,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
               className="btn btn-danger btn-sm"
               disabled={busy}
               aria-label="Confirmar anulación de actuación sanitaria"
+              data-action="save"
               onClick={async () => {
                 setShowAnnulModal(false);
                 await save(true);

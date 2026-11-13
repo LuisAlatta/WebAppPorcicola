@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   IconActivity,
   IconAlertTriangle,
-  IconArrowLeft,
   IconCalendar,
   IconCheck,
   IconEdit,
@@ -757,17 +756,6 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                   <span>{isAntecedent ? 'Cambiar a servicio monta/IA' : 'Cambiar a antecedente gestante'}</span>
                 </span>
               </button>
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                onClick={() => setSection('ciclos')}
-                aria-label="Volver a la lista de ciclos reproductivos"
-              >
-                <span className="inline-flex items-center justify-center gap-2 leading-none">
-                  <IconArrowLeft size={14} />
-                  <span>Volver a ciclos</span>
-                </span>
-              </button>
             </>
           }
         >
@@ -928,11 +916,13 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
             </div>
 
             <div className="form-actions">
+              <button type="button" className="btn btn-outline" data-action="back" disabled={busy} onClick={() => setSection('ciclos')} aria-label="Volver a la lista de ciclos reproductivos">Volver a ciclos</button>
               <button
                 type="submit"
                 className="btn btn-primary"
                 disabled={busy}
                 aria-label={busy ? 'Guardando ciclo reproductivo…' : isAntecedent ? 'Guardar marrana gestante e historial' : 'Abrir ciclo y registrar servicio de monta o IA'}
+                data-action="save"
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconCheck size={16} />
@@ -1315,6 +1305,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                             className="btn btn-primary btn-sm"
                             disabled={busy || dateCorrection.farrowingDate === dateCorrection.expectedCurrentDate}
                             aria-label="Guardar corrección de fecha de parto"
+                            data-action="save"
                           >
                             <span className="inline-flex items-center justify-center gap-2 leading-none">
                               <IconCheck size={14} />
@@ -1326,6 +1317,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                             className="btn btn-outline btn-sm"
                             disabled={busy}
                             aria-label="Cancelar corrección de fecha"
+                            data-action="back"
                             onClick={() => setDateCorrection(null)}
                           >
                             <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1402,6 +1394,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                             className="btn btn-primary btn-sm"
                             disabled={busy}
                             aria-label="Guardar cantidades corregidas de nacimiento"
+                            data-action="save"
                           >
                             <span className="inline-flex items-center justify-center gap-2 leading-none">
                               <IconCheck size={14} />
@@ -1413,6 +1406,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                             className="btn btn-outline btn-sm"
                             disabled={busy}
                             aria-label="Cancelar corrección de cantidades"
+                            data-action="back"
                             onClick={() => setCountCorrection(null)}
                           >
                             <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1542,6 +1536,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-primary btn-sm"
                         disabled={busy}
                         aria-label="Recalcular y guardar fechas de celo y repeticiones"
+                        data-action="save"
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
                           <IconCheck size={14} />
@@ -1553,6 +1548,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-outline btn-sm"
                         disabled={busy}
                         aria-label="Cancelar plan postdestete"
+                        data-action="back"
                         onClick={() => setPostweaningCycle(null)}
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1687,6 +1683,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-primary btn-sm"
                         disabled={busy}
                         aria-label="Guardar evento de camada (baja, adopción o destete)"
+                        data-action="save"
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
                           <IconCheck size={14} />
@@ -1698,6 +1695,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-outline btn-sm"
                         disabled={busy}
                         aria-label="Cancelar evento de camada"
+                        data-action="back"
                         onClick={() => setLitterEventCycle(null)}
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1885,6 +1883,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-primary btn-sm"
                         disabled={busy}
                         aria-label="Guardar parto y cerrar ciclo"
+                        data-action="save"
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
                           <IconCheck size={14} />
@@ -1896,6 +1895,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-outline btn-sm"
                         disabled={busy}
                         aria-label="Cancelar registro de parto"
+                        data-action="back"
                         onClick={() => setFarrowingCycle(null)}
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1937,6 +1937,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-primary btn-sm"
                         disabled={busy}
                         aria-label={closureForm.eventType === 'abortion' ? 'Guardar aborto y cerrar ciclo' : 'Guardar motivo de cierre'}
+                        data-action="save"
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
                           <IconCheck size={14} />
@@ -1950,6 +1951,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-outline btn-sm"
                         disabled={busy}
                         aria-label="Cancelar cierre"
+                        data-action="back"
                         onClick={() => setClosureForm(null)}
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -2019,6 +2021,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-primary btn-sm"
                         disabled={busy}
                         aria-label="Guardar nuevo servicio para la hembra"
+                        data-action="save"
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
                           <IconCheck size={14} />
@@ -2030,6 +2033,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-outline btn-sm"
                         disabled={busy}
                         aria-label="Cancelar nuevo servicio"
+                        data-action="back"
                         onClick={() => setRepeatCycle(null)}
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -2070,6 +2074,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-primary btn-sm"
                         disabled={busy}
                         aria-label="Guardar fecha probable manual"
+                        data-action="save"
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">
                           <IconCheck size={14} />
@@ -2081,6 +2086,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         className="btn btn-outline btn-sm"
                         disabled={busy}
                         aria-label="Cancelar fecha manual"
+                        data-action="back"
                         onClick={() => setManualCycle(null)}
                       >
                         <span className="inline-flex items-center justify-center gap-2 leading-none">

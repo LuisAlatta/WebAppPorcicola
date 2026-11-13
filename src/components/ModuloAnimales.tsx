@@ -994,8 +994,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             {busy && <p className="animal-action-loading inline-flex items-center gap-2" role="status"><IconRefreshCw size={18} className="spinner-icon" /><span>Eliminando animal… Espera un momento.</span></p>}
           </div>
           <footer className="modal-actions">
-            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setDeleteTarget(null)}><IconX size={16} /><span>Cancelar</span></button>
-            <button type="submit" className="btn btn-danger" disabled={busy || !deleteReason.trim()}><IconTrash size={16} /><span>{busy ? 'Eliminando…' : 'Confirmar eliminación'}</span></button>
+            <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setDeleteTarget(null)} data-action="back"><IconX size={16} /><span>Cancelar</span></button>
+            <button type="submit" className="btn btn-danger" disabled={busy || !deleteReason.trim()} data-action="save"><IconTrash size={16} /><span>{busy ? 'Eliminando…' : 'Confirmar eliminación'}</span></button>
           </footer>
         </form>
       </ModalDialog>}
@@ -1020,13 +1020,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
           onClick={() => setSection('padron')}
           disabled={saving}
           aria-label="Volver al padrón de animales"
+          data-action="back"
         >
           <span className="inline-flex items-center justify-center gap-2 leading-none">
             <IconList size={14} />
             <span>Volver al padrón</span>
-            {total > 0 && (
-              <StatusBadge tone="outline" className="tabular-nums font-numeric ml-1">{total}</StatusBadge>
-            )}
           </span>
         </button>
         {detail && (
@@ -1870,6 +1868,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 className="btn btn-primary"
                 disabled={saving}
                 aria-label={saving ? 'Guardando ficha…' : editingCode ? 'Guardar cambios de la ficha' : 'Registrar animal en el padrón'}
+                data-action="save"
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   {saving ? <IconRefreshCw size={16} className="spinner-icon" /> : <IconCheck size={16} />}
@@ -1891,6 +1890,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 }}
                 disabled={saving}
                 aria-label={editingCode ? 'Volver a la ficha del animal' : 'Limpiar formulario'}
+                data-action="back"
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   {editingCode ? <IconArrowLeft size={14} /> : <IconRefreshCw size={14} />}
@@ -2084,6 +2084,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                       className="btn btn-primary btn-sm"
                       disabled={busy}
                       aria-label="Pesar animal y registrar en ficha"
+                      data-action="save"
                     >
                       <span className="inline-flex items-center justify-center gap-2 leading-none">
                         <IconScale size={14} />
@@ -2179,11 +2180,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                               </FormField>
                             </div>
                             <div className="form-actions">
-                              <button type="submit" className="btn btn-primary btn-sm" disabled={busy} aria-label="Guardar corrección">
+                              <button type="submit" className="btn btn-primary btn-sm" disabled={busy} aria-label="Guardar corrección" data-action="save">
                                 <IconCheck size={14} />
                                 <span>{busy ? 'Guardando…' : 'Guardar corrección'}</span>
                               </button>
-                              <button type="button" className="btn btn-outline btn-sm" onClick={() => setWeightCorrection(null)} aria-label="Cancelar corrección">
+                              <button type="button" className="btn btn-outline btn-sm" onClick={() => setWeightCorrection(null)} aria-label="Cancelar corrección" data-action="back">
                                 <IconX size={14} />
                                 <span>Cancelar</span>
                               </button>
@@ -2322,6 +2323,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           className="btn btn-primary btn-sm"
                           disabled={busy}
                           aria-label="Confirmar cambio de arete oficial"
+                          data-action="save"
                         >
                           <span className="inline-flex items-center justify-center gap-2 leading-none">
                             <IconCheck size={14} />
@@ -2364,6 +2366,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                             onClick={() => void handleToggle(false)}
                             disabled={busy}
                             aria-label="Desactivar ficha de animal"
+                            data-action="save"
                           >
                             <span className="inline-flex items-center justify-center gap-2 leading-none">
                               <IconEyeOff size={14} />
@@ -2377,6 +2380,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                             onClick={() => void handleToggle(true)}
                             disabled={busy}
                             aria-label="Reactivar ficha de animal"
+                            data-action="save"
                           >
                             <span className="inline-flex items-center justify-center gap-2 leading-none">
                               <IconRefreshCw size={14} />
@@ -2481,6 +2485,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           className="btn btn-primary btn-sm"
                           disabled={busy}
                           aria-label="Trasladar animal a galpón"
+                          data-action="save"
                         >
                           <span className="inline-flex items-center justify-center gap-2 leading-none">
                             <IconArrowRight size={14} />
@@ -2625,6 +2630,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           className="btn btn-danger btn-sm"
                           disabled={busy}
                           aria-label="Registrar baja de animal"
+                          data-action="save"
                         >
                           <span className="inline-flex items-center justify-center gap-2 leading-none">
                             <IconAlertCircle size={14} />
@@ -2704,11 +2710,11 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 </FormField>
               </div>
               <footer className="modal-actions">
-                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setSaleReturnModalOpen(false)} aria-label="Cancelar devolución">
+                <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setSaleReturnModalOpen(false)} aria-label="Cancelar devolución" data-action="back">
                   <IconX size={16} />
                   <span>Cancelar</span>
                 </button>
-                <button type="button" className="btn btn-primary" disabled={busy || !saleReturnReason.trim()} aria-label="Confirmar devolución de venta" onClick={() => void confirmSaleReturn()}>
+                <button type="button" className="btn btn-primary" disabled={busy || !saleReturnReason.trim()} aria-label="Confirmar devolución de venta" onClick={() => void confirmSaleReturn()} data-action="save">
                   <IconCheck size={16} />
                   <span>{busy ? 'Guardando…' : 'Confirmar devolución'}</span>
                 </button>

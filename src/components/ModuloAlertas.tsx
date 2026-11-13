@@ -395,8 +395,8 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                 ))}
               </div>
             </fieldset>
-            <div className="form-span-2 pt-2 border-t border-subtle">
-              <button className="btn btn-primary" disabled={busy}>
+            <div className="form-span-2 pt-2 border-t border-subtle form-actions">
+              <button className="btn btn-primary" disabled={busy} data-action="save">
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconCheck size={16} />
                   <span>{busy ? 'Guardando…' : 'Guardar regla de escalamiento'}</span>
@@ -467,7 +467,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
             </fieldset>
             </div>
             <div className="form-actions form-actions-sticky">
-              <button className="btn btn-primary" disabled={busy}>
+              <button className="btn btn-primary" disabled={busy} data-action="save">
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconPlus size={16} />
                   <span>{busy ? 'Guardando…' : 'Crear aviso de granja'}</span>
@@ -708,13 +708,14 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                   setAttendTarget(null);
                   setAttendReason('');
                 }}
+                data-action="back"
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconX size={14} />
                   <span>Cancelar</span>
                 </span>
               </button>
-              <button type="submit" className="btn btn-primary" disabled={busy || !attendReason.trim()}>
+              <button type="submit" className="btn btn-primary" disabled={busy || !attendReason.trim()} data-action="save">
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconCheck size={16} />
                   <span>{busy ? 'Guardando…' : 'Marcar como atendido'}</span>

@@ -72,8 +72,8 @@ export function BarnBackupImport({ onDismiss, onImported }: Props) {
         {error && <p className="text-sm" role="alert">{error}</p>}
       </div>
       <div className="modal-actions">
-        <button type="button" className="btn btn-outline" disabled={busy} onClick={onDismiss}>Cancelar</button>
-        <button type="button" className="btn btn-primary" disabled={busy || !backup || reason.trim().length < 5} onClick={() => void restore()}>{busy ? 'Procesando…' : 'Restaurar galpón e historial'}</button>
+        <button type="button" className="btn btn-outline" disabled={busy} onClick={onDismiss} data-action="back">Cancelar</button>
+        <button type="button" className="btn btn-primary" disabled={busy || !backup || reason.trim().length < 5} onClick={() => void restore()} data-action="save">{busy ? 'Procesando…' : 'Restaurar galpón e historial'}</button>
       </div>
     </ModalDialog>
   );

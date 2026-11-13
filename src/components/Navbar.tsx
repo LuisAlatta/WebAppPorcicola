@@ -16,7 +16,6 @@ import {
   IconWheat,
   IconWifiOff,
   IconHome,
-  IconArrowLeft,
 } from './icons';
 
 interface NavbarProps {
@@ -133,7 +132,7 @@ export function Navbar({ vistaActual, perfilActual, usuario, onNavigate, onLogou
       <div className="navbar-top">
         <div className="navbar-brand">
           {showBack && (
-            <button type="button" className="btn btn-ghost navbar-back" aria-label={onBack ? 'Volver sin cambiar los galpones' : 'Volver al Inicio'} title={onBack ? 'Volver sin cambiar los galpones' : 'Volver al Inicio'} onClick={onBack ?? (() => onNavigate('inicio'))}><IconArrowLeft size={18} /></button>
+            <button type="button" className="btn btn-ghost navbar-back" data-action="back" aria-label={onBack ? 'Volver sin cambiar los galpones' : 'Volver al Inicio'} title={onBack ? 'Volver sin cambiar los galpones' : 'Volver al Inicio'} onClick={onBack ?? (() => onNavigate('inicio'))}>Regresar</button>
           )}
           <button
             type="button"

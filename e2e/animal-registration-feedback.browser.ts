@@ -75,3 +75,22 @@ test('bloquea el formulario durante el envío y confirma en el centro del móvil
   await notice.getByRole('button', { name: 'Continuar a la ficha', exact: true }).click();
   await expect(notice).toHaveCount(0);
 });
+
+for (const width of [320, 412, 1280]) {
+  test(`acciones de formulario alineadas y solo texto a ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 915 });
+    await openRegistration(page);
+    const save = page.locator('.animal-registration-form button[data-action="save"]');
+    const back = page.locator('.animal-registration-form button[data-action="back"]');
+    await save.scrollIntoViewIfNeeded();
+    const saveRect = await save.boundingBox();
+    const backRect = await back.boundingBox();
+    expect(saveRect!.x).toBeGreaterThan(backRect!.x + backRect!.width);
+    expect(Math.abs(saveRect!.y + saveRect!.height / 2 - backRect!.y - backRect!.height / 2)).toBeLessThan(2);
+    for (const button of [save, back]) {
+      expect((await button.innerText()).trim()).not.toBe('');
+      for (const icon of await button.locator('svg').all()) await expect(icon).toBeHidden();
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  });
+}

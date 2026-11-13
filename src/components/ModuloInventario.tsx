@@ -912,6 +912,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                   className="btn btn-primary"
                   disabled={saving}
                   aria-label={saving ? 'Guardando movimiento…' : 'Registrar movimiento de inventario'}
+                  data-action="save"
                 >
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconCheck size={16} />
@@ -1167,6 +1168,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                   className="btn btn-primary"
                   disabled={saving}
                   aria-label={saving ? 'Guardando operación…' : inventoryOperationMode === 'transfer' ? 'Registrar traslado entre galpones' : 'Registrar conciliación de conteo físico'}
+                  data-action="save"
                 >
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconCheck size={16} />
@@ -1261,6 +1263,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                   className="btn btn-primary btn-sm"
                   disabled={saving || !correctionPreview?.allowed}
                   aria-label={saving ? 'Guardando corrección…' : 'Confirmar corrección de movimiento'}
+                  data-action="save"
                 >
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconCheck size={14} />

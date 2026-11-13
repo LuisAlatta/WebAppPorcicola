@@ -296,6 +296,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
             type="button"
             className="btn btn-primary inline-flex items-center justify-center gap-2"
             onClick={() => onNavigate('inicio')}
+            data-action="back"
           >
             <IconArrowLeft size={16} />
             <span>Volver al Inicio</span>
@@ -744,10 +745,11 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       type="button"
                       className="btn btn-outline"
                       onClick={() => setShowUserModal(false)}
+                      data-action="back"
                     >
                       Cancelar
                     </button>
-                    <button type="submit" className="btn btn-primary">
+                    <button type="submit" className="btn btn-primary" data-action="save">
                       Crear Cuenta
                     </button>
                   </div>
@@ -839,7 +841,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
               </select>
               </FormField>
               {barnError && <InlineAlert tone="error">{barnError}</InlineAlert>}
-              <div className="form-actions form-actions-sticky"><button type="button" className="btn btn-outline" disabled={barnSaving} onClick={() => setStatusBarn(null)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={barnSaving}>{barnSaving ? 'Guardando…' : 'Guardar estado'}</button></div>
+              <div className="form-actions form-actions-sticky"><button type="button" className="btn btn-outline" disabled={barnSaving} onClick={() => setStatusBarn(null)} data-action="back">Cancelar</button><button type="submit" className="btn btn-primary" disabled={barnSaving} data-action="save">{barnSaving ? 'Guardando…' : 'Guardar estado'}</button></div>
             </form>
           </ModalDialog>}
           {showBarnModal && (
@@ -900,11 +902,12 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       type="button"
                       className="btn btn-outline"
                       onClick={() => setShowBarnModal(false)}
+                      data-action="back"
                       disabled={barnSaving}
                     >
                       Cancelar
                     </button>
-                    <button type="submit" className="btn btn-primary" disabled={barnSaving || !newBarnName.trim() || !newBarnCode.trim()}>
+                    <button type="submit" className="btn btn-primary" disabled={barnSaving || !newBarnName.trim() || !newBarnCode.trim()} data-action="save">
                       {barnSaving ? 'Guardando…' : editingBarn ? 'Guardar cambios' : 'Registrar Galpón'}
                     </button>
                   </div>
@@ -1074,12 +1077,14 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
               </label>
             </div>
 
-            <button type="submit" className="btn btn-primary" disabled={assignmentSaving}>
+            <div className="form-actions">
+            <button type="submit" className="btn btn-primary" disabled={assignmentSaving} data-action="save">
               <span className="inline-flex items-center justify-center gap-2 leading-none">
                 <IconCheck size={16} />
                 <span>{assignmentSaving ? 'Guardando…' : 'Guardar Asignación de Equipo'}</span>
               </span>
             </button>
+            </div>
           </form>
         </div>
       )}
@@ -1218,11 +1223,12 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                       type="button"
                       className="btn btn-outline"
                       onClick={closeCorrection}
+                      data-action="back"
                       disabled={correctionSaving}
                     >
                       Cancelar
                     </button>
-                    <button type="submit" className="btn btn-primary" disabled={correctionSaving}>
+                    <button type="submit" className="btn btn-primary" disabled={correctionSaving} data-action="save">
                       <span className="inline-flex items-center justify-center gap-2 leading-none">
                         <IconCheck size={16} />
                         <span>{correctionSaving ? 'Guardando…' : 'Registrar Corrección'}</span>

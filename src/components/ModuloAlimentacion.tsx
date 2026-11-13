@@ -856,7 +856,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                   <textarea id="plan-reason" className="form-textarea" required minLength={5} maxLength={500} rows={2} value={plan.reason} onChange={event => setPlan({ ...plan, reason: event.target.value })} />
                 </FormField>
               </div>
-              <div className="form-actions"><button type="submit" className="btn btn-primary" disabled={busy || !plan.barnId}>{busy ? 'Guardando…' : 'Guardar programación'}</button>{plan.feedCode && <button type="button" className="btn btn-outline" onClick={() => setPlan(old => ({ ...old, feedCode: '', plannedKg: '', reason: '' }))}>Nueva programación</button>}</div>
+              <div className="form-actions"><button type="submit" className="btn btn-primary" disabled={busy || !plan.barnId} data-action="save">{busy ? 'Guardando…' : 'Guardar programación'}</button>{plan.feedCode && <button type="button" className="btn btn-outline" onClick={() => setPlan(old => ({ ...old, feedCode: '', plannedKg: '', reason: '' }))}>Nueva programación</button>}</div>
             </form>}
             <h3 className="section-title mt-4">Programación del {planDate}</h3>
             <FormField label="Consultar programación por fecha" htmlFor="plan-filter-date"><input id="plan-filter-date" type="date" className="form-input" value={planDate} onChange={event => { if (event.target.value) setPlanDate(event.target.value); }} /></FormField>
@@ -1279,6 +1279,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                     className="btn btn-primary"
                     disabled={busy || !warehouseId}
                     aria-label={busy ? 'Guardando…' : turnMode && kind === 'delivery' ? 'Registrar turno y consumo de alimento' : 'Registrar movimiento de insumo'}
+                    data-action="save"
                   >
                     <span className="inline-flex items-center justify-center gap-2 leading-none">
                       <IconCheck size={16} />
@@ -1379,6 +1380,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                     className="btn btn-secondary"
                     disabled={busy}
                     aria-label={busy ? 'Creando almacén…' : 'Registrar nuevo almacén o silo'}
+                    data-action="save"
                   >
                     <span className="inline-flex items-center justify-center gap-2 leading-none">
                       <IconPlus size={14} />

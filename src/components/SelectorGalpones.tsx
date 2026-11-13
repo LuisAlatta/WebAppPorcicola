@@ -28,7 +28,7 @@ export function SelectorGalpones({ perfil, selected, onContinue }: { perfil: Per
   return <section className="module-container barn-selector">
     <div className="barn-selector-header">
       <div><h1>Galpones</h1><p>{managing ? 'Organiza tus instalaciones y su equipo.' : 'Elige dónde quieres trabajar. Puedes seleccionar varios.'}</p></div>
-      {perfil === 'administrador' && <button type="button" className="btn btn-outline barn-manage-button" onClick={() => managing ? closeManagement() : setManaging(true)}>{managing ? <IconArrowLeft size={18} /> : <IconSettings size={18} />}<span>{managing ? 'Volver a seleccionar galpones' : 'Administrar galpones'}</span></button>}
+      {perfil === 'administrador' && <button type="button" className="btn btn-outline barn-manage-button" data-action={managing ? 'back' : undefined} onClick={() => managing ? closeManagement() : setManaging(true)}>{managing ? <IconArrowLeft size={18} /> : <IconSettings size={18} />}<span>{managing ? 'Volver a seleccionar galpones' : 'Administrar galpones'}</span></button>}
     </div>
     {managing && perfil === 'administrador' ? <ModuloAdministracion perfil={perfil} barnsOnly onNavigate={closeManagement} /> : <>
     {loading && <div role="status" className="barn-selector-loading"><p>Cargando galpones…</p><div className="barn-selection-grid" aria-hidden="true">{[0, 1, 2, 3].map(index => <div className="barn-option-skeleton" key={index} />)}</div></div>}

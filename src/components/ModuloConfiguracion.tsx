@@ -690,7 +690,7 @@ export function ModuloConfiguracion() {
                   </FormField>
                 </div>
                 <div className="form-actions form-actions-sticky">
-                <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
+                <button type="submit" className="btn btn-primary" disabled={settingsSaving} data-action="save">
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconCheck size={16} />
                     <span>{settingsSaving ? 'Guardando…' : 'Guardar Parámetros'}</span>
@@ -817,12 +817,14 @@ export function ModuloConfiguracion() {
                     <input type="text" className="form-input" value={catReason} onChange={(e) => setCatReason(e.target.value)} placeholder="Ej. Nuevo valor solicitado por producción" />
                   </FormField>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={catSaving}>
+                <div className="form-actions">
+                <button type="submit" className="btn btn-primary" disabled={catSaving} data-action="save">
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconPlus size={16} />
                     <span>{catSaving ? 'Guardando…' : 'Guardar Valor'}</span>
                   </span>
                 </button>
+                </div>
               </form>
             </div>
           )}
@@ -919,12 +921,14 @@ export function ModuloConfiguracion() {
                     <input type="text" className="form-input" required minLength={5} value={stageReason} onChange={(e) => setStageReason(e.target.value)} placeholder="Ej. Ajuste de dieta y duración por indicación veterinaria" />
                   </FormField>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={stageSaving}>
+                <div className="form-actions">
+                <button type="submit" className="btn btn-primary" disabled={stageSaving} data-action="save">
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconPlus size={16} />
                     <span>{stageSaving ? 'Guardando…' : 'Guardar Etapa'}</span>
                   </span>
                 </button>
+                </div>
               </form>
             </div>
           )}
@@ -1023,8 +1027,8 @@ export function ModuloConfiguracion() {
                   </FormField>
                 </div>
                 <div className="form-actions form-actions-sticky">
-                <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" disabled={locationSaving} onClick={() => setLocationModal(false)}><IconX size={14} /><span>Cancelar</span></button>
-                <button type="submit" className="btn btn-primary" disabled={locationSaving}>
+                <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" disabled={locationSaving} onClick={() => setLocationModal(false)} data-action="back"><IconX size={14} /><span>Cancelar</span></button>
+                <button type="submit" className="btn btn-primary" disabled={locationSaving} data-action="save">
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconPlus size={16} />
                     <span>{locationSaving ? 'Guardando…' : 'Guardar Ubicación'}</span>
@@ -1095,8 +1099,8 @@ export function ModuloConfiguracion() {
                   </FormField>
                 </div>
                 <div className="form-actions form-actions-sticky">
-                <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" disabled={lotSaving} onClick={() => setLotModal(false)}><IconX size={14} /><span>Cancelar</span></button>
-                <button type="submit" className="btn btn-primary" disabled={lotSaving}>
+                <button type="button" className="btn btn-outline inline-flex items-center justify-center gap-2" disabled={lotSaving} onClick={() => setLotModal(false)} data-action="back"><IconX size={14} /><span>Cancelar</span></button>
+                <button type="submit" className="btn btn-primary" disabled={lotSaving} data-action="save">
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconPlus size={16} />
                     <span>{lotSaving ? 'Guardando…' : 'Guardar Lote'}</span>
@@ -1141,10 +1145,10 @@ export function ModuloConfiguracion() {
               />
             </FormField>
             <div className="form-actions form-actions-sticky mt-4">
-              <button type="button" className="btn btn-outline" onClick={() => setRetireTarget(null)} disabled={retireSaving}>
+              <button type="button" className="btn btn-outline" onClick={() => setRetireTarget(null)} disabled={retireSaving} data-action="back">
                 Cancelar
               </button>
-              <button type="submit" className="btn btn-danger" disabled={retireSaving}>
+              <button type="submit" className="btn btn-danger" disabled={retireSaving} data-action="save">
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconCheck size={16} />
                   <span>{retireSaving ? 'Guardando…' : 'Confirmar Retiro'}</span>

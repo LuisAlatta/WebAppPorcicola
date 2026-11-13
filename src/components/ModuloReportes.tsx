@@ -771,6 +771,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                   className="btn btn-secondary"
                   disabled={busy || !name.trim() || !purpose.trim() || !columns.length}
                   onClick={() => void save()}
+                  data-action="save"
                 >
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
                     <IconCheck size={14} />
@@ -781,6 +782,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                   <button
                     className="btn btn-outline"
                     aria-label="Salir del modo edición de reporte"
+                    data-action="back"
                     onClick={() => setEditing(null)}
                   >
                     <span className="inline-flex items-center justify-center gap-2 leading-none">

@@ -629,7 +629,8 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             <button
               className="btn btn-outline btn-sm"
               disabled={busy}
-              aria-label={busy ? 'Programando vacuna…' : 'Programar aplicación de vacuna manual'}
+                aria-label={busy ? 'Programando vacuna…' : 'Programar aplicación de vacuna manual'}
+                data-action="save"
             >
               <span className="inline-flex items-center justify-center gap-2 leading-none">
                 <IconPlus size={14} />
@@ -857,6 +858,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                     ? 'Guardar nueva versión de la regla'
                     : 'Crear regla y generar agenda'
                 }
+                data-action="save"
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconCheck size={14} />
@@ -874,6 +876,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                   className="btn btn-outline btn-sm"
                   type="button"
                   aria-label="Cancelar edición de regla"
+                  data-action="back"
                   onClick={() => setEditKey(null)}
                 >
                   <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -975,12 +978,13 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                 </FormField>
               )}
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="form-actions">
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
                 disabled={busy}
                 aria-label="Cancelar aplicación de vacuna"
+                data-action="back"
                 onClick={() => setApplyTarget(null)}
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -993,6 +997,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                 className="btn btn-primary btn-sm"
                 disabled={busy || (correctingApplication && !applyForm.reason.trim())}
                 aria-label={correctingApplication ? 'Guardar corrección de aplicación' : 'Confirmar aplicación de vacuna e integrar al historial'}
+                data-action="save"
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconCheck size={14} />
@@ -1016,9 +1021,9 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             <FormField label="Motivo de anulación:" htmlFor="vaccine-annul-reason" className="mb-4" labelClassName="text-xs">
               <input id="vaccine-annul-reason" className="form-input" required autoFocus value={annulReason} onChange={(event)=>setAnnulReason(event.target.value)}/>
             </FormField>
-            <div className="flex justify-end gap-2">
-              <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={()=>setAnnulTarget(null)}>Cancelar</button>
-              <button type="submit" className="btn btn-danger btn-sm" disabled={busy||!annulReason.trim()} aria-label="Confirmar anulación de aplicación">{busy?'Guardando…':'Anular aplicación'}</button>
+            <div className="form-actions">
+              <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={()=>setAnnulTarget(null)} data-action="back">Cancelar</button>
+              <button type="submit" className="btn btn-danger btn-sm" disabled={busy||!annulReason.trim()} aria-label="Confirmar anulación de aplicación" data-action="save">{busy?'Guardando…':'Anular aplicación'}</button>
             </div>
           </form>
         </ModalDialog>
@@ -1065,12 +1070,13 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                 />
               </FormField>
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="form-actions">
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
                 disabled={busy}
                 aria-label="Cancelar y cerrar reprogramación"
+                data-action="back"
                 onClick={() => setScheduleTarget(null)}
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1082,6 +1088,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                 type="submit"
                 className={`btn btn-sm ${scheduleTarget.cancel ? 'btn-danger' : 'btn-primary'}`}
                 aria-label={scheduleTarget.cancel ? 'Confirmar cancelación de vacuna' : 'Guardar nueva fecha programada'}
+                data-action="save"
                 disabled={
                   busy ||
                   !scheduleChangeForm.reason.trim() ||
@@ -1133,12 +1140,13 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                 autoFocus
               />
             </FormField>
-            <div className="flex justify-end gap-2">
+            <div className="form-actions">
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
                 disabled={busy}
                 aria-label="Cancelar desactivación de regla"
+                data-action="back"
                 onClick={() => setDeactivateTarget(null)}
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1151,6 +1159,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                 className="btn btn-danger btn-sm"
                 disabled={busy || !deactivateReason.trim()}
                 aria-label="Confirmar desactivación de regla de vacunación"
+                data-action="save"
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconAlertTriangle size={14} />

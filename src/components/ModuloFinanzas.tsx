@@ -674,7 +674,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
               <p className={totalMinor === allocatedMinor ? 'text-muted tabular-nums m-0' : 'text-danger font-bold tabular-nums m-0'}>
                 Distribuido: {money(allocatedMinor, form.currencyCode)} de {money(totalMinor, form.currencyCode)}
               </p>
-              <button className="btn btn-primary" disabled={busy || !totalMinor || totalMinor !== allocatedMinor}>
+              <button className="btn btn-primary" disabled={busy || !totalMinor || totalMinor !== allocatedMinor} data-action="save">
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconCheck size={16} />
                   <span>{busy ? 'Guardando…' : 'Registrar operación'}</span>
@@ -768,13 +768,13 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
               />
             </FormField>
             <div className="form-span-2 form-actions form-actions-sticky">
-              <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setSettlementTarget(null)}>
+              <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setSettlementTarget(null)} data-action="back">
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconX size={14} />
                   <span>Cancelar</span>
                 </span>
               </button>
-              <button className="btn btn-primary" disabled={busy}>
+              <button className="btn btn-primary" disabled={busy} data-action="save">
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconCheck size={16} />
                   <span>{busy ? 'Guardando…' : settlementTarget.direction === 'income' ? 'Registrar cobro' : 'Registrar pago'}</span>
@@ -1021,7 +1021,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
             <div className="detail-item"><dt>Cantidad</dt><dd>{detailTarget.quantity ?? 'Sin registrar'}</dd></div>
             <div className="detail-item"><dt>Responsable</dt><dd>{detailTarget.responsibleName}</dd></div>
           </dl>
-          <div className="form-actions mt-3"><button type="button" className="btn btn-outline" onClick={() => setDetailTarget(null)}><IconX size={14} /><span>Cerrar</span></button></div>
+          <div className="form-actions mt-3"><button type="button" className="btn btn-outline" onClick={() => setDetailTarget(null)} data-action="back"><IconX size={14} /><span>Cerrar</span></button></div>
         </ModalDialog>
       )}
 
@@ -1068,6 +1068,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                   setReversalTarget(null);
                   setReversalReason('');
                 }}
+                data-action="back"
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconX size={14} />
@@ -1078,6 +1079,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                 type="submit"
                 className="btn btn-danger"
                 disabled={busy || !reversalReason.trim()}
+                data-action="save"
               >
                 <span className="inline-flex items-center justify-center gap-2 leading-none">
                   <IconTrash size={14} />
