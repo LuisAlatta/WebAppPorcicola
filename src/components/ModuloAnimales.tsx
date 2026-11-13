@@ -29,6 +29,7 @@ import { DataState } from './DataState';
 import { ModuleTabs } from './ModuleTabs';
 import { Pagination } from './Pagination';
 import { availabilityForStatus } from '../utils/animal-filters';
+import { animalErrorField, animalFieldIds } from '../utils/animal-form-errors';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
 import { errorMessage, formatWeight } from '../utils/format';
 import { useCompactLayout } from '../hooks/useCompactLayout';
@@ -485,6 +486,27 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     }
   };
 
+  const registrationForm = useRef<HTMLFormElement>(null);
+  const pendingErrorFocus = useRef(false);
+  useEffect(() => {
+    if (!formError || !pendingErrorFocus.current) return;
+    pendingErrorFocus.current = false;
+    const formElement = registrationForm.current;
+    if (!formElement) return;
+    const firstKey = Object.keys(fieldErrors)[0];
+    const wrapper = firstKey ? formElement.querySelector<HTMLElement>(`#${animalFieldIds[firstKey]}`) : null;
+    const target = wrapper?.matches('input, select, textarea')
+      ? wrapper : wrapper?.querySelector<HTMLElement>('select, input, textarea');
+    const focusTarget = target ?? formElement.querySelector<HTMLElement>('[data-form-error]');
+    focusTarget?.focus({ preventScroll: true });
+    focusTarget?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [fieldErrors, formError]);
+
+  const inputError = (key: string) => ({
+    'aria-invalid': Boolean(fieldErrors[key]),
+    'aria-describedby': fieldErrors[key] ? `${animalFieldIds[key]}-error` : undefined,
+  });
+
   const openDetail = useCallback(async (key: string) => {
     detailRequest.current?.abort();
     const controller = new AbortController();
@@ -622,7 +644,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (soloLectura) return;
+    if (soloLectura || saving) return;
+    pendingErrorFocus.current = true;
     setFormError(null);
     setFieldErrors({});
     setSuccess(null);
@@ -642,8 +665,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         errors.purchaseAmount = 'Indique el importe de compra.';
       }
     }
-    if (!form.reason.trim()) {
-      errors.reason = 'Escriba el motivo del alta o de la corrección.';
+    if (editingCode && !form.reason.trim()) {
+      errors.reason = 'Describa brevemente qué está corrigiendo.';
     }
     if (form.motherId && form.motherExternal.trim()) {
       errors.mother = 'Indique la madre interna o externa, no ambas.';
@@ -676,7 +699,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       motherExternal: form.motherId ? null : (form.motherExternal.trim() || null),
       fatherExternal: form.fatherId ? null : (form.fatherExternal.trim() || null),
       observations: form.observations.trim() || null,
-      reason: form.reason.trim(),
+      reason: editingCode ? form.reason.trim() : 'Registro de animal en el padrón',
       operationKey,
     };
 
@@ -714,7 +737,13 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         animal?: AnimalDetail;
       };
       if (!res.ok || !body.animal) {
-        setFormError(body.error ?? 'No se pudo guardar la ficha.');
+        const message = body.error ?? 'No se pudo guardar la ficha.';
+        const errorField = animalErrorField(message);
+        const field = editingCode && errorField === 'sex' ? 'animalType' : errorField;
+        if (field && (!editingCode || !['code', 'entryStageCode', 'locationCode', 'lotCode', 'barnId', 'originType', 'entryDate'].includes(field))) {
+          setFieldErrors({ [field]: message });
+        }
+        setFormError(message);
         return;
       }
 
@@ -1408,7 +1437,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             <div>
               <span className="section-title inline-flex items-center justify-center gap-2 leading-none">
                 {editingCode ? <IconEdit size={16} className="text-primary" /> : <IconPlus size={16} className="text-primary" />}
-                <span>{editingCode ? `Editar ficha ${editingCode}` : 'Alta de animal'}</span>
+                <span>{editingCode ? `Editar ficha ${editingCode}` : 'Registro de animal'}</span>
               </span>
               <p className="text-xs text-muted mt-1">
                 {editingCode
@@ -1418,9 +1447,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="form-stack">
+          <form ref={registrationForm} onSubmit={handleSubmit} className="form-stack animal-registration-form">
             {formError && (
-              <InlineAlert tone="error">{formError}</InlineAlert>
+              <div data-form-error tabIndex={-1}><InlineAlert tone="error">{formError}</InlineAlert></div>
             )}
 
             <div className="form-sections">
@@ -1460,8 +1489,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 />
               </FormField>
 
-              <FormField label="Tipo" htmlFor="ani-form-type">
+              <FormField label="Tipo" htmlFor="ani-form-type" error={fieldErrors.animalType} errorId="ani-form-type-error">
                 <select
+                  {...inputError('animalType')}
                   id="ani-form-type"
                   className="form-select"
                   value={form.animalType}
@@ -1473,8 +1503,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 </select>
               </FormField>
 
-              <FormField label="Sexo" htmlFor="ani-form-sex">
+              <FormField label="Sexo" htmlFor="ani-form-sex" error={fieldErrors.sex} errorId="ani-form-sex-error" helper={editingCode ? 'El sexo registrado se conserva para mantener la coherencia del inventario.' : undefined}>
                 <select
+                  {...inputError('sex')}
+                  disabled={editingCode !== null}
                   id="ani-form-sex"
                   className="form-select"
                   value={form.sex}
@@ -1497,8 +1529,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 />
               </FormField>
 
-              <FormField label="Aptitud" htmlFor="ani-aptitude">
+              <FormField label="Aptitud" htmlFor="ani-aptitude" error={fieldErrors.aptitude} errorId="ani-aptitude-error">
                 <select
+                  {...inputError('aptitude')}
                   id="ani-aptitude"
                   className="form-select"
                   value={form.aptitude}
@@ -1516,8 +1549,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             <fieldset className="form-section">
               <legend>Datos zootécnicos</legend>
               <div className="form-grid">
-              <FormField label="Fecha de nacimiento" htmlFor="ani-birth" helper="Déjela vacía si se desconoce.">
+              <FormField label="Fecha de nacimiento" htmlFor="ani-birth" helper="Déjela vacía si se desconoce." error={fieldErrors.birthDate} errorId="ani-birth-error">
                 <input
+                  {...inputError('birthDate')}
                   id="ani-birth"
                   type="date"
                   className="form-input"
@@ -1527,8 +1561,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 />
               </FormField>
 
-              <FormField label="Peso al nacer (kg)" htmlFor="ani-birth-weight">
+              <FormField label="Peso al nacer (kg)" htmlFor="ani-birth-weight" error={fieldErrors.birthWeightKg} errorId="ani-birth-weight-error">
                 <input
+                  {...inputError('birthWeightKg')}
                   id="ani-birth-weight"
                   type="number"
                   step="0.01"
@@ -1553,8 +1588,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 />
               </FormField>
 
-              <FormField label="Peso al destete (kg)" htmlFor="ani-weaning-weight">
+              <FormField label="Peso al destete (kg)" htmlFor="ani-weaning-weight" error={fieldErrors.weaningWeightKg} errorId="ani-weaning-weight-error">
                 <input
+                  {...inputError('weaningWeightKg')}
                   id="ani-weaning-weight"
                   type="number"
                   step="0.01"
@@ -1573,8 +1609,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               <div className="form-grid">
               {!editingCode && (
                 <>
-                  <FormField label="Procedencia" htmlFor="ani-origin">
+                  <FormField label="Procedencia" htmlFor="ani-origin" error={fieldErrors.originType} errorId="ani-origin-error">
                     <select
+                      {...inputError('originType')}
                       id="ani-origin"
                       className="form-select"
                       value={form.originType}
@@ -1604,8 +1641,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           required
                         />
                       </FormField>
-                      <FormField label="Moneda" htmlFor="ani-purchase-currency">
+                      <FormField label="Moneda" htmlFor="ani-purchase-currency" error={fieldErrors.purchaseCurrencyCode} errorId="ani-purchase-currency-error">
                         <select
+                          {...inputError('purchaseCurrencyCode')}
                           id="ani-purchase-currency"
                           className="form-select"
                           value={form.purchaseCurrencyCode}
@@ -1648,8 +1686,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     />
                   </FormField>
 
-                  <FormField label="Fecha de ingreso" htmlFor="ani-entry-date">
+                  <FormField label="Fecha de ingreso" htmlFor="ani-entry-date" error={fieldErrors.entryDate} errorId="ani-entry-date-error">
                     <input
+                      {...inputError('entryDate')}
                       id="ani-entry-date"
                       type="date"
                       className="form-input"
@@ -1677,7 +1716,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     </select>
                   </FormField>
 
-                  <FormField label="Etapa de ingreso" htmlFor="ani-entry-stage" error={fieldErrors.entryStageCode} errorId="ani-entry-stage-error">
+                  <FormField label="Etapa de ingreso" htmlFor="ani-entry-stage" error={fieldErrors.entryStageCode} errorId="ani-entry-stage-error" helper="La etapa debe estar vigente en la fecha de ingreso. Si el ingreso es histórico, revise esa fecha y la vigencia de la etapa en Configuración.">
                     <select
                       id="ani-entry-stage"
                       className={`form-select ${fieldErrors.entryStageCode ? 'input-error' : ''}`}
@@ -1694,8 +1733,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     </select>
                   </FormField>
 
-                  <FormField label="Ubicación" htmlFor="ani-location">
+                  <FormField label="Ubicación" htmlFor="ani-location" error={fieldErrors.locationCode} errorId="ani-location-error" helper="Opcional: corral o espacio dentro del galpón. Si no hay opciones, un administrador debe crearlas en Configuración, Ubicaciones, y asociarlas a este galpón.">
                     <select
+                      {...inputError('locationCode')}
                       id="ani-location"
                       className="form-select"
                       value={form.locationCode}
@@ -1708,8 +1748,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     </select>
                   </FormField>
 
-                  <FormField label="Lote" htmlFor="ani-lot">
+                  <FormField label="Lote" htmlFor="ani-lot" error={fieldErrors.lotCode} errorId="ani-lot-error">
                     <select
+                      {...inputError('lotCode')}
                       id="ani-lot"
                       className="form-select"
                       value={form.lotCode}
@@ -1730,7 +1771,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               <legend>Genealogía</legend>
               <div className="form-grid">
               <FormField>
+                <div id="ani-mother-field">
                 <AnimalPicker label="Madre interna" searchLabel="Buscar madre interna" sex="hembra" useIdValue value={form.motherId ? [form.motherId] : []} onChange={values => setField('motherId', values[0] ?? '')} emptyLabel="Desconocido o externo" />
+                </div>
                 {fieldErrors.mother && (
                   <p className="field-error-message" role="alert">
                     <IconAlertCircle size={14} />
@@ -1753,7 +1796,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               </FormField>
 
               <FormField>
+                <div id="ani-father-field">
                 <AnimalPicker label="Padre interno" searchLabel="Buscar padre interno" sex="macho" useIdValue value={form.fatherId ? [form.fatherId] : []} onChange={values => setField('fatherId', values[0] ?? '')} emptyLabel="Desconocido o externo" />
+                </div>
                 {fieldErrors.father && (
                   <p className="field-error-message" role="alert">
                     <IconAlertCircle size={14} />
@@ -1778,7 +1823,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
             </fieldset>
 
             <fieldset className="form-section">
-              <legend>Observaciones y auditoría</legend>
+              <legend>{editingCode ? 'Observaciones y corrección' : 'Observaciones'}</legend>
               <div className="form-grid">
               <FormField label="Observaciones" htmlFor="ani-observations" className="form-col-span-full">
                 <textarea
@@ -1791,8 +1836,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 />
               </FormField>
 
-              <FormField
-                label="Motivo"
+              {editingCode && <FormField
+                label="Motivo de la corrección"
                 htmlFor="ani-reason"
                 className="form-col-span-full"
                 error={fieldErrors.reason}
@@ -1806,12 +1851,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   className={`form-input ${fieldErrors.reason ? 'input-error' : ''}`}
                   value={form.reason}
                   onChange={(event) => setField('reason', event.target.value)}
-                  placeholder={editingCode ? 'Ej. Corrección del peso al nacer' : 'Ej. Alta de lechón nacido el 5 de enero'}
+                  placeholder="Ej. Corrección del peso al nacer"
                   aria-invalid={Boolean(fieldErrors.reason)}
                   aria-describedby={fieldErrors.reason ? 'ani-reason-error ani-reason-helper' : 'ani-reason-helper'}
                   required
                 />
-              </FormField>
+              </FormField>}
               </div>
             </fieldset>
             </div>
@@ -1869,6 +1914,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   {detail.isActive ? 'Disponible' : 'Inactiva'}
                 </StatusBadge>
               </div>
+              {!soloLectura && <button type="button" className="btn btn-outline btn-sm inline-flex items-center justify-center gap-2" onClick={() => startEdit()} aria-label={`Editar datos del animal ${detail.code}`}><IconEdit size={14} /><span>Editar datos</span></button>}
             </div>
 
             <div className="grid-3">
@@ -1881,7 +1927,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               <KpiCard
                 label="Peso actual"
                 value={formatWeight(detail.currentWeightKg)}
-                detail={detail.currentWeightDate ? `Último pesaje ${detail.currentWeightDate}` : 'Sin pesajes registrados'}
+                detail={<>{detail.currentWeightDate ? `Último pesaje ${detail.currentWeightDate}` : 'Sin pesajes registrados'}{!soloLectura && <button type="button" className="btn btn-outline btn-sm mt-2 inline-flex items-center justify-center gap-2" onClick={() => setFichaTab('pesajes')}><IconEdit size={14} /><span>Editar pesajes</span></button>}</>}
                 icon={<IconScale size={14} />}
               />
               <KpiCard
@@ -1950,21 +1996,6 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 </section>
               )}
 
-              {!soloLectura && (
-                <div className="form-actions mt-3">
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={() => startEdit()}
-                    aria-label={`Editar ficha del animal ${detail.code}`}
-                  >
-                    <span className="inline-flex items-center justify-center gap-2 leading-none">
-                      <IconEdit size={14} />
-                      <span>Editar ficha</span>
-                    </span>
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
@@ -2171,7 +2202,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     <IconClipboard size={16} className="text-primary" />
                     <span>Cronología operativa</span>
                   </span>
-                  <span className="text-xs text-muted">Altas, aretes, tipos, pesajes y movimientos de inventario</span>
+                  <span className="text-xs text-muted">Registros, aretes, tipos, pesajes y movimientos de inventario</span>
                 </div>
                 {detail.chronology.length === 0 ? (
                   <DataState

@@ -889,6 +889,8 @@ body:has(.login-page-container),
 }
 
 .input-error,
+.animal-registration-form .form-input[aria-invalid="true"],
+.animal-registration-form .form-select[aria-invalid="true"],
 .form-input.input-error,
 .form-select.input-error,
 .form-textarea.input-error {
