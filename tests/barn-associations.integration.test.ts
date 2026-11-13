@@ -383,9 +383,31 @@ describe('Datos asociados al galpón · CFG-06', () => {
     });
     expect(created.status).toBe(201);
 
+    const female = await db.prepare('SELECT id FROM animals WHERE code = ?').bind('A-DEL1').first<{ id: number }>();
+    const femaleId = Number(female?.id);
+
     await db.batch([
       db.prepare(`INSERT INTO inventory_movements (movement_type, effective_date, barn_id, stage_code, sex, quantity, created_by_user_id, created_at)
         VALUES ('purchase', '2026-02-01', ?, 'engorde', 'hembra', 12, ?, ?)`).bind(barnId, adminId, now),
+      db.prepare(`INSERT INTO reproduction_cycles (id, female_animal_id, cycle_number, cycle_status, reproductive_status,
+        cycle_opened_on, gestation_days, probable_farrowing_date, barn_id, created_by_user_id, created_at, updated_at)
+        VALUES ('CYC-DEL1', ?, 1, 'farrowed', 'empty', '2026-01-15', 114, '2026-05-09', ?, ?, ?, ?)`)
+        .bind(femaleId, barnId, adminId, now, now),
+      db.prepare(`INSERT INTO litters (id, cycle_id, female_animal_id, parity_number, farrowing_date, barn_id,
+        male_alive, female_alive, unsexed_alive, male_stillborn, female_stillborn, unsexed_stillborn,
+        live_count, stillborn_count, total_born, created_by_user_id, created_at)
+        VALUES ('LIT-DEL1', 'CYC-DEL1', ?, 1, '2026-05-09', ?, 1, 1, 0, 0, 0, 0, 2, 0, 2, ?, ?)`)
+        .bind(femaleId, barnId, adminId, now),
+      // Referencias que antes rompían el borrado: la ficha y un movimiento apuntan a la camada.
+      db.prepare("UPDATE animals SET litter_id = 'LIT-DEL1' WHERE id = ?").bind(femaleId),
+      db.prepare(`INSERT INTO inventory_movements (movement_type, effective_date, barn_id, stage_code, sex, quantity, litter_id, created_by_user_id, created_at)
+        VALUES ('birth', '2026-05-09', ?, 'lactancia', 'hembra', 2, 'LIT-DEL1', ?, ?)`).bind(barnId, adminId, now),
+      db.prepare(`INSERT INTO operation_log (id, operation_key, operation_type, author_user_id, entity_type, entity_id,
+        barn_id, content_hash, payload, result_payload, effective_date, recorded_at)
+        VALUES ('op-del-health-1', 'asoc-del-health-0001', 'health.event', ?, 'health_event', 1, ?, 'hash', '{}', '{}', '2026-02-02', ?)`)
+        .bind(adminId, barnId, now),
+      db.prepare(`INSERT INTO health_events (operation_log_id, event_type, effective_date, product, created_by_user_id, created_at)
+        VALUES ('op-del-health-1', 'treatment', '2026-02-02', 'Antibiótico', ?, ?)`).bind(adminId, now),
       db.prepare(`INSERT INTO audit_log (entity_type, entity_id, action, actor_user_id, barn_id, reason, effective_date, recorded_at)
         VALUES ('barn', ?, 'update', ?, ?, 'Alta del galpón', '2026-02-01', ?)`)
         .bind(barnId, adminId, barnId, now),
@@ -394,6 +416,12 @@ describe('Datos asociados al galpón · CFG-06', () => {
       db.prepare('INSERT INTO feed_warehouses (code, name, barn_id, is_active, created_by_user_id, created_at) VALUES (?, ?, ?, 1, ?, ?)')
         .bind('ALM-DEL', 'Almacén del galpón', barnId, adminId, now),
     ]);
+
+    const healthEvent = await db.prepare("SELECT id FROM health_events WHERE operation_log_id = 'op-del-health-1'")
+      .first<{ id: number }>();
+    await db.prepare(`INSERT INTO health_event_animals (health_event_id, animal_id, animal_code_snapshot, barn_id,
+      barn_name_snapshot, stage_code_snapshot) VALUES (?, ?, 'A-DEL1', ?, 'Galpón por borrar sin destino', 'preinicio')`)
+      .bind(Number(healthEvent?.id), femaleId, barnId).run();
 
     const view = await (await api(`/api/admin/barns/${barnId}/associations`)).json() as AssociationsResponse;
     const stockCount = group(view, 'stock').count;
@@ -409,11 +437,16 @@ describe('Datos asociados al galpón · CFG-06', () => {
     expect(result.destinationBarnId).toBeNull();
     expect(result.fichasEliminadas).toBe(1);
     expect(result.cabezasEliminadas).toBe(stockCount);
-    expect(result.eliminadas.map((item) => item.group)).toEqual(expect.arrayContaining(['stock', 'animals', 'inventory_movements']));
+    expect(result.eliminadas.map((item) => item.group)).toEqual(expect.arrayContaining(['stock', 'animals', 'inventory_movements', 'litters', 'reproduction_cycles', 'health_events']));
     expect(result.desvinculadas.map((item) => item.group)).toEqual(expect.arrayContaining(['audit', 'feed_warehouses']));
 
     expect(await db.prepare('SELECT id FROM barns WHERE id = ?').bind(barnId).first()).toBeNull();
     expect(await db.prepare('SELECT id FROM animals WHERE code = ?').bind('A-DEL1').first()).toBeNull();
+    expect(await db.prepare("SELECT id FROM litters WHERE id = 'LIT-DEL1'").first()).toBeNull();
+    expect(await db.prepare("SELECT id FROM reproduction_cycles WHERE id = 'CYC-DEL1'").first()).toBeNull();
+    expect(await db.prepare("SELECT id FROM health_events WHERE operation_log_id = 'op-del-health-1'").first()).toBeNull();
+    expect(await db.prepare("SELECT id FROM health_event_animals WHERE health_event_id = ?")
+      .bind(Number(healthEvent?.id)).first()).toBeNull();
 
     const counts = await db.batch([
       db.prepare('SELECT count(*) AS n FROM inventory_movements WHERE barn_id = ?').bind(barnId),

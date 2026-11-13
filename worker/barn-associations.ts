@@ -1145,12 +1145,28 @@ async function planBarnDeletion(db: D1Database, barnId: number): Promise<{
     return db.prepare(query).bind(...Array.from({ length: placeholders }, () => barnId));
   };
   const A = '(SELECT id FROM animals WHERE barn_id = ?)';
-  const L = '(SELECT id FROM litters WHERE barn_id = ?)';
-  const C = '(SELECT id FROM reproduction_cycles WHERE barn_id = ?)';
-  const H = '(SELECT health_event_id FROM health_event_animals WHERE barn_id = ? OR animal_id IN (SELECT id FROM animals WHERE barn_id = ?))';
+  // Incluye camadas y ciclos de otros galpones cuya hembra vive en este: se borran con ella.
+  const L = `(SELECT id FROM litters WHERE barn_id = ? OR female_animal_id IN ${A})`;
+  const C = `(SELECT id FROM reproduction_cycles WHERE barn_id = ? OR female_animal_id IN ${A})`;
+  // Los ids se materializan: health_event_animals se borra antes que health_events,
+  // así que una subconsulta sobre esa tabla quedaría vacía al llegar al borrado del padre.
+  const healthIds = await db.prepare(
+    `SELECT DISTINCT health_event_id AS id FROM health_event_animals
+     WHERE barn_id = ? OR animal_id IN ${A}`,
+  ).bind(barnId, barnId).all<Row>();
+  const H = (healthIds.results ?? []).length > 0
+    ? `(${(healthIds.results ?? []).map((row) => Number(row.id)).join(',')})`
+    : '(NULL)';
 
   const statements = [
     scoped(`DELETE FROM litter_identified_adoptions WHERE animal_id IN ${A} OR source_litter_id IN ${L} OR target_litter_id IN ${L}`),
+    // Desvincular antes de borrar camadas y fichas: animales y movimientos de
+    // cualquier galpón pueden referenciar las camadas que desaparecen.
+    scoped(`UPDATE animals SET mother_id = CASE WHEN mother_id IN ${A} THEN NULL ELSE mother_id END,
+      father_id = CASE WHEN father_id IN ${A} THEN NULL ELSE father_id END,
+      litter_id = CASE WHEN litter_id IN ${L} THEN NULL ELSE litter_id END
+      WHERE mother_id IN ${A} OR father_id IN ${A} OR litter_id IN ${L}`),
+    scoped(`UPDATE inventory_movements SET animal_id = NULL, litter_id = NULL WHERE animal_id IN ${A} OR litter_id IN ${L}`),
     scoped(`DELETE FROM litter_events WHERE destination_barn_id = ? OR litter_id IN ${L} OR destination_litter_id IN ${L}`),
     scoped(`DELETE FROM litter_corrections WHERE litter_id IN ${L}`),
     scoped(`DELETE FROM litters WHERE barn_id = ? OR female_animal_id IN ${A}`),
@@ -1161,16 +1177,13 @@ async function planBarnDeletion(db: D1Database, barnId: number): Promise<{
     scoped(`DELETE FROM reproduction_cycles WHERE barn_id = ? OR female_animal_id IN ${A}`),
     scoped(`DELETE FROM vaccine_occurrences WHERE animal_id IN ${A} OR application_health_event_id IN ${H}`),
     scoped(`UPDATE inventory_movements SET health_event_id = NULL WHERE health_event_id IN ${H}`),
+    // Hijos antes que el padre: health_event_animals referencia health_events.
+    scoped(`DELETE FROM health_event_animals WHERE health_event_id IN ${H} OR barn_id = ? OR animal_id IN ${A}`),
+    scoped('UPDATE health_events SET inventory_movement_id = NULL WHERE inventory_movement_id IN (SELECT id FROM inventory_movements WHERE barn_id = ?)'),
     scoped(`DELETE FROM health_events WHERE id IN ${H}`),
-    scoped(`DELETE FROM health_event_animals WHERE barn_id = ? OR animal_id IN ${A}`),
     scoped(`DELETE FROM animal_location_history WHERE barn_id = ? OR animal_id IN ${A}`),
     scoped(`UPDATE animal_weights SET corrects_weight_id = NULL WHERE corrects_weight_id IN (SELECT id FROM animal_weights WHERE barn_id = ? OR animal_id IN ${A})`),
     scoped(`DELETE FROM animal_weights WHERE barn_id = ? OR animal_id IN ${A}`),
-    scoped(`UPDATE animals SET mother_id = CASE WHEN mother_id IN ${A} THEN NULL ELSE mother_id END,
-      father_id = CASE WHEN father_id IN ${A} THEN NULL ELSE father_id END,
-      litter_id = CASE WHEN litter_id IN ${L} THEN NULL ELSE litter_id END
-      WHERE mother_id IN ${A} OR father_id IN ${A} OR litter_id IN ${L}`),
-    scoped(`UPDATE inventory_movements SET animal_id = NULL, litter_id = NULL WHERE animal_id IN ${A} OR litter_id IN ${L}`),
     scoped(`UPDATE inventory_movements SET reverses_movement_id = NULL WHERE reverses_movement_id IN (SELECT id FROM inventory_movements WHERE barn_id = ?)`),
     scoped(`UPDATE feed_movements SET animal_id = NULL WHERE animal_id IN ${A}`),
     scoped(`UPDATE feed_movements SET reverses_movement_id = NULL WHERE reverses_movement_id IN (SELECT id FROM feed_movements WHERE destination_barn_id = ?)`),
