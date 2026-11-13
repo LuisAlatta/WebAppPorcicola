@@ -342,7 +342,7 @@ export function BarnAssociationsModal({ barn, barns, onDismiss, onDeleted }: Bar
               <label htmlFor="barn-assoc-reason" className="form-label">Motivo</label>
               <input
                 id="barn-assoc-reason"
-                className="form-control"
+                className="form-input"
                 required
                 minLength={5}
                 aria-describedby={showRequirements ? 'barn-assoc-requirements' : undefined}
