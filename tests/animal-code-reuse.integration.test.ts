@@ -11,7 +11,7 @@ const runtime = new Miniflare({ workers: [{ config: {
   env: { DB: { type: 'd1', id: 'animal-code-reuse' } },
 } }] });
 
-describe('Reutilización confirmada de códigos de animales', () => {
+describe('Reutilización automática de códigos de animales', () => {
   let db: D1Database;
   let token: string;
   const today = currentFarmDate();
@@ -40,24 +40,18 @@ describe('Reutilización confirmada de códigos de animales', () => {
   }, 90000);
   afterAll(async () => runtime.dispose());
 
-  it('ofrece recuperar, exige confirmación y separa fichas, aretes, pesajes y reintentos', async () => {
+  it('archiva automáticamente la ficha inactiva y separa fichas, aretes, pesajes y reintentos', async () => {
     const originalInput = input('001');
     const original = await api('/api/animals', originalInput);
     expect(original.status, await original.clone().text()).toBe(201);
     const old = (await original.json() as { animal: { id: number } }).animal;
-    expect((await api('/api/animals/001/deactivate', { reason: 'Eliminación de prueba' })).status).toBe(200);
     const newInput = input('001');
-    const conflict = await api('/api/animals', newInput);
-    expect(conflict.status).toBe(409);
-    expect(await conflict.json()).toMatchObject({ inactiveAnimal: { id: old.id, code: '001', canReactivate: true } });
-    expect((await api('/api/animals/001/reactivate', { reason: 'Recuperar ficha' })).status).toBe(200);
-    expect((await api('/api/animals', { ...newInput, reuseInactiveAnimalId: old.id })).status).toBe(409);
+    expect((await api('/api/animals', newInput)).status).toBe(409);
     await api('/api/animals/001/deactivate', { reason: 'Registrar otro animal' });
     const weightInput = { weighedOn: today, weighedTime: '12:00', weightKg: 12, operationKey: crypto.randomUUID() };
     const weight = await api('/api/animals/001/weights', weightInput);
     expect(weight.status, await weight.clone().text()).toBe(201);
-    const confirmed = { ...newInput, reuseInactiveAnimalId: old.id };
-    const created = await api('/api/animals', confirmed);
+    const created = await api('/api/animals', newInput);
     expect(created.status, await created.clone().text()).toBe(201);
     const fresh = (await created.json() as { animal: { id: number; code: string; weights: unknown[] } }).animal;
     expect(fresh.id).not.toBe(old.id);
@@ -66,7 +60,7 @@ describe('Reutilización confirmada de códigos de animales', () => {
     const archived = await db.prepare('SELECT code,is_active FROM animals WHERE id=?').bind(old.id).first<{code:string;is_active:number}>();
     expect(archived).toEqual({ code: `001-ARCH-${old.id}`, is_active: 0 });
     expect(await db.prepare('SELECT tag,is_current FROM animal_tags WHERE animal_id=? ORDER BY id LIMIT 1').bind(old.id).first()).toEqual({ tag: '001', is_current: 0 });
-    const replay = await api('/api/animals', confirmed);
+    const replay = await api('/api/animals', newInput);
     expect(replay.status, await replay.clone().text()).toBe(200);
     expect(await replay.json()).toMatchObject({ replayed: true, animal: { id: fresh.id } });
     const oldReplay = await api('/api/animals', originalInput);
@@ -80,7 +74,7 @@ describe('Reutilización confirmada de códigos de animales', () => {
     const original = await api('/api/animals', input('SCOPE-REUSE'));
     const old = (await original.json() as { animal: { id: number } }).animal;
     await api('/api/animals/SCOPE-REUSE/deactivate', { reason: 'Desactivar' });
-    const response = await api('/api/animals', { ...input('SCOPE-REUSE'), barnId: 2, reuseInactiveAnimalId: old.id }, '2');
+    const response = await api('/api/animals', { ...input('SCOPE-REUSE'), barnId: 2 }, '2');
     expect(response.status).toBe(409);
     expect(await response.json()).not.toHaveProperty('inactiveAnimal');
     expect(await db.prepare('SELECT code FROM animals WHERE id=?').bind(old.id).first()).toEqual({ code: 'SCOPE-REUSE' });
@@ -97,7 +91,7 @@ describe('Reutilización confirmada de códigos de animales', () => {
     const vaccine = await api('/api/vaccines/schedules/manual', { animalCode: code, vaccineName: 'Vacuna prueba', scheduledDate: today, reason: 'Programar', operationKey: crypto.randomUUID() });
     expect(vaccine.status, await vaccine.clone().text()).toBe(201);
     await api(`/api/animals/${code}/deactivate`, { reason: 'Archivar ficha anterior' });
-    const created = await api('/api/animals', { ...input(code), reuseInactiveAnimalId: old.id });
+    const created = await api('/api/animals', input(code));
     expect(created.status, await created.clone().text()).toBe(201);
     const archivedCode = `${code}-ARCH-${old.id}`;
     const freshHealth = await api(`/api/health/events?animalCode=${code}`);
@@ -127,7 +121,7 @@ describe('Reutilización confirmada de códigos de animales', () => {
     await api(`/api/animals/${code}/deactivate`, { reason: 'Archivar' });
     await db.prepare("CREATE TRIGGER reuse_test_abort BEFORE INSERT ON animals WHEN NEW.code='ROLLBACK-REUSE' BEGIN SELECT RAISE(ABORT,'Fallo simulado del alta'); END").run();
     try {
-      const response = await api('/api/animals', { ...input(code), reuseInactiveAnimalId: old.id });
+      const response = await api('/api/animals', input(code));
       expect(response.ok).toBe(false);
       expect(await db.prepare('SELECT code FROM animals WHERE id=?').bind(old.id).first()).toEqual({ code });
       expect(await db.prepare('SELECT tag,is_current FROM animal_tags WHERE animal_id=?').bind(old.id).all()).toMatchObject({ results: [{ tag: code, is_current: 1 }] });
