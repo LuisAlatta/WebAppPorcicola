@@ -13,6 +13,7 @@ import {
 } from './icons';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
 import { errorMessage } from '../utils/format';
+import { projectedDate } from '../utils/reproduction';
 import { DataState } from './DataState';
 import { ModalDialog } from './ModalDialog';
 import { ModuleTabs } from './ModuleTabs';
@@ -107,6 +108,8 @@ interface Cycle {
   femalePresent: boolean;
   serviceAnchorDate: string | null;
   gestationDays: number;
+  heatRepeatDays: number;
+  probableHeatRepeatDate: string | null;
   probableFarrowingDate: string;
   dueDateSource: string;
   dueDateReason: string | null;
@@ -138,6 +141,8 @@ interface LitterTarget {
 }
 
 interface FormState {
+  heatRepeatDays: string;
+  gestationDays: string;
   femaleCode: string;
   serviceDate: string;
   serviceType: string;
@@ -153,6 +158,8 @@ interface FormState {
 }
 
 const initialForm = (): FormState => ({
+  heatRepeatDays: '21',
+  gestationDays: '114',
   femaleCode: '',
   serviceDate: farmToday(),
   serviceType: 'inseminacion_artificial',
@@ -207,6 +214,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     setStatus('pending');
   };
   const [busy, setBusy] = useState(false);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -277,10 +285,10 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     if (status !== 'all') params.set('status', status);
 
     const [cycleRes, targetLittersRes, femaleRes, sireRes] = await Promise.all([
-      fetch(`/api/reproduction/cycles?${params.toString()}`),
-      fetch('/api/reproduction/litters/targets'),
-      fetch('/api/animals?sex=hembra&status=activo&limit=500'),
-      fetch('/api/animals?type=verraco&status=activo&limit=500'),
+      fetch(`/api/reproduction/cycles?${params.toString()}`, { signal: AbortSignal.timeout(30000) }),
+      fetch('/api/reproduction/litters/targets', { signal: AbortSignal.timeout(30000) }),
+      fetch('/api/animals?sex=hembra&status=activo&limit=500', { signal: AbortSignal.timeout(30000) }),
+      fetch('/api/animals?type=verraco&status=activo&limit=500', { signal: AbortSignal.timeout(30000) }),
     ]);
 
     const cycleBody = (await cycleRes.json()) as { error?: string; cycles?: Cycle[] };
@@ -334,6 +342,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
 
   const submitCycle = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (busy || soloLectura) return;
     setError(null);
     setNotice(null);
     setBusy(true);
@@ -341,32 +350,38 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       const path = isAntecedent ? '/api/reproduction/antecedents' : '/api/reproduction/cycles';
       const payload = {
         ...form,
+        serviceType: 'inseminacion_artificial',
+        sireBreed: form.materialSource === 'internal' ? sires.find(sire => sire.code === form.sireCode)?.breed ?? '' : form.sireBreed,
         serviceDate: form.serviceDate,
         dueDate: form.dueDate || undefined,
         lastFarrowingDate: form.lastFarrowingDate || undefined,
         operationKey,
         ...(isAntecedent ? { gestationDays: undefined } : {}),
       };
-      const res = await fetch(path, {
+      const res = await fetchOperation(path, {
         method: 'POST',
+        signal: AbortSignal.timeout(30000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const body = (await res.json()) as { error?: string; replayed?: boolean };
+      const body = (await res.json()) as { error?: string; replayed?: boolean; cycles?: Cycle[] };
       if (!res.ok) {
         setError(body.error ?? 'No se pudo guardar el ciclo.');
         return;
       }
-      setNotice(
+      setSavedMessage(
         body.replayed
           ? 'Operación ya registrada; se recuperó el ciclo guardado.'
           : isAntecedent
           ? 'Antecedente gestante registrado sin crear servicios ficticios.'
-          : 'Ciclo reproductivo abierto.'
+           : 'Inseminación guardada. Las fechas probables quedaron registradas en el ciclo.'
       );
       setForm(initialForm());
       setOperationKey(newOperationKey('rep-ciclo'));
-      await load();
+      if (body.cycles) setCycles(body.cycles);
+      setFrom('');
+      setTo('');
+      setStatus('pending');
       setSection('ciclos');
     } catch {
       setError('No se pudo confirmar el registro. Puede reintentar con el mismo formulario.');
@@ -376,6 +391,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
   };
 
   const recordEvent = async (cycle: Cycle, eventType: string, physiologicalStatus?: string, suppliedReason = '') => {
+    if (busy || soloLectura) return;
     const eventDate = farmToday();
     const reason = suppliedReason.trim();
     if ((eventType === 'abortion' || eventType === 'closed') && !reason) return;
@@ -385,12 +401,13 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/reproduction/cycles/${encodeURIComponent(cycle.id)}/events`, {
+      const res = await fetchOperation(`/api/reproduction/cycles/${encodeURIComponent(cycle.id)}/events`, {
+        signal: AbortSignal.timeout(30000),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventType, eventDate, physiologicalStatus, reason, operationKey: opKey }),
       });
-      const body = (await res.json()) as { error?: string };
+      const body = (await res.json()) as { error?: string; cycle?: Cycle };
       if (!res.ok) {
         setError(body.error ?? 'No se pudo registrar el evento.');
         return;
@@ -398,7 +415,12 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       setEventKeys((previous) => ({ ...previous, [keyId]: newOperationKey('rep-event') }));
       if (eventType === 'abortion' || eventType === 'closed') setClosureForm(null);
       setNotice(eventType === 'abortion' ? 'Aborto registrado; el ciclo se retiró de pendientes.' : 'Evento reproductivo registrado.');
-      await load();
+      if (body.cycle) {
+        const updated = body.cycle;
+        setCycles(previous => previous.map(item => item.id === updated.id ? updated : item)
+          .filter(item => status !== 'pending' || (item.cycleStatus === 'open' && ['possible_pregnancy', 'gestation'].includes(item.reproductiveStatus))));
+      }
+      setSavedMessage(eventType === 'pregnancy_confirmed' ? 'Preñez confirmada. La repetición de celo queda como referencia histórica.' : 'Evento reproductivo guardado.');
     } catch {
       setError('No se pudo confirmar el evento.');
     } finally {
@@ -416,14 +438,15 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     try {
       const payload = {
         serviceDate: data.get('serviceDate'),
-        serviceType: data.get('serviceType'),
+        serviceType: 'inseminacion_artificial',
         materialSource: data.get('materialSource'),
         sireCode: data.get('sireCode'),
         externalSource: data.get('externalSource'),
         observations: data.get('observations'),
         operationKey: opKey,
       };
-      const res = await fetch(`/api/reproduction/cycles/${encodeURIComponent(cycle.id)}/services`, {
+      const res = await fetchOperation(`/api/reproduction/cycles/${encodeURIComponent(cycle.id)}/services`, {
+        signal: AbortSignal.timeout(30000),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -453,6 +476,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     setManualKeys((previous) => ({ ...previous, [cycle.id]: opKey }));
     try {
       const res = await fetch(`/api/reproduction/cycles/${encodeURIComponent(cycle.id)}`, {
+        signal: AbortSignal.timeout(30000),
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -487,6 +511,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     setFarrowingKeys((previous) => ({ ...previous, [cycle.id]: opKey }));
     try {
       const response = await fetch(`/api/reproduction/cycles/${encodeURIComponent(cycle.id)}/farrowing`, {
+        signal: AbortSignal.timeout(30000),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -539,6 +564,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     setPostweaningKeys((previous) => ({ ...previous, [cycle.id]: opKey }));
     try {
       const response = await fetch(`/api/reproduction/cycles/${encodeURIComponent(cycle.id)}/postweaning`, {
+        signal: AbortSignal.timeout(30000),
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -580,6 +606,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     setLitterEventKeys((previous) => ({ ...previous, [keyId]: opKey }));
     try {
       const response = await fetch(`/api/reproduction/litters/${encodeURIComponent(cycle.litter!.id)}/events`, {
+        signal: AbortSignal.timeout(30000),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -630,6 +657,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     try {
       const { litterId, farrowingDate, expectedCurrentDate, reason, operationKey: opKey } = dateCorrection;
       const response = await fetchOperation(`/api/reproduction/litters/${encodeURIComponent(litterId)}/date-correction`, {
+        signal: AbortSignal.timeout(30000),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ farrowingDate, expectedCurrentDate, reason, operationKey: opKey }),
@@ -666,6 +694,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     try {
       const values = Object.fromEntries(birthCountFields.map((field) => [field.key, Number(countCorrection.values[field.key])]));
       const response = await fetchOperation(`/api/reproduction/litters/${encodeURIComponent(countCorrection.litterId)}/correction`, {
+        signal: AbortSignal.timeout(30000),
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -698,7 +727,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     <section className="reproduction-page">
       <PageHeader
         title="Reproducción"
-        subtitle="Ciclos reproductivos de marranas, servicios de monta o inseminación, confirmación de gestación y seguimiento de camadas."
+        subtitle="Inseminaciones artificiales, confirmación de preñez y seguimiento de camadas."
         actions={
           <button
             type="button"
@@ -719,6 +748,25 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         <InlineAlert tone="error" onDismiss={() => setError(null)}>{error}</InlineAlert>
       )}
       {notice && <InlineAlert tone="success" autoDismissMs={6000} onDismiss={() => setNotice(null)}>{notice}</InlineAlert>}
+      {savedMessage && (
+        <ModalDialog labelledBy="reproduction-saved-title" placement="center" onDismiss={() => setSavedMessage(null)}>
+          <div className="reproduction-feedback">
+            <IconCheck size={32} className="text-success" />
+            <h2 id="reproduction-saved-title">Guardado exitoso</h2>
+            <p>{savedMessage}</p>
+            <button type="button" className="btn btn-primary" onClick={() => setSavedMessage(null)}>Ver ciclos</button>
+          </div>
+        </ModalDialog>
+      )}
+      {busy && (
+        <ModalDialog labelledBy="reproduction-saving-title" placement="center" dismissDisabled onDismiss={() => {}}>
+          <div className="reproduction-feedback" role="status" aria-live="polite">
+            <span className="reproduction-spinner" aria-hidden="true" />
+            <h2 id="reproduction-saving-title">Guardando…</h2>
+            <p>Estamos confirmando el registro. No cierre la pantalla.</p>
+          </div>
+        </ModalDialog>
+      )}
 
       <ModuleTabs
         label="Secciones del módulo reproductivo"
@@ -736,7 +784,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       {section === 'registro' && !soloLectura && (
         <SectionCard
           className="mb-4"
-          title={isAntecedent ? 'Ingreso de marrana gestante (antecedente)' : 'Registrar servicio de monta / inseminación'}
+          title={isAntecedent ? 'Ingreso de marrana gestante (antecedente)' : 'Registrar inseminación artificial'}
           subtitle={isAntecedent
             ? 'Registra preñez confirmada o adquirida sin requerir servicio previo en el sistema.'
             : 'Abre un nuevo ciclo reproductivo vinculando a la marrana y el macho o material genético.'}
@@ -793,19 +841,14 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
               </FormField>
 
               {!isAntecedent && (
-                <FormField label="Tipo de servicio">
-                  <select
-                    className="form-select"
-                    value={form.serviceType}
-                    onChange={(e) => setForm((prev) => ({ ...prev, serviceType: e.target.value }))}
-                  >
-                    {Object.entries(serviceLabels).map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
+                <>
+                  <FormField label="Repetición de celo (días)" helper="Se recomiendan 21 días desde la inseminación; puede modificarlos.">
+                    <input className="form-input" type="number" min="1" max="120" step="1" required value={form.heatRepeatDays} onChange={e => setForm(prev => ({ ...prev, heatRepeatDays: e.target.value }))} />
+                  </FormField>
+                  <FormField label="Fecha probable de repetición de celo">
+                    <input className="form-input" type="date" readOnly value={projectedDate(form.serviceDate, form.heatRepeatDays)} />
+                  </FormField>
+                </>
               )}
             </div>
             </fieldset>
@@ -819,7 +862,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     className="form-select"
                     value={form.materialSource}
                     onChange={(e) =>
-                      setForm((prev) => ({ ...prev, materialSource: e.target.value as FormState['materialSource'] }))
+                      setForm((prev) => ({ ...prev, materialSource: e.target.value as FormState['materialSource'], sireCode: '', sireBreed: '', externalSource: '' }))
                     }
                   >
                     <option value="internal">Verraco de la granja</option>
@@ -833,7 +876,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       className="form-select"
                       required
                       value={form.sireCode}
-                      onChange={(e) => setForm((prev) => ({ ...prev, sireCode: e.target.value }))}
+                      onChange={(e) => setForm((prev) => ({ ...prev, sireCode: e.target.value, sireBreed: sires.find(sire => sire.code === e.target.value)?.breed ?? '' }))}
                     >
                       <option value="">Seleccione</option>
                       {sires.map((animal) => (
@@ -859,7 +902,9 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 <FormField label="Raza del padre/material">
                   <input
                     className="form-input"
-                    value={form.sireBreed}
+                    value={form.materialSource === 'internal' ? sires.find(sire => sire.code === form.sireCode)?.breed ?? '' : form.sireBreed}
+                    readOnly={form.materialSource === 'internal'}
+                    placeholder={form.materialSource === 'internal' ? 'Raza del verraco seleccionado' : ''}
                     onChange={(e) => setForm((prev) => ({ ...prev, sireBreed: e.target.value }))}
                     maxLength={80}
                   />
@@ -871,6 +916,14 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
             <fieldset className="form-section">
               <legend>Parto y antecedentes</legend>
             <div className="grid-3">
+              {!isAntecedent && <>
+                <FormField label="Días hasta el parto" helper="Se suman a la fecha de inseminación.">
+                  <input className="form-input" type="number" min="1" max="150" step="1" required value={form.gestationDays} onChange={e => setForm(prev => ({ ...prev, gestationDays: e.target.value }))} />
+                </FormField>
+                <FormField label="Fecha probable de parto calculada">
+                  <input className="form-input" type="date" readOnly value={projectedDate(form.serviceDate, form.gestationDays)} />
+                </FormField>
+              </>}
               <FormField label={isAntecedent ? 'Fecha probable de parto' : 'Fecha probable manual (opcional)'}>
                 <input
                   type="date"
@@ -1105,11 +1158,21 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
 
                 <DataCardMeta items={[
                   { label: 'Servicio', value: cycle.serviceAnchorDate ?? 'Sin registrar', className: 'font-mono tabular-nums' },
+                  { label: 'Fecha probable de repetición de celo', value: cycle.probableHeatRepeatDate ?? 'No aplica a antecedente', className: 'font-mono tabular-nums' },
                   { label: 'Parto probable', value: cycle.probableFarrowingDate, className: 'font-mono tabular-nums' },
                   { label: 'Fuente de fecha', value: cycle.dueDateSource === 'manual' ? 'Manual' : `${cycle.gestationDays} días de gestación` },
                   { label: 'Parto real', value: cycle.litter?.farrowingDate ?? cycle.lastFarrowingDate ?? 'Sin registrar', className: 'font-mono tabular-nums' },
                   { label: 'Camada', value: cycle.litter ? `${cycle.litter.femaleAlive + cycle.litter.maleAlive + cycle.litter.unsexedAlive} lechones vivos` : 'Sin camada abierta', className: 'font-mono tabular-nums' },
                 ]} />
+                {cycle.serviceAnchorDate && <p className="reproduction-heat-note" role="status">
+                  {cycle.reproductiveStatus === 'gestation'
+                    ? 'Preñez confirmada: la fecha de repetición es solo una referencia histórica; no se espera retorno al celo.'
+                    : cycle.cycleStatus !== 'open'
+                    ? 'Ciclo cerrado: no hay revisión de celo pendiente.'
+                    : cycle.reproductiveStatus === 'empty'
+                    ? 'Sin preñez: revise el celo y registre una nueva inseminación cuando corresponda.'
+                    : `Revisar retorno al celo a los ${cycle.heatRepeatDays ?? 21} días. La ausencia de celo no confirma por sí sola la preñez.`}
+                </p>}
 
                 {cycle.dueDateReason && (
                   <p className="text-xs text-muted italic mt-2">
@@ -1156,7 +1219,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           <span className="timeline-dot" aria-hidden="true" />
                           <div className="timeline-body">
                             <div className="timeline-head">
-                              <span className="timeline-title">{entry.eventType}</span>
+                              <span className="timeline-title">{{ pregnancy_confirmed: 'Preñez confirmada', palpation: 'Revisión de preñez', repeat: 'Nueva inseminación', manual_due_date: 'Ajuste de fecha probable', abortion: 'Aborto', closed: 'Cierre del ciclo' }[entry.eventType] ?? entry.eventType}</span>
                               <span className="timeline-date font-mono tabular-nums">{entry.eventDate}</span>
                             </div>
                             <div className="timeline-meta">
@@ -1711,7 +1774,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 {/* Barra de Acciones del Ciclo Abierto */}
                 {!soloLectura && cycle.cycleStatus === 'open' && (
                   <div className="form-actions mt-3 pt-2.5 border-t border-subtle flex-wrap items-center gap-2">
-                    <div className="inline-flex items-center gap-1.5 text-xs">
+                    <div className="reproduction-palpation inline-flex items-center gap-1.5 text-xs">
                       <span className="text-muted font-medium">Palpación:</span>
                       <select
                         className="form-select form-select-sm"
@@ -1724,7 +1787,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       >
                         <option value="">Registrar estado…</option>
                         {Object.entries(statusLabels)
-                          .filter(([key]) => key !== 'abortion')
+                          .filter(([key]) => key !== 'abortion' && key !== 'lactation')
                           .map(([key, label]) => (
                             <option key={key} value={key}>
                               {label}
@@ -1737,6 +1800,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       type="button"
                       className="btn btn-outline btn-sm"
                       aria-label={`Confirmar preñez y gestación para ${cycle.femaleCode}`}
+                      disabled={busy || cycle.reproductiveStatus === 'gestation'}
                       onClick={() => void recordEvent(cycle, 'pregnancy_confirmed', 'gestation')}
                     >
                       <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -1980,13 +2044,6 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           max={farmToday()}
                           required
                         />
-                      </FormField>
-                      <FormField label="Tipo" labelClassName="text-xs">
-                        <select name="serviceType" className="form-select">
-                          <option value="inseminacion_artificial">Inseminación artificial</option>
-                          <option value="monta_natural">Monta natural</option>
-                          <option value="transferencia_embriones">Transferencia de embriones</option>
-                        </select>
                       </FormField>
                       <FormField label="Origen" labelClassName="text-xs">
                         <select name="materialSource" className="form-select">

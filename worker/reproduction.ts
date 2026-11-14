@@ -10,7 +10,7 @@ export type LitterTarget = { litterId: string; motherCode: string; barnName: str
 type ServiceInput = {
   femaleCode?: unknown; serviceDate?: unknown; serviceType?: unknown; sireCode?: unknown;
   sireBreed?: unknown; materialSource?: unknown; externalSource?: unknown; aptitude?: unknown;
-  dueDate?: unknown; dueDateReason?: unknown; lastFarrowingDate?: unknown; observations?: unknown; operationKey?: string;
+  dueDate?: unknown; dueDateReason?: unknown; heatRepeatDays?: unknown; gestationDays?: unknown; lastFarrowingDate?: unknown; observations?: unknown; operationKey?: string;
 };
 type EventInput = { eventType?: unknown; eventDate?: unknown; physiologicalStatus?: unknown;
   serviceId?: unknown; reason?: unknown; observations?: unknown; operationKey?: string };
@@ -18,6 +18,12 @@ type EventInput = { eventType?: unknown; eventDate?: unknown; physiologicalStatu
 const SERVICE_TYPES = ['monta_natural', 'inseminacion_artificial', 'transferencia_embriones'];
 const PHYSIOLOGICAL_STATES = ['empty', 'possible_pregnancy', 'gestation', 'abortion'];
 const DAY_MS = 86400000;
+
+function intervalDays(value: unknown, fallback: number, max: number, label: string): number {
+  const days = value === undefined ? fallback : Number(value);
+  if (!Number.isInteger(days) || days < 1 || days > max) throw new ApiError(400, `${label} debe ser un entero entre 1 y ${max} días`);
+  return days;
+}
 
 function date(value: unknown, field: string): string {
   if (!isValidDateString(value)) throw new ApiError(400, `${field} inválida: use AAAA-MM-DD`);
@@ -140,6 +146,8 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
       cycleNumber: Number(row.cycle_number), cycleStatus: String(row.cycle_status), reproductiveStatus,
       femalePresent:row.female_status === 'activo' && Number(row.female_is_active) === 1 && row.female_exit_date === null,
       serviceAnchorDate: row.service_anchor_date === null ? null : String(row.service_anchor_date), gestationDays: Number(row.gestation_days),
+      heatRepeatDays: Number(row.heat_repeat_days),
+      probableHeatRepeatDate: row.service_anchor_date === null ? null : addDays(String(row.service_anchor_date), Number(row.heat_repeat_days)),
       probableFarrowingDate: String(row.probable_farrowing_date), dueDateSource: String(row.due_date_source), dueDateReason: row.due_date_reason === null ? null : String(row.due_date_reason),
       daysRemaining: remainingDays, dueLabel: row.cycle_status !== 'open' ? 'cerrado' : reproductiveStatus === 'empty' ? 'sin gestación' : remainingDays < 0 ? 'vencido' : remainingDays === 0 ? 'previsto hoy' : 'próximo',
       barnId: Number(row.barn_id), barnName: String(row.barn_name), locationCode: row.location_code === null ? null : String(row.location_code), lotCode: row.lot_code === null ? null : String(row.lot_code),
@@ -207,14 +215,15 @@ export async function createReproductionCycle(db: D1Database, actorUserId: numbe
     if (!sire || sire.sex !== 'macho' || sire.animal_type !== 'verraco') throw new ApiError(400, 'El reproductor interno debe ser un verraco existente');
     sireBarnId=await assertSireAccess(db, sire, serviceDate, scope);
   }
-  const gestationDays = await getGestationDays(db, serviceDate);
+  const gestationDays = intervalDays(input.gestationDays, await getGestationDays(db, serviceDate), 150, 'Duración de gestación');
+  const heatRepeatDays = intervalDays(input.heatRepeatDays, 21, 120, 'Repetición de celo');
   const suppliedDue = input.dueDate ? date(input.dueDate, 'Fecha probable de parto') : null;
   if (suppliedDue && suppliedDue < serviceDate) throw new ApiError(400, 'La fecha probable de parto no puede preceder al servicio');
   const dueDate = suppliedDue ?? addDays(serviceDate, gestationDays);
   const dueDateSource = suppliedDue ? 'manual' : 'calculated';
   const dueDateReason = suppliedDue ? optionalText(input.dueDateReason, 'Motivo de fecha manual', 300) : null;
   if (suppliedDue && !dueDateReason) throw new ApiError(400, 'Indique el motivo de la fecha probable manual');
-  const sireBreed = optionalText(input.sireBreed ?? sire?.breed, 'Raza del padre', 80);
+  const sireBreed = optionalText(sire ? sire.breed : input.sireBreed, 'Raza del padre', 80);
   const aptitude = optionalText(input.aptitude ?? context.female.aptitude, 'Aptitud', 60);
   const priorFarrowing = input.lastFarrowingDate ? null : await db.prepare(`SELECT MAX(last_farrowing_date) AS date FROM reproduction_cycles
     WHERE female_animal_id=? AND last_farrowing_date IS NOT NULL`).bind(context.female.id).first<{ date: string | null }>();
@@ -225,7 +234,7 @@ export async function createReproductionCycle(db: D1Database, actorUserId: numbe
   const cycleNumber = Number(previous?.n ?? 0) + 1;
   const id = crypto.randomUUID();
   const payload = { femaleCode, serviceDate, serviceType, sireCode, sireBreed, materialSource: source, externalSource, aptitude,
-    gestationDays, dueDate, dueDateSource, dueDateReason, lastFarrowing, observations, barnId: context.barnId };
+    gestationDays, heatRepeatDays, dueDate, dueDateSource, dueDateReason, lastFarrowing, observations, barnId: context.barnId };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) {
     const cycles = await listReproductionCycles(db, {}, scope);
@@ -240,10 +249,10 @@ export async function createReproductionCycle(db: D1Database, actorUserId: numbe
       AND NOT EXISTS(SELECT 1 FROM litters WHERE female_animal_id=? AND farrowing_date>?) THEN 0 ELSE -1 END`)
     .bind(context.female.id,serviceDate,context.female.id,serviceDate),db.prepare(`INSERT INTO reproduction_cycles
     (id,female_animal_id,cycle_number,cycle_status,reproductive_status,cycle_opened_on,service_anchor_date,gestation_days,probable_farrowing_date,due_date_source,due_date_reason,
-     barn_id,location_code,lot_code,female_breed_snapshot,aptitude,last_farrowing_date,observations,created_by_user_id,created_at,updated_at)
-    VALUES (?,?,?,'open','possible_pregnancy',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      barn_id,location_code,lot_code,female_breed_snapshot,aptitude,last_farrowing_date,observations,created_by_user_id,created_at,updated_at,heat_repeat_days)
+     VALUES (?,?,?,'open','possible_pregnancy',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .bind(id, context.female.id, cycleNumber, serviceDate, serviceDate, gestationDays, dueDate, dueDateSource, dueDateReason, context.barnId, context.locationCode, context.lotCode,
-      context.female.breed ?? null, aptitude, lastFarrowing, observations, actorUserId, claim.recordedAt, claim.recordedAt),
+       context.female.breed ?? null, aptitude, lastFarrowing, observations, actorUserId, claim.recordedAt, claim.recordedAt, heatRepeatDays),
   db.prepare(`INSERT INTO reproduction_services (cycle_id,service_number,service_date,service_type,sire_animal_id,sire_code_snapshot,sire_breed_snapshot,material_source,external_source,aptitude,observations,created_by_user_id,created_at)
     VALUES (?,1,?,?,?,?,?,?,?,?,?,?,?)`).bind(id, serviceDate, serviceType, sire?.id ?? null, sire?.code ?? (source === 'external' ? externalSource : null), sireBreed,
       source, externalSource, aptitude, observations, actorUserId, claim.recordedAt)];
@@ -280,7 +289,7 @@ export async function addReproductionService(db: D1Database, actorUserId: number
   const days = Number(cycle.gestation_days);
   const due = addDays(serviceDate, days);
   const observations = optionalText(input.observations, 'Observaciones', 1000);
-  const sireBreed = optionalText(input.sireBreed ?? sire?.breed, 'Raza del padre', 80);
+  const sireBreed = optionalText(sire ? sire.breed : input.sireBreed, 'Raza del padre', 80);
   const aptitude = optionalText(input.aptitude ?? context.female.aptitude, 'Aptitud', 60);
   const payload = { cycleId, serviceDate, serviceType, source, external, sireCode, sireBreed, aptitude, due, observations };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
