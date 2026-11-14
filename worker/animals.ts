@@ -565,6 +565,11 @@ async function fetchAnimalRow(
   const scope = scopeSql(barnIds, 'a.barn_id');
   const asOf = today();
 
+  if (/^id:\d+$/.test(key)) {
+    return db.prepare(`${selectFrom()} WHERE a.id = ?${scope.sql}`)
+      .bind(asOf, Number(key.slice(3)), ...scope.params).first<Row>();
+  }
+
   const byCode = await db.prepare(`
     ${selectFrom()}
     WHERE a.code = ?${scope.sql}
@@ -857,6 +862,7 @@ export async function getAnimal(
 
 export interface CreateAnimalInput {
   code?: string;
+  reuseInactiveAnimalId?: number;
   alias?: string | null;
   animalType?: string;
   sex?: string;
@@ -1033,6 +1039,12 @@ function litterIdentificationTimelineGuard(db:D1Database,litterId:string,sex:str
     ) THEN 0 ELSE -1 END`).bind(entryDate,litterId,entryDate,sex,entryDate,litterId,litterId,litterId,litterId,litterId,sex,sex,litterId,litterId,litterId,litterId,litterId,litterId);
 }
 
+export class InactiveAnimalCodeError extends ApiError {
+  constructor(public inactiveAnimal: { id: number; code: string; alias: string | null; barnName: string; archivedCode: string; canReactivate: boolean }) {
+    super(409, `El código ${inactiveAnimal.code} pertenece a una ficha inactiva. Recupere la ficha o confirme el registro de otro animal.`);
+  }
+}
+
 /** Alta de ficha individual con una sola entrada al inventario. */
 export async function createAnimal(
   db: D1Database,
@@ -1042,6 +1054,11 @@ export async function createAnimal(
 ): Promise<{ animal: AnimalDetail; replayed: boolean }> {
   const code = requireText(input.code, 'Código del animal', 40);
   if (/\s/.test(code)) throw new ApiError(400, 'El código no puede contener espacios');
+  if (code.startsWith('id:')) throw new ApiError(400, 'El prefijo id: está reservado para referencias internas');
+  const reuseId = input.reuseInactiveAnimalId;
+  if (reuseId !== undefined && (!Number.isSafeInteger(reuseId) || reuseId <= 0)) {
+    throw new ApiError(400, 'La confirmación de reutilización del código no es válida');
+  }
 
   const animalType = String(input.animalType ?? '') as AnimalType;
   if (!ANIMAL_TYPES.includes(animalType)) throw new ApiError(400, 'Tipo de animal inválido');
@@ -1108,6 +1125,7 @@ export async function createAnimal(
 
   const payload = {
     code,
+    ...(reuseId !== undefined ? { reuseInactiveAnimalId: reuseId } : {}),
     alias,
     animalType,
     sex,
@@ -1135,8 +1153,8 @@ export async function createAnimal(
 
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) {
-    const stored = replay.result as { code?: string } | null;
-    const animal = await getAnimal(db, stored?.code ?? code, scope);
+    const stored = replay.result as { animalId?: number; code?: string } | null;
+    const animal = await getAnimal(db, stored?.animalId ? `id:${stored.animalId}` : stored?.code ?? code, scope);
     return { animal, replayed: true };
   }
 
@@ -1159,8 +1177,30 @@ export async function createAnimal(
     throw new ApiError(400, 'La aptitud no está vigente en la fecha de ingreso');
   }
 
-  const duplicate = await db.prepare('SELECT id FROM animals WHERE code = ?').bind(code).first();
-  if (duplicate) throw new ApiError(409, `Ya existe un animal con el código ${code}`);
+  const duplicate = await db.prepare(`SELECT a.id,a.is_active,a.barn_id,a.alias,a.exit_date,a.status,a.updated_at,b.name AS barn_name
+    FROM animals a JOIN barns b ON b.id=a.barn_id WHERE a.code=?`).bind(code)
+    .first<{id:number;is_active:number;barn_id:number;alias:string|null;exit_date:string|null;status:string;updated_at:string;barn_name:string}>();
+  const archivedCode = duplicate ? `${code.slice(0, 22)}-ARCH-${duplicate.id}` : '';
+  if (duplicate) {
+    if (Number(duplicate.is_active) === 1 || (barnIds !== null && !barnIds.includes(Number(duplicate.barn_id)))) {
+      throw new ApiError(409, `Ya existe un animal con el código ${code}. Revise las fichas y los galpones autorizados.`);
+    }
+    if (reuseId !== Number(duplicate.id)) {
+      throw new InactiveAnimalCodeError({ id: Number(duplicate.id), code, alias: duplicate.alias, barnName: duplicate.barn_name,
+        archivedCode, canReactivate: duplicate.exit_date === null && duplicate.status === 'activo' });
+    }
+    if (await db.prepare('SELECT id FROM animals WHERE code=? UNION ALL SELECT animal_id FROM animal_tags WHERE tag=? AND is_current=1').bind(archivedCode, archivedCode).first()) {
+      throw new ApiError(409, 'La referencia de archivo ya está ocupada; contacte al administrador antes de reutilizar este código');
+    }
+    const laterTag = await db.prepare('SELECT id FROM animal_tags WHERE animal_id=? AND is_current=1 AND valid_from>?').bind(reuseId, entryDate).first();
+    if (laterTag) throw new ApiError(409, 'La fecha de ingreso no puede preceder al último arete de la ficha anterior');
+  } else if (reuseId !== undefined) {
+    throw new ApiError(409, 'La ficha anterior cambió; revise el código antes de confirmar');
+  }
+  const occupiedTag = await db.prepare('SELECT animal_id FROM animal_tags WHERE tag=? AND is_current=1').bind(code).first<{animal_id:number}>();
+  if (occupiedTag && Number(occupiedTag.animal_id) !== reuseId) {
+    throw new ApiError(409, `El arete ${code} ya está asignado a otro animal`);
+  }
 
   const mother = await resolveParent(db, motherId, motherExternal, 'madre', 'hembra', barnIds);
   const father = await resolveParent(db, fatherId, fatherExternal, 'padre', 'macho', barnIds);
@@ -1208,6 +1248,17 @@ export async function createAnimal(
   const createdAt = new Date().toISOString();
 
   const statements: D1PreparedStatement[] = [
+    ...(duplicate ? [
+      db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(
+        SELECT 1 FROM animals WHERE id=? AND code=? AND is_active=0 AND barn_id=? AND updated_at=?)
+        AND NOT EXISTS(SELECT 1 FROM animal_tags WHERE animal_id=? AND is_current=1 AND valid_from>?)
+        THEN 0 ELSE -1 END`).bind(reuseId, code, duplicate.barn_id, duplicate.updated_at, reuseId, entryDate),
+      db.prepare('UPDATE animals SET code=?,updated_at=? WHERE id=? AND code=? AND is_active=0').bind(archivedCode, createdAt, reuseId, code),
+      db.prepare('UPDATE animal_tags SET is_current=0,valid_to=? WHERE animal_id=? AND is_current=1').bind(entryDate, reuseId),
+      db.prepare(`INSERT INTO animal_tags(animal_id,tag,valid_from,is_current,created_by_user_id,created_at) VALUES(?,?,?,1,?,?)`).bind(reuseId, archivedCode, entryDate, actorUserId, createdAt),
+      db.prepare('UPDATE alert_occurrences SET animal_code=? WHERE animal_code=?').bind(archivedCode, code),
+      db.prepare('DELETE FROM inventory_write_guard'),
+    ] : []),
     db.prepare(`
       INSERT INTO animals (
         id, code, alias, animal_type, sex, breed, birth_date, birth_weight_kg,
@@ -1304,6 +1355,10 @@ export async function createAnimal(
     effectiveDate: entryDate,
     recordedAt: claim.recordedAt,
   }];
+  if (duplicate) audits.push({ entityType: 'animal', entityId: Number(duplicate.id), action: 'update', actorUserId,
+    barnId: Number(duplicate.barn_id), reason: `Reutilización confirmada del código ${code} para otro animal`,
+    previousData: { code, isActive: false }, newData: { code: archivedCode, isActive: false, replacedByAnimalId: animalId },
+    effectiveDate: entryDate, recordedAt: claim.recordedAt });
   if(financialEntryId!==null)audits.push({entityType:'financial_entry',entityId:financialEntryId,action:'create',actorUserId,barnId,reason,previousData:null,newData:{direction:'expense',category:'Compra de animal',animalCode:code,amountMinor:purchaseAmountMinor,currencyCode:purchaseCurrency,counterparty:purchaseCounterparty,reference:purchaseReference},effectiveDate:entryDate,recordedAt:claim.recordedAt});
 
   statements.push(db.prepare(`INSERT INTO animal_location_history
@@ -1339,7 +1394,7 @@ export async function createAnimal(
   if(originType==='interna'){statements.unshift(unidentifiedHeadGuard(db,barnId,locationCode,lotCode,stageCode,sex,entryDate));statements.push(db.prepare('DELETE FROM litter_identification_guard'));}
 
   if(locationGuard){statements.unshift(locationGuard);statements.push(db.prepare('DELETE FROM inventory_write_guard'));}
-  await commitOperation(db, claim, statements, audits).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La ubicación, la camada o su historial cambió; revise la fecha y las crías pendientes');throw error;});
+  await commitOperation(db, claim, statements, audits).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,reuseId !== undefined ? 'La ficha anterior, la ubicación o el inventario cambió; actualice antes de reutilizar el código' : 'La ubicación, la camada o su historial cambió; revise la fecha y las crías pendientes');throw error;});
 
   const animal = await getAnimal(db, code, scope);
   return { animal, replayed: false };
@@ -1479,7 +1534,8 @@ export async function updateAnimal(
 
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) {
-    return { animal: await getAnimal(db, key, scope), replayed: true };
+    const stored = replay.result as { animalId: number };
+    return { animal: await getAnimal(db, `id:${stored.animalId}`, scope), replayed: true };
   }
 
   if (!exitedCheck(row)) {
@@ -1633,7 +1689,8 @@ export async function changeTag(
   const payload = { key, tag, effectiveDate, reason };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) {
-    return { animal: await getAnimal(db, key, scope), replayed: true };
+    const stored = replay.result as { animalId: number };
+    return { animal: await getAnimal(db, `id:${stored.animalId}`, scope), replayed: true };
   }
 
   const barnIds = await resolveBarnScope(db, scope);
@@ -1744,7 +1801,7 @@ export async function registerAnimalWeight(db: D1Database, actorUserId: number, 
   const payload = { key, weighedOn, weighedTime, weightKg, stageCode, note, barnId: context.barnId,
     locationCode: context.locationCode, lotCode: context.lotCode };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
-  if (replay) return { animal: await getAnimal(db, key, scope), replayed: true };
+  if (replay) return { animal: await getAnimal(db, `id:${(replay.result as { animalId: number }).animalId}`, scope), replayed: true };
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'animal.weight',
     authorUserId: actorUserId, entityType: 'animal', entityId: Number(context.row.id), barnId: context.barnId,
     effectiveDate: weighedOn, payload, result: { animalId: Number(context.row.id), weighedOn, weighedTime, weightKg } });
@@ -2076,7 +2133,8 @@ export async function setAnimalAvailability(
 
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
   if (replay) {
-    return { animal: await getAnimal(db, key, scope), replayed: true };
+    const stored = replay.result as { animalId: number };
+    return { animal: await getAnimal(db, `id:${stored.animalId}`, scope), replayed: true };
   }
 
   const barnIds = await resolveBarnScope(db, scope);

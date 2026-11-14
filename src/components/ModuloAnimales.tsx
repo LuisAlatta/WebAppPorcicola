@@ -290,6 +290,10 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [inactiveCode, setInactiveCode] = useState<{ id: number; code: string; alias: string | null; barnName: string; archivedCode: string; canReactivate: boolean } | null>(null);
+  const [confirmedReuseId, setConfirmedReuseId] = useState<number | undefined>();
+  const [recoveryError, setRecoveryError] = useState('');
+  const [recoveryKey, setRecoveryKey] = useState(() => newOperationKey('ani-recover'));
   const [filters, setFilters] = useState<Filters>({
     q: '',
     type: '',
@@ -475,6 +479,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
 
   const setField = <K extends keyof AnimalForm>(key: K, value: AnimalForm[K]) => {
     setFormError(null);
+    if (key === 'code') setConfirmedReuseId(undefined);
     setForm((prev) => ({ ...prev, [key]: value, ...(key === 'barnId' ? {locationCode: ''} : {}) }));
     if (fieldErrors[key] || fieldErrors.mother || fieldErrors.father || fieldErrors.weaningDate) {
       setFieldErrors((prev) => {
@@ -576,6 +581,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   }, [initialAnimalKey, openDetail]);
 
   const startCreate = () => {
+    setConfirmedReuseId(undefined);
+    setInactiveCode(null);
     setEditingCode(null);
     setForm((prev) => ({
       ...emptyForm(),
@@ -589,6 +596,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   };
 
   const startEdit = (animal = detail) => {
+    setConfirmedReuseId(undefined);
+    setInactiveCode(null);
     const detail = animal;
     if (!detail) return;
     setEditingCode(detail.code);
@@ -645,8 +654,8 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     finally { setBusy(false); }
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleSubmit = async (event?: React.FormEvent, reuseId = confirmedReuseId) => {
+    event?.preventDefault();
     if (soloLectura || saving) return;
     pendingErrorFocus.current = true;
     setFormError(null);
@@ -720,6 +729,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       : {
         ...shared,
         code: form.code.trim(),
+        ...(reuseId !== undefined ? { reuseInactiveAnimalId: reuseId } : {}),
         originType: form.originType,
         originDetail: form.originDetail.trim() || null,
         purchaseAmount: form.originType==='compra'?form.purchaseAmount:undefined,
@@ -748,8 +758,16 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
         error?: string;
         replayed?: boolean;
         animal?: AnimalDetail;
+        inactiveAnimal?: NonNullable<typeof inactiveCode>;
       };
       if (!res.ok || !body.animal) {
+        if (!editingCode && res.status === 409 && body.inactiveAnimal) {
+          pendingErrorFocus.current = false;
+          setInactiveCode(body.inactiveAnimal);
+          setRecoveryError('');
+          setRecoveryKey(newOperationKey('ani-recover'));
+          return;
+        }
         const message = animalSaveError(body.error ?? 'No se pudo guardar la ficha.');
         const errorField = animalErrorField(body.error ?? message);
         const field = editingCode && errorField === 'sex' ? 'animalType' : errorField;
@@ -761,6 +779,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
       }
 
       setDetail(body.animal);
+      setConfirmedReuseId(undefined);
       setSavedNotice(body.replayed
         ? `Reintento confirmado: la ficha ${body.animal.code} ya estaba guardada y no se duplicó.`
         : editingCode
@@ -780,6 +799,30 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     } finally {
       setSaving(false);
     }
+  };
+
+  const recoverInactiveAnimal = async () => {
+    if (!inactiveCode || saving) return;
+    setSaving(true);
+    setRecoveryError('');
+    try {
+      const response = await fetchOperation(`/api/animals/${encodeURIComponent(`id:${inactiveCode.id}`)}/reactivate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Recuperación de ficha inactiva desde el registro de animal', operationKey: recoveryKey }),
+      });
+      const body = await response.json() as { error?: string; animal?: AnimalDetail };
+      if (!response.ok || !body.animal) throw new Error(body.error ?? 'No se pudo recuperar la ficha');
+      setDetail(body.animal);
+      setInactiveCode(null);
+      setConfirmedReuseId(undefined);
+      setFormError(null);
+      setFieldErrors({});
+      setSection('ficha');
+      setSavedNotice(`Se recuperó la ficha ${body.animal.code} con su historial original. No se creó otro animal ni se modificó el inventario.`);
+      await loadList();
+    } catch (error) {
+      setRecoveryError(errorMessage(error, 'No se pudo confirmar la recuperación. Reintente sin cerrar el diálogo.'));
+    } finally { setSaving(false); }
   };
 
   const handleTagChange = async (event: React.FormEvent) => {
@@ -968,6 +1011,33 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
 
   return (
     <div>
+      {inactiveCode && <ModalDialog labelledBy="animal-code-conflict-title" onDismiss={() => setInactiveCode(null)} dismissDisabled={saving}>
+        <div className="modal-form" aria-busy={saving}>
+          <header className="modal-header">
+            <div>
+              <h2 id="animal-code-conflict-title">El código {inactiveCode.code} tiene una ficha inactiva</h2>
+              <p className="text-sm text-muted">{inactiveCode.alias ?? 'Sin alias'} · {inactiveCode.barnName}</p>
+            </div>
+          </header>
+          <div className="modal-body">
+            <p>Si es el mismo animal, recupere su ficha para conservar su historial. Los datos de este formulario no reemplazarán los anteriores.</p>
+            {!inactiveCode.canReactivate && <InlineAlert tone="info">La ficha tiene una salida física y no puede reactivarse desde aquí. Una venta se devuelve desde su ficha original.</InlineAlert>}
+            <p>Si es otro animal, se registrará con el código {inactiveCode.code} y un historial independiente. La ficha anterior seguirá inactiva con la referencia {inactiveCode.archivedCode}; su arete original quedará en el historial.</p>
+            <p className="text-sm text-muted">Archivar la referencia no registra una salida ni descuenta inventario. El nuevo registro conserva las reglas de procedencia e inventario del formulario.</p>
+            {recoveryError && <InlineAlert tone="error">{recoveryError}</InlineAlert>}
+            {saving && <p role="status">Recuperando la ficha…</p>}
+            {inactiveCode.canReactivate && <button type="button" className="btn btn-outline" disabled={saving} onClick={() => void recoverInactiveAnimal()}>Recuperar ficha existente</button>}
+          </div>
+          <footer className="modal-actions">
+            <button type="button" className="btn btn-outline" disabled={saving} data-action="back" onClick={() => setInactiveCode(null)}>Cancelar</button>
+            <button type="button" className="btn btn-primary" disabled={saving} data-action="save" onClick={() => {
+              setConfirmedReuseId(inactiveCode.id);
+              setInactiveCode(null);
+              void handleSubmit(undefined, inactiveCode.id);
+            }}>Registrar otro animal</button>
+          </footer>
+        </div>
+      </ModalDialog>}
       {deleteTarget && <ModalDialog labelledBy="animal-delete-title" onDismiss={() => setDeleteTarget(null)} dismissDisabled={busy}>
         <form onSubmit={event => void handleDelete(event)} aria-busy={busy} className="modal-form">
           <header className="modal-header">
