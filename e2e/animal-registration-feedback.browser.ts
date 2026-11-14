@@ -95,13 +95,13 @@ for (const width of [320, 412, 1280]) {
   });
 }
 
-for (const recover of [false, true]) {
-  test(`código inactivo: ${recover ? 'recupera la ficha sin crear otro animal' : 'solo reutiliza tras confirmar'}`, async ({ page }) => {
+for (const width of [320, 412]) {
+  test(`registra código reutilizado sin diálogo intermedio a ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 915 });
     await openRegistration(page);
     await page.getByLabel('Código permanente', { exact: true }).fill('001');
     const creates: Record<string, unknown>[] = [];
-    const recoveries: Record<string, unknown>[] = [];
-    const animal = { id: recover ? 23 : 24, code: '001', currentTag: '001',
+    const animal = { id: 24, code: '001', currentTag: '001',
       isActive: true, status: 'activo', statusLabel: 'Activo', animalType: 'lechon', animalTypeLabel: 'Lechón',
       sex: 'pendiente', sexLabel: 'Pendiente', barnId: 1, barnName: 'Galpón A', stageName: 'Inicio',
       currentWeightKg: null, birthWeightKg: null, weaningWeightKg: null,
@@ -111,25 +111,13 @@ for (const recover of [false, true]) {
       if (route.request().method() !== 'POST') return route.fallback();
       const body = route.request().postDataJSON() as Record<string, unknown>;
       creates.push(body);
-      if (body.reuseInactiveAnimalId === 23) return route.fulfill({ status: 201, json: { animal } });
-      return route.fulfill({ status: 409, json: { error: 'El código pertenece a una ficha inactiva', inactiveAnimal: {
-        id: 23, code: '001', alias: 'Animal anterior', barnName: 'Galpón A', archivedCode: '001-ARCH-23', canReactivate: true,
-      } } });
-    });
-    await page.route('**/api/animals/id%3A23/reactivate', route => {
-      recoveries.push(route.request().postDataJSON() as Record<string, unknown>);
-      return route.fulfill({ json: { animal } });
+      return route.fulfill({ status: 201, json: { animal } });
     });
     await page.getByRole('button', { name: 'Registrar animal en el padrón', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'El código 001 tiene una ficha inactiva' });
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('001-ARCH-23');
-    expect(creates).toHaveLength(1);
-    expect(creates[0]).not.toHaveProperty('reuseInactiveAnimalId');
-    await dialog.getByRole('button', { name: recover ? 'Recuperar ficha existente' : 'Registrar otro animal', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Guardado con éxito', exact: true })).toBeVisible();
-    expect(creates).toHaveLength(recover ? 1 : 2);
-    expect(recoveries).toHaveLength(recover ? 1 : 0);
-    if (!recover) expect(creates[1]).toMatchObject({ code: '001', reuseInactiveAnimalId: 23, operationKey: creates[0].operationKey });
+    await expect(page.getByRole('dialog', { name: 'El código 001 tiene una ficha inactiva' })).toHaveCount(0);
+    expect(creates).toHaveLength(1);
+    expect(creates[0]).toMatchObject({ code: '001' });
+    expect(creates[0]).not.toHaveProperty('reuseInactiveAnimalId');
   });
 }

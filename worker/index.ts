@@ -65,7 +65,6 @@ import {
   listAnimals,
   getAnimal,
   createAnimal,
-  InactiveAnimalCodeError,
   updateAnimal,
   changeTag,
   setAnimalAvailability,
@@ -954,9 +953,7 @@ const worker = {
         return Response.json({ error: 'Ruta de animales no encontrada' }, { status: 404 });
       } catch (err) {
         const status = err instanceof ApiError ? err.status : 400;
-        return Response.json({ error: (err as Error).message || String(err),
-          ...(err instanceof InactiveAnimalCodeError ? { inactiveAnimal: err.inactiveAnimal } : {}),
-        }, { status });
+        return Response.json({ error: (err as Error).message || String(err) }, { status });
       }
     }
 

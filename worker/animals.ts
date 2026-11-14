@@ -1039,12 +1039,6 @@ function litterIdentificationTimelineGuard(db:D1Database,litterId:string,sex:str
     ) THEN 0 ELSE -1 END`).bind(entryDate,litterId,entryDate,sex,entryDate,litterId,litterId,litterId,litterId,litterId,sex,sex,litterId,litterId,litterId,litterId,litterId,litterId);
 }
 
-export class InactiveAnimalCodeError extends ApiError {
-  constructor(public inactiveAnimal: { id: number; code: string; alias: string | null; barnName: string; archivedCode: string; canReactivate: boolean }) {
-    super(409, `El código ${inactiveAnimal.code} pertenece a una ficha inactiva. Recupere la ficha o confirme el registro de otro animal.`);
-  }
-}
-
 /** Alta de ficha individual con una sola entrada al inventario. */
 export async function createAnimal(
   db: D1Database,
@@ -1055,7 +1049,7 @@ export async function createAnimal(
   const code = requireText(input.code, 'Código del animal', 40);
   if (/\s/.test(code)) throw new ApiError(400, 'El código no puede contener espacios');
   if (code.startsWith('id:')) throw new ApiError(400, 'El prefijo id: está reservado para referencias internas');
-  const reuseId = input.reuseInactiveAnimalId;
+  let reuseId = input.reuseInactiveAnimalId;
   if (reuseId !== undefined && (!Number.isSafeInteger(reuseId) || reuseId <= 0)) {
     throw new ApiError(400, 'La confirmación de reutilización del código no es válida');
   }
@@ -1185,10 +1179,10 @@ export async function createAnimal(
     if (Number(duplicate.is_active) === 1 || (barnIds !== null && !barnIds.includes(Number(duplicate.barn_id)))) {
       throw new ApiError(409, `Ya existe un animal con el código ${code}. Revise las fichas y los galpones autorizados.`);
     }
-    if (reuseId !== Number(duplicate.id)) {
-      throw new InactiveAnimalCodeError({ id: Number(duplicate.id), code, alias: duplicate.alias, barnName: duplicate.barn_name,
-        archivedCode, canReactivate: duplicate.exit_date === null && duplicate.status === 'activo' });
+    if (reuseId !== undefined && reuseId !== Number(duplicate.id)) {
+      throw new ApiError(409, 'La ficha anterior cambió; revise el código antes de registrar');
     }
+    reuseId = Number(duplicate.id);
     if (await db.prepare('SELECT id FROM animals WHERE code=? UNION ALL SELECT animal_id FROM animal_tags WHERE tag=? AND is_current=1').bind(archivedCode, archivedCode).first()) {
       throw new ApiError(409, 'La referencia de archivo ya está ocupada; contacte al administrador antes de reutilizar este código');
     }
@@ -1356,7 +1350,7 @@ export async function createAnimal(
     recordedAt: claim.recordedAt,
   }];
   if (duplicate) audits.push({ entityType: 'animal', entityId: Number(duplicate.id), action: 'update', actorUserId,
-    barnId: Number(duplicate.barn_id), reason: `Reutilización confirmada del código ${code} para otro animal`,
+    barnId: Number(duplicate.barn_id), reason: `Reutilización automática del código ${code} para otro animal`,
     previousData: { code, isActive: false }, newData: { code: archivedCode, isActive: false, replacedByAnimalId: animalId },
     effectiveDate: entryDate, recordedAt: claim.recordedAt });
   if(financialEntryId!==null)audits.push({entityType:'financial_entry',entityId:financialEntryId,action:'create',actorUserId,barnId,reason,previousData:null,newData:{direction:'expense',category:'Compra de animal',animalCode:code,amountMinor:purchaseAmountMinor,currencyCode:purchaseCurrency,counterparty:purchaseCounterparty,reference:purchaseReference},effectiveDate:entryDate,recordedAt:claim.recordedAt});
