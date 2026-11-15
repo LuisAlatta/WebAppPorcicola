@@ -1731,7 +1731,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     </select>
                   </FormField>
 
-                  <FormField label="Etapa de ingreso" htmlFor="ani-entry-stage" error={fieldErrors.entryStageCode} errorId="ani-entry-stage-error" helper="La etapa debe estar vigente en la fecha de ingreso. Si el ingreso es histórico, revise esa fecha y la vigencia de la etapa en Configuración.">
+                  <FormField label="Etapa de ingreso" htmlFor="ani-entry-stage" error={fieldErrors.entryStageCode} errorId="ani-entry-stage-error" helper="Seleccione la etapa al ingresar. Su vigencia no limita la fecha de ingreso ni impide registrar ingresos históricos.">
                     <select
                       id="ani-entry-stage"
                       className={`form-select ${fieldErrors.entryStageCode ? 'input-error' : ''}`}

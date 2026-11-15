@@ -62,4 +62,27 @@ describe('Etapa de ingreso sin restricción de vigencia', () => {
     expect(await response.json()).toMatchObject({ error: 'La etapa de ingreso no existe' });
     expect(await db.prepare("SELECT id FROM animals WHERE code='HIST-inexistente'").first()).toBeNull();
   });
+
+  it('acepta una etapa configurada aunque su vigencia sea futura o ya haya terminado', async () => {
+    for (const [code, from, to] of [['futura', '2099-01-01', null], ['retirada', '2000-01-01', '2001-01-01']] as const) {
+      await db.prepare('INSERT INTO stage_versions(code,name,sort_order,effective_from,effective_to,created_at) VALUES(?,?,99,?,?,?)')
+        .bind(code, code, from, to, new Date().toISOString()).run();
+      const response = await create(input(code));
+      expect(response.status, await response.clone().text()).toBe(201);
+    }
+  });
+
+  it('conserva las validaciones propias de las fechas y la protección de inventario interno', async () => {
+    for (const [changes, error] of [
+      [{ entryDate: '2099-01-01' }, 'La fecha de ingreso no puede ser futura'],
+      [{ birthDate: '2024-12-16' }, 'La fecha de nacimiento no puede ser posterior al ingreso'],
+      [{ weaningDate: '2024-11-14' }, 'La fecha de destete no puede ser anterior al nacimiento'],
+      [{ originType: 'interna', sex: 'macho' }, 'No hay cabezas sin identificar en ese grupo para vincular la ficha'],
+    ] as const) {
+      const response = await create({ ...input('preinicio'), code: 'NO-GUARDAR', operationKey: crypto.randomUUID(), ...changes });
+      expect(response.ok).toBe(false);
+      expect(await response.json()).toMatchObject({ error });
+    }
+    expect(await db.prepare("SELECT id FROM animals WHERE code='NO-GUARDAR'").first()).toBeNull();
+  });
 });

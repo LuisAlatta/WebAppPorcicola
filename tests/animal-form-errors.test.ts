@@ -4,6 +4,7 @@ import { animalErrorField, animalFieldIds, animalSaveError } from '../src/utils/
 describe('Errores del registro individual', () => {
   it.each([
     ['La etapa no está vigente en la fecha de ingreso', 'entryStageCode'],
+    ['La etapa de ingreso no existe', 'entryStageCode'],
     ['Ya existe un animal con el código 001', 'code'],
     ['Una cerda debe registrarse como hembra', 'sex'],
     ['Un verraco debe registrarse como macho', 'sex'],

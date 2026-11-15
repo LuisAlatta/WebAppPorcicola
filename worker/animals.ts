@@ -1160,8 +1160,9 @@ export async function createAnimal(
   if (!barn) throw new ApiError(404, 'El galpón indicado no existe');
 
   const config = await getConfigSnapshot(db, entryDate);
-  if (!config.stages.some((stage) => stage.code === stageCode)) {
-    throw new ApiError(400, 'La etapa no está vigente en la fecha de ingreso');
+  const entryStage = await db.prepare('SELECT code FROM stage_versions WHERE code = ? LIMIT 1').bind(stageCode).first();
+  if (!entryStage) {
+    throw new ApiError(400, 'La etapa de ingreso no existe');
   }
   const locationGuard = await assertLocationForBarn(db, barnId, locationCode, entryDate, {ongoing:true});
   if (lotCode && !config.lots.some((lot) => lot.code === lotCode)) {
