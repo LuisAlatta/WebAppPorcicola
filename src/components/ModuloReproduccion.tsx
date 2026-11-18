@@ -31,10 +31,16 @@ import {
 import type { Perfil } from '../types';
 
 interface AnimalOption {
+  id?: number;
   code: string;
   alias: string | null;
   barnName: string;
   breed: string | null;
+}
+
+function animalSelectValue(animal: AnimalOption, list: AnimalOption[]) {
+  if (animal.id === undefined) return animal.code;
+  return list.filter((item) => item.code === animal.code).length > 1 ? `id:${animal.id}` : animal.code;
 }
 
 interface Service {
@@ -351,7 +357,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       const payload = {
         ...form,
         serviceType: 'inseminacion_artificial',
-        sireBreed: form.materialSource === 'internal' ? sires.find(sire => sire.code === form.sireCode)?.breed ?? '' : form.sireBreed,
+        sireBreed: form.materialSource === 'internal' ? sires.find(sire => animalSelectValue(sire, sires) === form.sireCode || sire.code === form.sireCode)?.breed ?? '' : form.sireBreed,
         serviceDate: form.serviceDate,
         dueDate: form.dueDate || undefined,
         lastFarrowingDate: form.lastFarrowingDate || undefined,
@@ -821,9 +827,9 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 >
                   <option value="">Seleccione marrana</option>
                   {females.map((animal) => (
-                    <option key={animal.code} value={animal.code}>
+                    <option key={animal.id ?? animal.code} value={animalSelectValue(animal, females)}>
                       {animal.code}
-                      {animal.alias ? ` · ${animal.alias}` : ''} · {animal.barnName}
+                      {animal.alias ? ` · ${animal.alias}` : ''}{animal.barnName ? ` · ${animal.barnName}` : ''}
                     </option>
                   ))}
                 </select>
@@ -876,13 +882,13 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       className="form-select"
                       required
                       value={form.sireCode}
-                      onChange={(e) => setForm((prev) => ({ ...prev, sireCode: e.target.value, sireBreed: sires.find(sire => sire.code === e.target.value)?.breed ?? '' }))}
+                      onChange={(e) => setForm((prev) => ({ ...prev, sireCode: e.target.value, sireBreed: sires.find(sire => animalSelectValue(sire, sires) === e.target.value || sire.code === e.target.value)?.breed ?? '' }))}
                     >
                       <option value="">Seleccione</option>
                       {sires.map((animal) => (
-                        <option key={animal.code} value={animal.code}>
+                        <option key={animal.id ?? animal.code} value={animalSelectValue(animal, sires)}>
                           {animal.code}
-                          {animal.alias ? ` · ${animal.alias}` : ''}
+                          {animal.alias ? ` · ${animal.alias}` : ''}{animal.barnName ? ` · ${animal.barnName}` : ''}
                         </option>
                       ))}
                     </select>
@@ -902,7 +908,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 <FormField label="Raza del padre/material">
                   <input
                     className="form-input"
-                    value={form.materialSource === 'internal' ? sires.find(sire => sire.code === form.sireCode)?.breed ?? '' : form.sireBreed}
+                    value={form.materialSource === 'internal' ? sires.find(sire => animalSelectValue(sire, sires) === form.sireCode || sire.code === form.sireCode)?.breed ?? '' : form.sireBreed}
                     readOnly={form.materialSource === 'internal'}
                     placeholder={form.materialSource === 'internal' ? 'Raza del verraco seleccionado' : ''}
                     onChange={(e) => setForm((prev) => ({ ...prev, sireBreed: e.target.value }))}
@@ -2058,8 +2064,8 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                         <select name="sireCode" className="form-select">
                           <option value="">Seleccione si aplica</option>
                           {sires.map((item) => (
-                            <option key={item.code} value={item.code}>
-                              {item.code}
+                            <option key={item.id ?? item.code} value={animalSelectValue(item, sires)}>
+                              {item.code}{item.barnName ? ` · ${item.barnName}` : ''}
                             </option>
                           ))}
                         </select>

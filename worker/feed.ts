@@ -1,6 +1,7 @@
 import { ApiError, commitOperation, createOperationClaim, currentFarmDate, isValidDateString, lookupExistingOperation, normalizeReason } from './events';
 import { getConfigSnapshot, type ConfigSnapshot, type StageItem } from './config';
 import { getInventorySnapshot } from './inventory';
+import { resolveAnimalRef } from './animal-lookup';
 
 type Row = Record<string, unknown>;
 function configuredFeed(config:ConfigSnapshot,stage:StageItem|undefined){
@@ -162,7 +163,12 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
   if(movementType==='delivery'){
     destinationBarnId=input.destinationBarnId?Number(input.destinationBarnId):null;
     if(animalCode){
-      const animal=await db.prepare('SELECT id,exit_date,is_active FROM animals WHERE code=?').bind(animalCode).first<Row>();
+      const resolved=await resolveAnimalRef<Row>(db,animalCode,{columns:'a.id,a.code,a.exit_date,a.is_active,a.barn_id',allowedBarnNames:scope.allowedBarnNames,barnId:destinationBarnId,effectiveDate});
+      let animal=resolved.row;
+      if(!animal&&resolved.outOfScope&&destinationBarnId!==null){
+        const fallback=await resolveAnimalRef<Row>(db,animalCode,{columns:'a.id,a.code,a.exit_date,a.is_active,a.barn_id',allowedBarnNames:scope.allowedBarnNames,effectiveDate});
+        animal=fallback.row;
+      }
       if(!animal||String(animal.is_active)==='0'||(animal.exit_date&&effectiveDate>String(animal.exit_date)))throw new ApiError(404,'Animal no disponible en la fecha indicada');
       const location=await db.prepare(`SELECT barn_id FROM animal_location_history WHERE animal_id=? AND valid_from<=? AND (valid_until IS NULL OR valid_until>?) ORDER BY valid_from DESC,id DESC LIMIT 1`).bind(animal.id,effectiveDate,effectiveDate).first<{barn_id:number}>();
       if(!location)throw new ApiError(409,'No hay ubicación histórica del animal en esa fecha');

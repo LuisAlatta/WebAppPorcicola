@@ -23,19 +23,21 @@ async function applyMigration(db: D1Database, name: string) {
     .replace(/\s+/g, ' ');
   let trigger = '';
 
+  const statements: string[] = [];
   for (const statement of sql.split(';').map(part => part.trim()).filter(Boolean)) {
     if (trigger || /^CREATE TRIGGER/i.test(statement)) {
       trigger += `${statement}; `;
       if (/\bEND$/i.test(statement)) {
-        await db.prepare(trigger.trim()).run();
+        statements.push(trigger.trim());
         trigger = '';
       }
     } else {
-      await db.prepare(statement).run();
+      statements.push(statement);
     }
   }
 
   if (trigger) throw new Error(`Trigger incompleto en ${name}`);
+  if (statements.length > 0) await db.batch(statements.map(statement => db.prepare(statement)));
 }
 
 async function seedOperation(db: D1Database, id: string, operationKey: string, type: string, entityType: string, entityId: number | null) {
@@ -53,7 +55,7 @@ describe('Actualización de esquema desde 0001–0005', () => {
       .filter(name => /^\d+.*\.sql$/.test(name))
       .sort();
 
-    expect(migrationNames).toHaveLength(27);
+    expect(migrationNames).toHaveLength(29);
 
     for (const name of migrationNames.slice(0, 5)) await applyMigration(db, name);
 

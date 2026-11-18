@@ -867,8 +867,8 @@ const worker = {
           const body = await request.json() as Parameters<typeof createAnimal>[2];
           if(body.originType==='compra'&&!['administrador','responsable'].includes(session.user.role))return Response.json({error:'Solo el Administrador o Usuario responsable puede registrar compras de animales'},{status:403});
           const result = await createAnimal(env.DB, session.user.id, body, scope);
-          if(result.animal?.code)await generateAnimalVaccineSchedules(env.DB,result.animal.code,session.user.id,scope);
-          if(result.animal?.code)await reconcileAlerts(env.DB,{scope:{...scope,animalCode:result.animal.code}});
+          if(result.animal?.id)await generateAnimalVaccineSchedules(env.DB,`id:${result.animal.id}`,session.user.id,scope);
+          if(result.animal?.id)await reconcileAlerts(env.DB,{scope:{...scope,animalId:result.animal.id,animalCode:result.animal.code}});
           return Response.json(
             { ok: true, animal: result.animal, replayed: result.replayed },
             { status: result.replayed ? 200 : 201 },
@@ -887,8 +887,8 @@ const worker = {
         if (key && segments.length === 1 && request.method === 'PUT') {
           const body = await request.json() as Parameters<typeof updateAnimal>[3];
           const result = await updateAnimal(env.DB, session.user.id, key, body, scope);
-          if(result.animal?.code)await generateAnimalVaccineSchedules(env.DB,result.animal.code,session.user.id,scope);
-          if(result.animal?.code)await reconcileAlerts(env.DB,{scope:{...scope,animalCode:result.animal.code}});
+          if(result.animal?.id)await generateAnimalVaccineSchedules(env.DB,`id:${result.animal.id}`,session.user.id,scope);
+          if(result.animal?.id)await reconcileAlerts(env.DB,{scope:{...scope,animalId:result.animal.id,animalCode:result.animal.code}});
           return Response.json({ ok: true, animal: result.animal, replayed: result.replayed });
         }
 
@@ -901,7 +901,7 @@ const worker = {
         if (key && segments.length === 2 && segments[1] === 'weights' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof registerAnimalWeight>[3];
           const result = await registerAnimalWeight(env.DB, session.user.id, key, body, scope);
-          if(result.animal?.code)await reconcileAlerts(env.DB,{scope:{...scope,animalCode:result.animal.code}});
+          if(result.animal?.id)await reconcileAlerts(env.DB,{scope:{...scope,animalId:result.animal.id,animalCode:result.animal.code}});
           return Response.json({ ok: true, animal: result.animal, replayed: result.replayed }, { status: result.replayed ? 200 : 201 });
         }
 
@@ -910,21 +910,21 @@ const worker = {
           if (!Number.isInteger(weightId) || weightId <= 0) throw new ApiError(400, 'Pesaje inválido');
           const body = await request.json() as Parameters<typeof correctAnimalWeight>[4];
           const result = await correctAnimalWeight(env.DB, session.user.id, key, weightId, body, scope);
-          if(result.animal?.code)await reconcileAlerts(env.DB,{scope:{...scope,animalCode:result.animal.code}});
+          if(result.animal?.id)await reconcileAlerts(env.DB,{scope:{...scope,animalId:result.animal.id,animalCode:result.animal.code}});
           return Response.json({ ok: true, animal: result.animal, replayed: result.replayed }, { status: result.replayed ? 200 : 201 });
         }
 
         if (key && segments.length === 2 && segments[1] === 'deactivate' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof setAnimalAvailability>[4];
           const result = await setAnimalAvailability(env.DB, session.user.id, key, false, body, scope);
-          if(result.animal?.code)await reconcileAlerts(env.DB,{scope:{...scope,animalCode:result.animal.code}});
+          if(result.animal?.id)await reconcileAlerts(env.DB,{scope:{...scope,animalId:result.animal.id,animalCode:result.animal.code}});
           return Response.json({ ok: true, animal: result.animal, replayed: result.replayed });
         }
 
         if (key && segments.length === 2 && segments[1] === 'reactivate' && request.method === 'POST') {
           const body = await request.json() as Parameters<typeof setAnimalAvailability>[4];
           const result = await setAnimalAvailability(env.DB, session.user.id, key, true, body, scope);
-          if(result.animal?.code)await reconcileAlerts(env.DB,{scope:{...scope,animalCode:result.animal.code}});
+          if(result.animal?.id)await reconcileAlerts(env.DB,{scope:{...scope,animalId:result.animal.id,animalCode:result.animal.code}});
           return Response.json({ ok: true, animal: result.animal, replayed: result.replayed });
         }
 
@@ -938,15 +938,15 @@ const worker = {
           const body = await request.json() as Parameters<typeof registerAnimalExit>[3];
           if(body.exitType==='sale'&&!['administrador','responsable'].includes(session.user.role))return Response.json({error:'Solo el Administrador o Usuario responsable puede registrar ventas'},{status:403});
           const result = await registerAnimalExit(env.DB, session.user.id, key, body, scope);
-          if(result.animal?.code)await reconcileAlerts(env.DB,{scope:{...scope,animalCode:result.animal.code}});
+          if(result.animal?.id)await reconcileAlerts(env.DB,{scope:{...scope,animalId:result.animal.id,animalCode:result.animal.code}});
           return Response.json({ ok: true, animal: result.animal, replayed: result.replayed }, { status: result.replayed ? 200 : 201 });
         }
 
         if (key && segments.length === 2 && segments[1] === 'sale-return' && request.method === 'POST') {
           if(!['administrador','responsable'].includes(session.user.role))return Response.json({error:'Solo el Administrador o Usuario responsable puede devolver una venta'}, {status:403});
           const body=await request.json() as Parameters<typeof registerAnimalSaleReturn>[3];const result=await registerAnimalSaleReturn(env.DB,session.user.id,key,body,scope);
-          if(result.animal?.code)await generateAnimalVaccineSchedules(env.DB,result.animal.code,session.user.id,scope);
-          if(result.animal?.code)await reconcileAlerts(env.DB,{scope:{...scope,animalCode:result.animal.code}});
+          if(result.animal?.id)await generateAnimalVaccineSchedules(env.DB,`id:${result.animal.id}`,session.user.id,scope);
+          if(result.animal?.id)await reconcileAlerts(env.DB,{scope:{...scope,animalId:result.animal.id,animalCode:result.animal.code}});
           return Response.json({ok:true,animal:result.animal,replayed:result.replayed},{status:result.replayed?200:201});
         }
 

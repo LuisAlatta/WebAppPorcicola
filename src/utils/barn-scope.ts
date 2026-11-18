@@ -4,6 +4,10 @@ export function setSelectedBarnIds(ids: number[]) {
   selectedBarnIds = [...ids];
 }
 
+export function getSelectedBarnIds(): number[] {
+  return [...selectedBarnIds];
+}
+
 export function installBarnScopeFetch() {
   const originalFetch = window.fetch.bind(window);
   window.fetch = (input, init) => {

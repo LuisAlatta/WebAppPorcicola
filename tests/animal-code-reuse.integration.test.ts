@@ -70,24 +70,47 @@ describe('Reutilización automática de códigos de animales', () => {
     expect((await api('/api/animals', input('001'))).status).toBe(409);
   }, 90000);
 
-  it('bloquea códigos en uso real aunque estén en otro galpón, pero permite registrar códigos inactivos o históricos sin revelar la ficha previa', async () => {
-    const original = await api('/api/animals', input('SCOPE-REUSE'));
-    expect(original.status, await original.clone().text()).toBe(201);
-    const old = (await original.json() as { animal: { id: number } }).animal;
+  it('permite el mismo código activo en galpones distintos y los mantiene aislados al consultar, trasladar y re-registrar', async () => {
+    const firstRes = await api('/api/animals', input('SCOPE-REUSE'), '1');
+    expect(firstRes.status, await firstRes.clone().text()).toBe(201);
+    const barn1Animal = (await firstRes.json() as { animal: { id: number } }).animal;
 
-    const blockedActive = await api('/api/animals', { ...input('SCOPE-REUSE'), barnId: 2 }, '2');
-    expect(blockedActive.status).toBe(409);
-    expect(await blockedActive.json()).not.toHaveProperty('inactiveAnimal');
-    expect(await db.prepare('SELECT code FROM animals WHERE id=?').bind(old.id).first()).toEqual({ code: 'SCOPE-REUSE' });
+    const dupSameBarn = await api('/api/animals', input('SCOPE-REUSE'), '1');
+    expect(dupSameBarn.status).toBe(409);
 
-    await api('/api/animals/SCOPE-REUSE/deactivate', { reason: 'Desactivar' });
-    const response = await api('/api/animals', { ...input('SCOPE-REUSE'), barnId: 2, entryDate: '2024-12-14' }, '2');
-    expect(response.status, await response.clone().text()).toBe(201);
-    const createdBody = await response.json() as { animal: { id: number; code: string; barnId: number } };
-    expect(createdBody.animal.id).not.toBe(old.id);
-    expect(createdBody.animal.code).toBe('SCOPE-REUSE');
-    expect(createdBody.animal.barnId).toBe(2);
-    expect(await db.prepare('SELECT code,is_active FROM animals WHERE id=?').bind(old.id).first()).toEqual({ code: `SCOPE-REUSE-ARCH-${old.id}`, is_active: 0 });
+    const secondRes = await api('/api/animals', { ...input('SCOPE-REUSE'), barnId: 2 }, '2');
+    expect(secondRes.status, await secondRes.clone().text()).toBe(201);
+    const barn2Animal = (await secondRes.json() as { animal: { id: number; code: string; barnId: number } }).animal;
+    expect(barn2Animal.id).not.toBe(barn1Animal.id);
+    expect(barn2Animal.code).toBe('SCOPE-REUSE');
+    expect(barn2Animal.barnId).toBe(2);
+    expect(await db.prepare('SELECT code,is_active FROM animals WHERE id=?').bind(barn1Animal.id).first()).toEqual({ code: 'SCOPE-REUSE', is_active: 1 });
+
+    expect(((await (await api('/api/animals/SCOPE-REUSE', undefined, '1')).json()) as { animal: { id: number } }).animal.id).toBe(barn1Animal.id);
+    expect(((await (await api('/api/animals/SCOPE-REUSE', undefined, '2')).json()) as { animal: { id: number } }).animal.id).toBe(barn2Animal.id);
+    expect((await api('/api/animals/SCOPE-REUSE', undefined, '1,2')).status).toBe(409);
+    expect(((await (await api(`/api/animals/id%3A${barn2Animal.id}`, undefined, '1,2')).json()) as { animal: { id: number } }).animal.id).toBe(barn2Animal.id);
+
+    const conflictingTransfer = await api(`/api/animals/id%3A${barn1Animal.id}/transfer`, {
+      destinationBarnId: 2, effectiveDate: today, reason: 'Traslado con código ocupado en destino', operationKey: crypto.randomUUID(),
+    }, '1,2');
+    expect(conflictingTransfer.status).toBe(409);
+
+    await api('/api/animals/SCOPE-REUSE/deactivate', { reason: 'Desactivar en galpón 2' }, '2');
+    const recreated = await api('/api/animals', { ...input('SCOPE-REUSE'), barnId: 2, entryDate: '2024-12-14' }, '2');
+    expect(recreated.status, await recreated.clone().text()).toBe(201);
+    const freshBarn2 = (await recreated.json() as { animal: { id: number; barnId: number } }).animal;
+    expect(freshBarn2.id).not.toBe(barn2Animal.id);
+    expect(await db.prepare('SELECT code,is_active FROM animals WHERE id=?').bind(barn2Animal.id).first()).toEqual({ code: `SCOPE-REUSE-ARCH-${barn2Animal.id}`, is_active: 0 });
+    expect(await db.prepare('SELECT code,is_active FROM animals WHERE id=?').bind(barn1Animal.id).first()).toEqual({ code: 'SCOPE-REUSE', is_active: 1 });
+
+    const healthBarn2 = await api('/api/health/events', {
+      eventType: 'treatment', effectiveDate: today, animalCodes: ['SCOPE-REUSE'],
+      product: 'Antiparasitario', dosage: 1, dosageUnit: 'ml', reason: 'Evento en galpón 2', operationKey: crypto.randomUUID(),
+    }, '2');
+    expect(healthBarn2.status, await healthBarn2.clone().text()).toBe(201);
+    const createdHealth = (await healthBarn2.json() as { event: { id: number } }).event;
+    expect(await db.prepare('SELECT animal_id FROM health_event_animals WHERE health_event_id=?').bind(createdHealth.id).first()).toEqual({ animal_id: freshBarn2.id });
   }, 90000);
 
   it('permite registrar un código aunque un animal inactivo con otro código conserve ese arete', async () => {

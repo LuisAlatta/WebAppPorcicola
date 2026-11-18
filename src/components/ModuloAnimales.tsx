@@ -29,6 +29,7 @@ import { DataState } from './DataState';
 import { ModuleTabs } from './ModuleTabs';
 import { Pagination } from './Pagination';
 import { availabilityForStatus } from '../utils/animal-filters';
+import { getSelectedBarnIds } from '../utils/barn-scope';
 import { animalErrorField, animalFieldIds, animalSaveError } from '../utils/animal-form-errors';
 import { farmToday, fetchOperation, newOperationKey } from '../utils/operations';
 import { errorMessage, formatWeight } from '../utils/format';
@@ -306,6 +307,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   const [appliedFilters, setAppliedFilters] = useState<Filters>(filters);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
+  const [editingRequestKey, setEditingRequestKey] = useState<string | null>(null);
   const [operationKey, setOperationKey] = useState<string>(() => newOperationKey('ani'));
   const [saving, setSaving] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -575,8 +577,22 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     };
   }, [initialAnimalKey, openDetail]);
 
+  const duplicateCodes = new Set<string>();
+  {
+    const seen = new Set<string>();
+    for (const item of data?.animals ?? []) {
+      if (seen.has(item.code)) duplicateCodes.add(item.code);
+      seen.add(item.code);
+    }
+  }
+  const animalRequestKey = (item: { id?: number; code: string }) =>
+    item.id !== undefined && (duplicateCodes.has(item.code) || getSelectedBarnIds().length > 1)
+      ? `id:${item.id}`
+      : item.code;
+
   const startCreate = () => {
     setEditingCode(null);
+    setEditingRequestKey(null);
     setForm((prev) => ({
       ...emptyForm(),
       barnId: prev.barnId,
@@ -592,6 +608,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     const detail = animal;
     if (!detail) return;
     setEditingCode(detail.code);
+    setEditingRequestKey(animalRequestKey(detail));
     setForm({
       code: detail.code,
       alias: detail.alias ?? '',
@@ -633,7 +650,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     setBusy(true);
     setDeleteError('');
     try {
-      const response = await fetchOperation(`/api/animals/${encodeURIComponent(deleteTarget.code)}/deactivate`, {
+      const response = await fetchOperation(`/api/animals/${encodeURIComponent(animalRequestKey(deleteTarget))}/deactivate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: deleteReason.trim() }),
       });
       const body = await response.json() as { error?: string };
@@ -736,7 +753,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     setSaving(true);
     try {
       const res = await fetch(
-        editingCode ? `/api/animals/${encodeURIComponent(editingCode)}` : '/api/animals',
+        editingCode ? `/api/animals/${encodeURIComponent(editingRequestKey ?? editingCode)}` : '/api/animals',
         {
           method: editingCode ? 'PUT' : 'POST',
           signal: AbortSignal.timeout(30_000),
@@ -768,6 +785,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
           : `El animal ${body.animal.code} se registró correctamente en el padrón.`);
       setOperationKey(newOperationKey('ani'));
       setEditingCode(null);
+      setEditingRequestKey(null);
       setForm((prev) => ({
         ...emptyForm(),
         barnId: prev.barnId,
@@ -794,7 +812,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
 
     setBusy(true);
     try {
-      const res = await fetchOperation(`/api/animals/${encodeURIComponent(detail.code)}/tags`, {
+      const res = await fetchOperation(`/api/animals/${encodeURIComponent(animalRequestKey(detail))}/tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -831,7 +849,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     setBusy(true);
     try {
       const res = await fetchOperation(
-        `/api/animals/${encodeURIComponent(detail.code)}/${active ? 'reactivate' : 'deactivate'}`,
+        `/api/animals/${encodeURIComponent(animalRequestKey(detail))}/${active ? 'reactivate' : 'deactivate'}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -866,7 +884,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     }
     setBusy(true); setPhysicalActionError(null);
     try {
-      const res = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(`/api/animals/${encodeURIComponent(animalRequestKey(detail))}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...transferForm, destinationBarnId: Number(transferForm.destinationBarnId),
           destinationStageCode: transferForm.destinationStageCode || detail.stageCode, locationCode: transferForm.locationCode || null, lotCode: transferForm.lotCode || null, operationKey: transferOperationKey }) });
       const body = await res.json() as { error?: string; animal?: AnimalDetail; warning?: string | null };
@@ -887,7 +905,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     }
     setBusy(true); setPhysicalActionError(null);
     try {
-      const res = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/exit`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(`/api/animals/${encodeURIComponent(animalRequestKey(detail))}/exit`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...exitForm, operationKey: exitOperationKey }) });
       const body = await res.json() as { error?: string; animal?: AnimalDetail };
       if (!res.ok || !body.animal) { setPhysicalActionError(body.error ?? 'No se pudo registrar la salida.'); return; }
@@ -904,7 +922,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     setBusy(true);
     setPhysicalActionError(null);
     try {
-      const response = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/sale-return`, {
+      const response = await fetch(`/api/animals/${encodeURIComponent(animalRequestKey(detail))}/sale-return`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ effectiveDate: farmToday(), reason: saleReturnReason.trim(), operationKey: saleReturnOperationKey }),
@@ -929,7 +947,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     if (!detail) return;
     setWeightError(null); setBusy(true);
     try {
-      const res = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/weights`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(`/api/animals/${encodeURIComponent(animalRequestKey(detail))}/weights`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...weightForm, weightKg: Number(weightForm.weightKg), stageCode: weightForm.stageCode || detail.stageCode, operationKey: weightOperationKey }) });
       const body = await res.json() as { error?: string; animal?: AnimalDetail };
       if (!res.ok || !body.animal) { setWeightError(body.error ?? 'No se pudo registrar el pesaje.'); return; }
@@ -944,7 +962,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     if (!detail || !weightCorrection) return;
     setWeightError(null); setBusy(true);
     try {
-      const res = await fetch(`/api/animals/${encodeURIComponent(detail.code)}/weights/${weightCorrection.id}/correction`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(`/api/animals/${encodeURIComponent(animalRequestKey(detail))}/weights/${weightCorrection.id}/correction`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ weightKg: Number(weightCorrection.kg), reason: weightCorrection.reason, operationKey: weightCorrection.operationKey }) });
       const body = await res.json() as { error?: string; animal?: AnimalDetail };
       if (!res.ok || !body.animal) { setWeightError(body.error ?? 'No se pudo corregir el pesaje.'); return; }
@@ -963,6 +981,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
     setError(null);
     setAnimalModalOpen(false);
     setEditingCode(null);
+      setEditingRequestKey(null);
     setSection('padron');
   };
 
@@ -1334,7 +1353,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           <button
                             type="button"
                             className="btn animal-action animal-action-view"
-                            onClick={() => void openDetail(animal.code)}
+                            onClick={() => void openDetail(animalRequestKey(animal))}
                             disabled={loadingDetail}
                             aria-label={`Ver ficha de ${animal.code}`}
                           >
@@ -1343,7 +1362,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           </button>
                           {!soloLectura && <>
                             <button type="button" className="btn animal-action animal-action-edit" disabled={loadingDetail || busy}
-                              aria-label={`Editar animal ${animal.code}`} onClick={async () => { const record = await openDetail(animal.code); if (record) startEdit(record); }}><IconEdit size={14} /><span>Editar</span></button>
+                              aria-label={`Editar animal ${animal.code}`} onClick={async () => { const record = await openDetail(animalRequestKey(animal)); if (record) startEdit(record); }}><IconEdit size={14} /><span>Editar</span></button>
                             <button type="button" className="btn animal-action animal-action-delete" disabled={!animal.isActive || busy}
                               aria-label={`Eliminar animal ${animal.code}`} onClick={() => { setDeleteTarget(animal); setDeleteReason(''); setDeleteError(''); }}><IconTrash size={14} /><span>Eliminar</span></button>
                           </>}
@@ -1401,7 +1420,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           <button
                             type="button"
                             className="btn animal-action animal-action-view"
-                            onClick={() => void openDetail(animal.code)}
+                            onClick={() => void openDetail(animalRequestKey(animal))}
                             disabled={loadingDetail}
                             aria-label={`Ver ficha de ${animal.code}`}
                           >
@@ -1412,7 +1431,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                           </button>
                           {!soloLectura && <>
                             <button type="button" className="btn animal-action animal-action-edit" disabled={loadingDetail || busy}
-                              aria-label={`Editar animal ${animal.code}`} onClick={async () => { const record = await openDetail(animal.code); if (record) startEdit(record); }}><IconEdit size={14} /><span>Editar</span></button>
+                              aria-label={`Editar animal ${animal.code}`} onClick={async () => { const record = await openDetail(animalRequestKey(animal)); if (record) startEdit(record); }}><IconEdit size={14} /><span>Editar</span></button>
                             <button type="button" className="btn animal-action animal-action-delete" disabled={!animal.isActive || busy}
                               aria-label={`Eliminar animal ${animal.code}`} onClick={() => { setDeleteTarget(animal); setDeleteReason(''); setDeleteError(''); }}><IconTrash size={14} /><span>Eliminar</span></button>
                           </>}

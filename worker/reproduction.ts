@@ -3,6 +3,7 @@ import {
   lookupExistingOperation, normalizeReason,
 } from './events';
 import { getConfigSnapshot } from './config';
+import { resolveAnimalRef } from './animal-lookup';
 
 type Row = Record<string, unknown>;
 export interface ReproductionScope { allowedBarnNames?: string[] | null }
@@ -56,8 +57,13 @@ async function barnIds(db: D1Database, scope: ReproductionScope): Promise<number
   return (rows.results ?? []).map((item) => Number(item.id));
 }
 async function femaleAtDate(db: D1Database, code: string, effectiveDate: string, scope: ReproductionScope) {
-  const female = await db.prepare(`SELECT id, code, sex, animal_type, breed, aptitude, entry_date, exit_date
-    FROM animals WHERE code = ?`).bind(code).first<Row>();
+  const resolved = await resolveAnimalRef<Row>(db, code, {
+    columns: 'a.id, a.code, a.sex, a.animal_type, a.breed, a.aptitude, a.entry_date, a.exit_date, a.is_active, a.barn_id',
+    allowedBarnNames: scope.allowedBarnNames,
+    effectiveDate,
+  });
+  if (resolved.outOfScope) throw new ApiError(403, 'No tiene acceso al galpón de la hembra en la fecha indicada');
+  const female = resolved.row;
   if (!female) throw new ApiError(404, 'Hembra no encontrada');
   if (female.sex !== 'hembra' || !['cerda', 'reemplazo'].includes(String(female.animal_type))) throw new ApiError(400, 'El animal seleccionado no es una hembra reproductiva');
   if (effectiveDate < String(female.entry_date) || (female.exit_date && effectiveDate > String(female.exit_date))) throw new ApiError(400, 'La hembra debe estar presente en la granja en la fecha del evento');
@@ -69,6 +75,18 @@ async function femaleAtDate(db: D1Database, code: string, effectiveDate: string,
   const allowed = await barnIds(db, scope);
   if (allowed !== null && !allowed.includes(barnId)) throw new ApiError(403, 'No tiene acceso al galpón de la hembra en la fecha indicada');
   return { female, barnId, locationCode: location.location_code === null ? null : String(location.location_code), lotCode: location.lot_code === null ? null : String(location.lot_code) };
+}
+async function sireAtDate(db: D1Database, sireCode: string, serviceDate: string, scope: ReproductionScope) {
+  const resolved = await resolveAnimalRef<Row>(db, sireCode, {
+    columns: 'a.id, a.code, a.sex, a.animal_type, a.breed, a.entry_date, a.exit_date, a.is_active, a.barn_id',
+    allowedBarnNames: scope.allowedBarnNames,
+    effectiveDate: serviceDate,
+  });
+  if (resolved.outOfScope) throw new ApiError(403, 'No tiene acceso al galpón del verraco en la fecha del servicio');
+  const sire = resolved.row;
+  if (!sire || sire.sex !== 'macho' || sire.animal_type !== 'verraco') throw new ApiError(400, 'El reproductor interno debe ser un verraco existente');
+  const sireBarnId = await assertSireAccess(db, sire, serviceDate, scope);
+  return { sire, sireBarnId };
 }
 async function assertSireAccess(db: D1Database, sire: Row, effectiveDate: string, scope: ReproductionScope) {
   if (effectiveDate < String(sire.entry_date) || (sire.exit_date && effectiveDate > String(sire.exit_date))) throw new ApiError(400, 'El verraco no estaba presente en la granja en la fecha del servicio');
@@ -211,9 +229,9 @@ export async function createReproductionCycle(db: D1Database, actorUserId: numbe
   let sire: Row | null = null;
   let sireBarnId:number|null=null;
   if (source === 'internal') {
-    sire = await db.prepare(`SELECT id, code, sex, animal_type, breed, entry_date, exit_date FROM animals WHERE code = ?`).bind(sireCode).first<Row>();
-    if (!sire || sire.sex !== 'macho' || sire.animal_type !== 'verraco') throw new ApiError(400, 'El reproductor interno debe ser un verraco existente');
-    sireBarnId=await assertSireAccess(db, sire, serviceDate, scope);
+    const resolvedSire = await sireAtDate(db, sireCode!, serviceDate, scope);
+    sire = resolvedSire.sire;
+    sireBarnId = resolvedSire.sireBarnId;
   }
   const gestationDays = intervalDays(input.gestationDays, await getGestationDays(db, serviceDate), 150, 'Duración de gestación');
   const heatRepeatDays = intervalDays(input.heatRepeatDays, 21, 120, 'Repetición de celo');
@@ -273,7 +291,7 @@ export async function addReproductionService(db: D1Database, actorUserId: number
   if (allowedBarns !== null && !allowedBarns.includes(Number(cycle.barn_id))) throw new ApiError(404, 'Ciclo no encontrado');
   const serviceDate = date(input.serviceDate, 'Fecha del servicio');
   if (serviceDate < String(cycle.service_anchor_date) || serviceDate > currentFarmDate()) throw new ApiError(400, 'La fecha del nuevo servicio debe ser posterior al inicio del ciclo y no futura');
-  const context = await femaleAtDate(db, String(cycle.female_code), serviceDate, scope);
+  const context = await femaleAtDate(db, `id:${Number(cycle.female_animal_id)}`, serviceDate, scope);
   const serviceType = String(input.serviceType ?? '');
   if (!SERVICE_TYPES.includes(serviceType)) throw new ApiError(400, 'Tipo de servicio no válido');
   const source = materialSource(input.materialSource);
@@ -281,9 +299,9 @@ export async function addReproductionService(db: D1Database, actorUserId: number
   const sireCode = optionalText(input.sireCode, 'Código del verraco', 40);
   if (source === 'external' && !external) throw new ApiError(400, 'Indique la procedencia externa');
   if (source === 'internal' && !sireCode) throw new ApiError(400, 'Seleccione el verraco o use material externo');
-  const sire = source === 'internal' ? await db.prepare(`SELECT id,code,sex,animal_type,breed,entry_date,exit_date FROM animals WHERE code=?`).bind(sireCode).first<Row>() : null;
-  if (source === 'internal' && (!sire || sire.sex !== 'macho' || sire.animal_type !== 'verraco')) throw new ApiError(400, 'El reproductor interno debe ser un verraco existente');
-  const sireBarnId=sire?await assertSireAccess(db, sire, serviceDate, scope):null;
+  const resolvedSire = source === 'internal' ? await sireAtDate(db, sireCode!, serviceDate, scope) : null;
+  const sire = resolvedSire?.sire ?? null;
+  const sireBarnId = resolvedSire?.sireBarnId ?? null;
   const latest = await db.prepare('SELECT MAX(service_number) AS n FROM reproduction_services WHERE cycle_id=?').bind(cycleId).first<{ n: number | null }>();
   const serviceNumber = Number(latest?.n ?? 0) + 1;
   const days = Number(cycle.gestation_days);

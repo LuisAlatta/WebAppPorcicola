@@ -27,6 +27,15 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
   const [retry, setRetry] = useState(0);
   const selected = useRef(value);
   useEffect(() => { selected.current = value; }, [value]);
+  const codeCounts = new Map<string, number>();
+  for (const item of options) codeCounts.set(item.code, (codeCounts.get(item.code) ?? 0) + 1);
+  const optionValueOf = (item: Option) => {
+    if (useIdValue) return String(item.id);
+    if (item.id !== undefined && ((codeCounts.get(item.code) ?? 0) > 1 || value.includes(`id:${item.id}`))) {
+      return `id:${item.id}`;
+    }
+    return item.code;
+  };
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
@@ -42,8 +51,11 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
         if (!response.ok || !Array.isArray(data.animals)) throw new Error(data.error || 'No se pudieron consultar los animales');
         if (cancelled) return;
         setOptions(previous => {
-          const retained = previous.filter(item => selected.current.includes(useIdValue ? String(item.id) : item.code));
-          return [...new Map([...retained, ...data.animals!].map(item => [item.code, item])).values()];
+          const retained = previous.filter(item =>
+            selected.current.includes(useIdValue ? String(item.id) : item.code)
+            || (item.id !== undefined && selected.current.includes(`id:${item.id}`)),
+          );
+          return [...new Map([...retained, ...data.animals!].map(item => [item.id ?? item.code, item])).values()];
         });
         setTotal(data.total ?? data.animals.length);
       }).catch((reason: unknown) => {
@@ -54,9 +66,10 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
   }, [query, sex, activeOnly, useIdValue, retry]);
 
   const displayOf = (key: string) => {
-    const found = options.find(item => (useIdValue ? String(item.id) : item.code) === key);
+    const found = options.find(item => optionValueOf(item) === key || item.code === key);
     if (!found) return key;
-    return `${found.code}${found.alias ? ` · ${found.alias}` : ''}`;
+    const showBarn = !useIdValue && found.barnName && ((codeCounts.get(found.code) ?? 0) > 1 || key.startsWith('id:'));
+    return `${found.code}${found.alias ? ` · ${found.alias}` : ''}${showBarn ? ` · ${found.barnName}` : ''}`;
   };
 
   return (
@@ -88,8 +101,8 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
       <FormField label={label} htmlFor={id}>
         <select id={id} className="form-select" multiple={multiple} required={required} value={multiple ? value : value[0] ?? ''} onChange={event => onChange(Array.from(event.currentTarget.selectedOptions).map(option => option.value).filter(Boolean))}>
           {!multiple && <option value="">{emptyLabel}</option>}
-          {value.filter(key => !options.some(item => (useIdValue ? String(item.id) : item.code) === key)).map(key => <option key={`selected-${key}`} value={key}>{key} · seleccionado</option>)}
-          {options.map(item => <option key={item.code} value={useIdValue ? String(item.id) : item.code}>{item.code}{item.alias ? ` · ${item.alias}` : ''}{item.barnName ? ` · ${item.barnName}` : ''}</option>)}
+          {value.filter(key => !options.some(item => optionValueOf(item) === key)).map(key => <option key={`selected-${key}`} value={key}>{key} · seleccionado</option>)}
+          {options.map(item => <option key={item.id ?? item.code} value={optionValueOf(item)}>{item.code}{item.alias ? ` · ${item.alias}` : ''}{item.barnName ? ` · ${item.barnName}` : ''}</option>)}
         </select>
       </FormField>
       <small className={`animal-picker-status${busy ? ' is-busy' : ''}`} role="status">

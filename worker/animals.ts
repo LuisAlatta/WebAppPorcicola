@@ -570,11 +570,18 @@ async function fetchAnimalRow(
       .bind(asOf, Number(key.slice(3)), ...scope.params).first<Row>();
   }
 
-  const byCode = await db.prepare(`
+  const byCodeRes = await db.prepare(`
     ${selectFrom()}
     WHERE a.code = ?${scope.sql}
-  `).bind(asOf, key, ...scope.params).first<Row>();
-  if (byCode) return byCode;
+    ORDER BY a.is_active DESC, a.id DESC
+  `).bind(asOf, key, ...scope.params).all<Row>();
+  const matches = byCodeRes.results ?? [];
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    const active = matches.filter((row) => Number(row.is_active) === 1 && row.exit_date === null);
+    if (active.length === 1) return active[0];
+    throw new ApiError(409, `Hay más de un animal con el código ${key} en los galpones seleccionados; seleccione un galpón específico o abra la ficha por ID`);
+  }
 
   if (!/^\d+$/.test(key)) return null;
   const byId = await db.prepare(`
@@ -1048,8 +1055,12 @@ function archiveDateForInactive(
   return validFrom > candidate ? validFrom : candidate;
 }
 
-async function assertArchiveRefFree(db: D1Database, archivedRef: string): Promise<void> {
-  if (await db.prepare('SELECT id FROM animals WHERE code=? UNION ALL SELECT animal_id FROM animal_tags WHERE tag=? AND is_current=1').bind(archivedRef, archivedRef).first()) {
+async function assertArchiveRefFree(db: D1Database, barnId: number, archivedRef: string): Promise<void> {
+  if (await db.prepare(`
+    SELECT id FROM animals WHERE barn_id=? AND code=?
+    UNION ALL
+    SELECT t.animal_id FROM animal_tags t JOIN animals a ON a.id=t.animal_id WHERE a.barn_id=? AND t.tag=? AND t.is_current=1
+  `).bind(barnId, archivedRef, barnId, archivedRef).first()) {
     throw new ApiError(409, 'La referencia de archivo ya está ocupada; contacte al administrador antes de reutilizar este código');
   }
 }
@@ -1188,7 +1199,7 @@ export async function createAnimal(
   }
 
   const duplicate = await db.prepare(`SELECT a.id,a.is_active,a.barn_id,a.alias,a.exit_date,a.deactivated_at,a.status,a.updated_at,b.name AS barn_name
-    FROM animals a JOIN barns b ON b.id=a.barn_id WHERE a.code=?`).bind(code)
+    FROM animals a JOIN barns b ON b.id=a.barn_id WHERE a.barn_id=? AND a.code=? ORDER BY a.is_active DESC, a.id DESC LIMIT 1`).bind(barnId, code)
     .first<{id:number;is_active:number;barn_id:number;alias:string|null;exit_date:string|null;deactivated_at:string|null;status:string;updated_at:string;barn_name:string}>();
   const archivedCode = duplicate ? `${code.slice(0, 22)}-ARCH-${duplicate.id}` : '';
   let duplicateTagArchive: { tagId: number; archiveDate: string } | null = null;
@@ -1200,7 +1211,7 @@ export async function createAnimal(
       throw new ApiError(409, 'La ficha anterior cambió; revise el código antes de registrar');
     }
     reuseId = Number(duplicate.id);
-    await assertArchiveRefFree(db, archivedCode);
+    await assertArchiveRefFree(db, barnId, archivedCode);
     const duplicateTag = await db.prepare('SELECT id, tag, valid_from FROM animal_tags WHERE animal_id=? AND is_current=1')
       .bind(reuseId).first<{ id: number; tag: string; valid_from: string }>();
     if (duplicateTag && duplicateTag.tag === code) {
@@ -1218,8 +1229,9 @@ export async function createAnimal(
     SELECT t.id AS tag_id, t.animal_id, t.valid_from, a.is_active, a.exit_date, a.deactivated_at, a.updated_at
     FROM animal_tags t
     JOIN animals a ON a.id = t.animal_id
-    WHERE t.tag = ? AND t.is_current = 1
-  `).bind(code).first<{
+    WHERE a.barn_id = ? AND t.tag = ? AND t.is_current = 1
+    ORDER BY a.is_active DESC, t.id DESC LIMIT 1
+  `).bind(barnId, code).first<{
     tag_id: number; animal_id: number; valid_from: string; is_active: number;
     exit_date: string | null; deactivated_at: string | null; updated_at: string;
   }>();
@@ -1228,7 +1240,7 @@ export async function createAnimal(
       throw new ApiError(409, `El arete ${code} ya está asignado a otro animal`);
     }
     const archivedTag = `${code.slice(0, 22)}-ARCH-${occupiedTag.animal_id}`;
-    await assertArchiveRefFree(db, archivedTag);
+    await assertArchiveRefFree(db, barnId, archivedTag);
     inactiveTagArchive = {
       tagId: Number(occupiedTag.tag_id),
       animalId: Number(occupiedTag.animal_id),
@@ -1297,7 +1309,7 @@ export async function createAnimal(
         db.prepare('UPDATE animal_tags SET is_current=0,valid_to=? WHERE id=? AND animal_id=? AND is_current=1').bind(duplicateTagArchive.archiveDate, duplicateTagArchive.tagId, reuseId),
         db.prepare(`INSERT INTO animal_tags(animal_id,tag,valid_from,is_current,created_by_user_id,created_at) VALUES(?,?,?,1,?,?)`).bind(reuseId, archivedCode, duplicateTagArchive.archiveDate, actorUserId, createdAt),
       ] : []),
-      db.prepare('UPDATE alert_occurrences SET animal_code=? WHERE animal_code=?').bind(archivedCode, code),
+      db.prepare('UPDATE alert_occurrences SET animal_code=? WHERE animal_code=? AND barn_id=?').bind(archivedCode, code, duplicate.barn_id),
       db.prepare('DELETE FROM inventory_write_guard'),
     ] : []),
     ...(inactiveTagArchive ? [
@@ -1446,7 +1458,7 @@ export async function createAnimal(
   if(locationGuard){statements.unshift(locationGuard);statements.push(db.prepare('DELETE FROM inventory_write_guard'));}
   await commitOperation(db, claim, statements, audits).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,reuseId !== undefined || inactiveTagArchive !== null ? 'La ficha anterior, la ubicación o el inventario cambió; actualice antes de reutilizar el código' : 'La ubicación, la camada o su historial cambió; revise la fecha y las crías pendientes');throw error;});
 
-  const animal = await getAnimal(db, code, scope);
+  const animal = await getAnimal(db, `id:${animalId}`, scope);
   return { animal, replayed: false };
 }
 
@@ -1708,7 +1720,7 @@ export async function updateAnimal(
     recordedAt: claim.recordedAt,
   }]);
 
-  return { animal: await getAnimal(db, key, scope), replayed: false };
+  return { animal: await getAnimal(db, `id:${currentId}`, scope), replayed: false };
 }
 
 function exitedCheck(row: Row): boolean {
@@ -1758,8 +1770,11 @@ export async function changeTag(
     throw new ApiError(400, 'La fecha del cambio no puede ser anterior al arete vigente');
   }
 
-  const inUse = await db.prepare('SELECT id FROM animal_tags WHERE tag = ? AND is_current = 1')
-    .bind(tag).first();
+  const inUse = await db.prepare(`
+    SELECT t.id FROM animal_tags t
+    JOIN animals a ON a.id = t.animal_id
+    WHERE a.barn_id = ? AND a.is_active = 1 AND t.animal_id <> ? AND t.tag = ? AND t.is_current = 1
+  `).bind(Number(row.barn_id), animalId, tag).first();
   if (inUse) throw new ApiError(409, `El arete ${tag} ya está asignado a otro animal`);
 
   const createdAt = new Date().toISOString();
@@ -1797,7 +1812,7 @@ export async function changeTag(
     recordedAt: claim.recordedAt,
   }]);
 
-  return { animal: await getAnimal(db, key, scope), replayed: false };
+  return { animal: await getAnimal(db, `id:${animalId}`, scope), replayed: false };
 }
 
 export interface RegisterWeightInput {
@@ -1877,22 +1892,26 @@ export async function registerAnimalWeight(db: D1Database, actorUserId: number, 
   const committed=await commitOperation(db, claim, statements, [{ entityType: 'animal', entityId: Number(context.row.id),
       action: 'create', actorUserId, barnId: context.barnId, reason: 'Registro de pesaje', previousData: null,
       newData: {...payload,...(stageChanged?{previousStageCode:context.stageAtDate}: {})}, effectiveDate: weighedOn, recordedAt: claim.recordedAt }]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'No se puede cambiar la etapa en esa fecha: revise la ubicación, el saldo y los eventos posteriores');throw error;});
-  return { animal: await getAnimal(db, key, scope), replayed: committed.replayed };
+  return { animal: await getAnimal(db, `id:${Number(context.row.id)}`, scope), replayed: committed.replayed };
 }
 
 export async function correctAnimalWeight(db: D1Database, actorUserId: number, key: string, weightId: number,
   input: CorrectWeightInput, scope: ScopeOptions = {}): Promise<{ animal: AnimalDetail; replayed: boolean }> {
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Corrección de pesaje' });
-  const original = await db.prepare(`SELECT w.* FROM animal_weights w JOIN animals a ON a.id = w.animal_id
-    WHERE w.id = ? AND a.code = ?`).bind(weightId, key).first<Row>();
+  const barnIds = await resolveBarnScope(db, scope);
+  if (barnIds !== null && barnIds.length === 0) throw new ApiError(404, 'Animal no encontrado');
+  const animalRow = await fetchAnimalRow(db, key, barnIds);
+  if (!animalRow) throw new ApiError(404, 'Pesaje no encontrado');
+  const original = await db.prepare('SELECT * FROM animal_weights WHERE id = ? AND animal_id = ?')
+    .bind(weightId, Number(animalRow.id)).first<Row>();
   if (!original) throw new ApiError(404, 'Pesaje no encontrado');
   const weighedOn = String(original.weighed_on);
-  const context = await animalWeightContext(db, key, weighedOn, scope);
+  const context = await animalWeightContext(db, `id:${Number(animalRow.id)}`, weighedOn, scope);
   const weightKg = optionalWeight(input.weightKg, 'Peso corregido', false)!;
   const note = optionalText(input.note) ?? String(original.note ?? '');
   const payload = { key, weightId, weightKg, note, reason };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
-  if (replay) return { animal: await getAnimal(db, key, scope), replayed: true };
+  if (replay) return { animal: await getAnimal(db, `id:${Number(context.row.id)}`, scope), replayed: true };
   const replaced = await db.prepare('SELECT id FROM animal_weights WHERE corrects_weight_id = ?').bind(weightId).first();
   if (replaced) throw new ApiError(409, 'Este pesaje ya fue corregido');
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'animal.weight.correction',
@@ -1907,7 +1926,7 @@ export async function correctAnimalWeight(db: D1Database, actorUserId: number, k
   [{ entityType: 'animal_weight', entityId: weightId, action: 'update', actorUserId, barnId: context.barnId,
     reason, previousData: { weightKg: Number(original.weight_kg) }, newData: { weightKg, correctsWeightId: weightId },
     effectiveDate: weighedOn, recordedAt: claim.recordedAt }]);
-  return { animal: await getAnimal(db, key, scope), replayed: false };
+  return { animal: await getAnimal(db, `id:${Number(context.row.id)}`, scope), replayed: false };
 }
 
 export interface TransferAnimalInput {
@@ -1949,7 +1968,10 @@ export async function transferAnimal(
   const sex = String(row.sex) as Sex;
   const payload = { key, destinationBarnId, locationCode, lotCode, effectiveDate, ...(requestedStageCode ? { destinationStageCode: requestedStageCode } : {}) };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
-  if (replay) return { animal: await getAnimal(db, key, scope), ...(replay.result as { transferGroupId: string; warning: string | null }), replayed: true };
+  if (replay) {
+    const stored = replay.result as { animalId?: number; transferGroupId: string; warning: string | null };
+    return { animal: await getAnimal(db, stored.animalId ? `id:${stored.animalId}` : key, scope), transferGroupId: stored.transferGroupId, warning: stored.warning, replayed: true };
+  }
   if (destinationBarnId === sourceBarnId && locationCode === (row.location_code ?? null) && lotCode === (row.lot_code ?? null) && destinationStageCode === stageCode) throw new ApiError(400, 'El origen y destino deben ser diferentes');
   const config = await getConfigSnapshot(db, effectiveDate);
   if (!config.stages.some((stage) => stage.code === destinationStageCode)) throw new ApiError(400, 'La etapa de destino no está vigente en esa fecha');
@@ -1959,6 +1981,25 @@ export async function transferAnimal(
     .bind(Number(row.id), effectiveDate).first();
   if (later) throw new ApiError(409, 'El animal tiene movimientos posteriores; corrija primero la cronología para evitar reescribir historia');
   const reason = normalizeReason(input.reason, { required: true, fallback: 'Traslado individual' });
+  const animalId = Number(row.id);
+  if (destinationBarnId !== sourceBarnId && Number(row.is_active) === 1) {
+    const destActive = await db.prepare('SELECT id FROM animals WHERE barn_id = ? AND code = ? AND is_active = 1 AND id <> ?')
+      .bind(destinationBarnId, String(row.code), animalId).first();
+    if (destActive) {
+      throw new ApiError(409, `El galpón destino ya tiene un animal activo con el código ${String(row.code)}`);
+    }
+    const currentTag = await db.prepare('SELECT tag FROM animal_tags WHERE animal_id = ? AND is_current = 1')
+      .bind(animalId).first<{ tag: string }>();
+    if (currentTag) {
+      const destTagActive = await db.prepare(`
+        SELECT a.id FROM animal_tags t JOIN animals a ON a.id = t.animal_id
+        WHERE a.barn_id = ? AND a.is_active = 1 AND a.id <> ? AND t.tag = ? AND t.is_current = 1
+      `).bind(destinationBarnId, animalId, currentTag.tag).first();
+      if (destTagActive) {
+        throw new ApiError(409, `El galpón destino ya tiene un animal activo con el arete ${currentTag.tag}`);
+      }
+    }
+  }
   let warning: string | null = null;
   if (destinationBarnId !== sourceBarnId && destination.capacity !== null && destination.capacity !== undefined) {
     const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out')
@@ -1969,12 +2010,11 @@ export async function transferAnimal(
   }
   const transferGroupId = crypto.randomUUID();
   const claim = await createOperationClaim({ operationKey: input.operationKey, operationType: 'animal.transfer',
-    authorUserId: actorUserId, entityType: 'animal', entityId: Number(row.id), barnId: sourceBarnId,
-    effectiveDate, payload, result: { animalId: Number(row.id), transferGroupId, warning } });
+    authorUserId: actorUserId, entityType: 'animal', entityId: animalId, barnId: sourceBarnId,
+    effectiveDate, payload, result: { animalId, transferGroupId, warning } });
   const createdAt = claim.recordedAt;
   const sourceLocation = row.location_code === null || row.location_code === undefined ? null : String(row.location_code);
   const sourceLot = row.lot_code === null || row.lot_code === undefined ? null : String(row.lot_code);
-  const animalId = Number(row.id);
   const insertLeg = (barnId: number, location: string | null, lot: string | null, movementType: 'transfer_out' | 'transfer_in') => db.prepare(`
     INSERT INTO inventory_movements (operation_log_id, movement_type, effective_date, barn_id, location_code,
       lot_code, stage_code, sex, quantity, transfer_group_id, notes, animal_id, created_by_user_id, created_at)
@@ -1987,7 +2027,12 @@ export async function transferAnimal(
     db.prepare(`INSERT INTO inventory_write_guard (guard_id) SELECT CASE WHEN EXISTS (
       SELECT 1 FROM animals a WHERE a.id=? AND a.barn_id=? AND a.location_code IS ? AND a.lot_code IS ? AND a.current_stage_code=?
         AND a.exit_date IS NULL AND NOT EXISTS (SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.valid_from>?)
-    ) THEN 0 ELSE -1 END`).bind(animalId,sourceBarnId,sourceLocation,sourceLot,stageCode,effectiveDate),
+    ) AND (? = ? OR ? = 0 OR NOT EXISTS (
+      SELECT 1 FROM animals d WHERE d.barn_id=? AND d.code=? AND d.is_active=1 AND d.id<>?
+    )) THEN 0 ELSE -1 END`).bind(
+      animalId,sourceBarnId,sourceLocation,sourceLot,stageCode,effectiveDate,
+      destinationBarnId,sourceBarnId,Number(row.is_active),destinationBarnId,String(row.code),animalId,
+    ),
     db.prepare('UPDATE animal_location_history SET valid_until = ? WHERE animal_id = ? AND valid_until IS NULL')
       .bind(effectiveDate, animalId),
     db.prepare(`INSERT INTO animal_location_history
@@ -2008,7 +2053,7 @@ export async function transferAnimal(
       if (/guard_id/.test(String(error))) throw new ApiError(409, 'La ubicación, la ficha o el saldo cambió, o hay pesajes, servicios o actuaciones sanitarias en esa fecha o posteriores; revise la fecha antes de trasladar');
       throw error;
     });
-  return { animal: await getAnimal(db, key, scope), transferGroupId, warning, replayed: false };
+  return { animal: await getAnimal(db, `id:${animalId}`, scope), transferGroupId, warning, replayed: false };
 }
 
 export interface AnimalExitInput {
@@ -2072,7 +2117,7 @@ export async function registerAnimalExit(
   if(exitType==='sale'&&saleAmountMinor===null)throw new ApiError(400,'Toda venta de animales requiere importe para enlazarla con Finanzas');
   const payload = { key, exitType, purchaseReturn, originalPurchaseId:originalPurchase?.id??null, causeCode, effectiveDate,saleAmountMinor,saleCurrency,buyer,documentReference };
   const replay = await lookupExistingOperation(db, actorUserId, input.operationKey, payload);
-  if (replay) return { animal: await getAnimal(db, key, scope), replayed: true };
+  if (replay) return { animal: await getAnimal(db, `id:${animalId}`, scope), replayed: true };
   if(purchaseReturn&&originalPurchase?.reversed_at!==null)throw new ApiError(409,'La compra ya tiene una devolución registrada');
   if (!exitedCheck(row)) throw new ApiError(409, 'La ficha ya tiene una salida física');
   const laterHistory=await db.prepare(`SELECT 1 AS found WHERE EXISTS(SELECT 1 FROM animal_location_history WHERE animal_id=? AND valid_from>?) OR EXISTS(SELECT 1 FROM animal_weights WHERE animal_id=? AND weighed_on>?) OR EXISTS(SELECT 1 FROM health_event_animals ha JOIN health_events h ON h.id=ha.health_event_id WHERE ha.animal_id=? AND h.effective_date>? AND EXISTS(SELECT 1 FROM operation_log ho WHERE ho.id=h.operation_log_id AND ho.status='committed')) OR EXISTS(SELECT 1 FROM inventory_movements WHERE animal_id=? AND effective_date>?)`).bind(animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate,animalId,effectiveDate).first();
@@ -2118,7 +2163,7 @@ export async function registerAnimalExit(
     ...(healthEventId===null?[]:[{entityType:'health_event',entityId:healthEventId,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{eventType:'death',causeCode,animalCode:String(row.code),inventoryMovementId:movementId},effectiveDate,recordedAt:createdAt}]),
     ...(originalPurchase?[{entityType:'financial_entry',entityId:Number(originalPurchase.id),action:'update' as const,actorUserId,barnId,reason,previousData:{reversedAt:null},newData:{reversedAt:createdAt,reversalEntryId:financialEntryId},effectiveDate,recordedAt:createdAt}]:[]),
     ...(financialEntryId===null?[]:[{entityType:'financial_entry',entityId:financialEntryId,action:'create' as const,actorUserId,barnId,reason,previousData:null,newData:{direction:'income',category:originalPurchase?'Devolución de compra de animal':'Venta de animal',animalCode:String(row.code),amountMinor:saleAmountMinor,currencyCode:saleCurrency,counterparty:buyer,reference:documentReference,inventoryMovementId:movementId,reversalOfId:originalPurchase?.id??null},effectiveDate,recordedAt:createdAt}])]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La ficha o el inventario cambió; actualice antes de registrar la salida');throw error;});
-  return { animal: await getAnimal(db, key, scope), replayed: committed.replayed };
+  return { animal: await getAnimal(db, `id:${animalId}`, scope), replayed: committed.replayed };
 }
 
 /** Revierte una venta al devolver físicamente el animal, restaurando stock y caja en un lote. */
@@ -2128,9 +2173,11 @@ export async function registerAnimalSaleReturn(db:D1Database,actorUserId:number,
   const animalId=Number(animal.id);const original=await db.prepare("SELECT * FROM financial_entries WHERE source_type='animal_sale' AND source_id=? ORDER BY id DESC LIMIT 1").bind(String(animalId)).first<Row>();
   if(!original)throw new ApiError(409,'No hay una venta financiera original para devolver');
   const effectiveDate=input.effectiveDate?parseDate(input.effectiveDate,'Fecha de devolución'):today();if(effectiveDate>today()||effectiveDate<=String(original.operation_date))throw new ApiError(400,'La devolución debe ser posterior a la fecha de venta y no puede ser futura');
-  const reason=normalizeReason(input.reason,{required:true});const payload={animalId,entryId:Number(original.id),effectiveDate,reason};const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);if(replay)return{animal:await getAnimal(db,key,scope),replayed:true};
+  const reason=normalizeReason(input.reason,{required:true});const payload={animalId,entryId:Number(original.id),effectiveDate,reason};const replay=await lookupExistingOperation(db,actorUserId,input.operationKey,payload);if(replay)return{animal:await getAnimal(db,`id:${animalId}`,scope),replayed:true};
   if(original.reversed_at!==null)throw new ApiError(409,'La venta ya tiene una devolución registrada');
   if(String(animal.status)!=='vendido'||String(animal.exit_date)!==String(original.operation_date))throw new ApiError(409,'La ficha ya no coincide con la salida de esta venta');
+  const activeConflict=await db.prepare('SELECT id FROM animals WHERE barn_id=? AND code=? AND is_active=1 AND id<>?').bind(Number(animal.barn_id),String(animal.code),animalId).first();
+  if(activeConflict)throw new ApiError(409,`Ya existe un animal activo con el código ${String(animal.code)} en este galpón`);
   const sourceLocation=await db.prepare(`SELECT h.* FROM animal_location_history h WHERE h.animal_id=? AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?) ORDER BY h.valid_from DESC,h.id DESC LIMIT 1`).bind(animalId,String(original.operation_date),String(original.operation_date)).first<Row>();
   if(!sourceLocation)throw new ApiError(409,'No se encontró la ubicación histórica de la venta');const barnId=Number(sourceLocation.barn_id);const barn=await db.prepare("SELECT name FROM barns WHERE id=? AND status<>'inactivo'").bind(barnId).first<{name:string}>();if(!barn)throw new ApiError(409,'El galpón de la venta está inactivo');if(scope.allowedBarnNames&&!scope.allowedBarnNames.includes(barn.name))throw new ApiError(403,'Sin acceso al galpón de la venta');
   const operationLogId=String(await db.prepare('SELECT operation_log_id FROM financial_entries WHERE id=?').bind(Number(original.id)).first<{operation_log_id:string}>().then(row=>row?.operation_log_id??''));
@@ -2158,7 +2205,7 @@ export async function registerAnimalSaleReturn(db:D1Database,actorUserId:number,
     {entityType:'financial_entry',entityId:Number(original.id),action:'update',actorUserId,barnId,reason,previousData:{reversedAt:null},newData:{reversedAt:now,reversalEntryId:financeId},effectiveDate,recordedAt:now},
     {entityType:'financial_entry',entityId:financeId,action:'create',actorUserId,barnId,reason,previousData:null,newData:{direction:'expense',reversalOfId:Number(original.id),amountMinor:Number(original.amount_minor),currencyCode:String(original.currency_code)},effectiveDate,recordedAt:now},
   ]).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,'La venta, la camada o la configuración de ubicaciones cambió; actualice antes de devolver');throw error;});
-  return{animal:await getAnimal(db,key,scope),replayed:committed.replayed};
+  return{animal:await getAnimal(db,`id:${animalId}`,scope),replayed:committed.replayed};
 }
 
 export interface ToggleAvailabilityInput {
@@ -2198,6 +2245,13 @@ export async function setAnimalAvailability(
   if (isActive === active) {
     throw new ApiError(400, active ? 'La ficha ya está activa' : 'La ficha ya está desactivada');
   }
+  if (active) {
+    const conflict = await db.prepare('SELECT id FROM animals WHERE barn_id = ? AND code = ? AND is_active = 1 AND id <> ?')
+      .bind(Number(row.barn_id), String(row.code), animalId).first();
+    if (conflict) {
+      throw new ApiError(409, `Ya existe un animal activo con el código ${String(row.code)} en este galpón`);
+    }
+  }
 
   const now = new Date().toISOString();
   const claim = await createOperationClaim({
@@ -2230,5 +2284,5 @@ export async function setAnimalAvailability(
     recordedAt: claim.recordedAt,
   }]);
 
-  return { animal: await getAnimal(db, key, scope), replayed: false };
+  return { animal: await getAnimal(db, `id:${animalId}`, scope), replayed: false };
 }

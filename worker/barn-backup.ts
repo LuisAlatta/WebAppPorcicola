@@ -158,7 +158,7 @@ function exportQuery(schema: Schema): string {
     ['feed_movement', 'feed_movements'], ['feed_turn', 'feed_turns'], ['financial_entry', 'financial_entries'], ['financial_settlement', 'financial_settlements']] as const) {
     edge('alert_occurrences', table, `s.linked_event_type=${lit(source)} AND s.linked_event_id=CAST(p.id AS TEXT)`);
   }
-  edge('alert_occurrences', 'animals', 's.animal_code=p.code');
+  edge('alert_occurrences', 'animals', 's.animal_code=p.code AND (s.barn_id IS NULL OR p.barn_id=s.barn_id)');
   edge('alert_occurrences', 'operation_log', "s.source_type='manual' AND s.source_id=p.id");
   edge('alert_occurrences', 'operation_log', "s.source_type='feed_plan' AND p.entity_type='feed_plan' AND s.source_id=CAST(p.entity_id AS TEXT)");
   // Enlaces polimórficos reales (no se interpretan payloads arbitrarios).
