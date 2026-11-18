@@ -1039,6 +1039,21 @@ function litterIdentificationTimelineGuard(db:D1Database,litterId:string,sex:str
     ) THEN 0 ELSE -1 END`).bind(entryDate,litterId,entryDate,sex,entryDate,litterId,litterId,litterId,litterId,litterId,sex,sex,litterId,litterId,litterId,litterId,litterId,litterId);
 }
 
+function archiveDateForInactive(
+  validFrom: string,
+  exitDate: string | null,
+  deactivatedAt: string | null,
+): string {
+  const candidate = exitDate ?? (deactivatedAt ? deactivatedAt.slice(0, 10) : today());
+  return validFrom > candidate ? validFrom : candidate;
+}
+
+async function assertArchiveRefFree(db: D1Database, archivedRef: string): Promise<void> {
+  if (await db.prepare('SELECT id FROM animals WHERE code=? UNION ALL SELECT animal_id FROM animal_tags WHERE tag=? AND is_current=1').bind(archivedRef, archivedRef).first()) {
+    throw new ApiError(409, 'La referencia de archivo ya está ocupada; contacte al administrador antes de reutilizar este código');
+  }
+}
+
 /** Alta de ficha individual con una sola entrada al inventario. */
 export async function createAnimal(
   db: D1Database,
@@ -1172,29 +1187,55 @@ export async function createAnimal(
     throw new ApiError(400, 'La aptitud no está vigente en la fecha de ingreso');
   }
 
-  const duplicate = await db.prepare(`SELECT a.id,a.is_active,a.barn_id,a.alias,a.exit_date,a.status,a.updated_at,b.name AS barn_name
+  const duplicate = await db.prepare(`SELECT a.id,a.is_active,a.barn_id,a.alias,a.exit_date,a.deactivated_at,a.status,a.updated_at,b.name AS barn_name
     FROM animals a JOIN barns b ON b.id=a.barn_id WHERE a.code=?`).bind(code)
-    .first<{id:number;is_active:number;barn_id:number;alias:string|null;exit_date:string|null;status:string;updated_at:string;barn_name:string}>();
+    .first<{id:number;is_active:number;barn_id:number;alias:string|null;exit_date:string|null;deactivated_at:string|null;status:string;updated_at:string;barn_name:string}>();
   const archivedCode = duplicate ? `${code.slice(0, 22)}-ARCH-${duplicate.id}` : '';
+  let duplicateTagArchive: { tagId: number; archiveDate: string } | null = null;
   if (duplicate) {
-    if (Number(duplicate.is_active) === 1 || (barnIds !== null && !barnIds.includes(Number(duplicate.barn_id)))) {
+    if (Number(duplicate.is_active) === 1) {
       throw new ApiError(409, `Ya existe un animal con el código ${code}. Revise las fichas y los galpones autorizados.`);
     }
     if (reuseId !== undefined && reuseId !== Number(duplicate.id)) {
       throw new ApiError(409, 'La ficha anterior cambió; revise el código antes de registrar');
     }
     reuseId = Number(duplicate.id);
-    if (await db.prepare('SELECT id FROM animals WHERE code=? UNION ALL SELECT animal_id FROM animal_tags WHERE tag=? AND is_current=1').bind(archivedCode, archivedCode).first()) {
-      throw new ApiError(409, 'La referencia de archivo ya está ocupada; contacte al administrador antes de reutilizar este código');
+    await assertArchiveRefFree(db, archivedCode);
+    const duplicateTag = await db.prepare('SELECT id, tag, valid_from FROM animal_tags WHERE animal_id=? AND is_current=1')
+      .bind(reuseId).first<{ id: number; tag: string; valid_from: string }>();
+    if (duplicateTag && duplicateTag.tag === code) {
+      duplicateTagArchive = {
+        tagId: Number(duplicateTag.id),
+        archiveDate: archiveDateForInactive(duplicateTag.valid_from, duplicate.exit_date, duplicate.deactivated_at),
+      };
     }
-    const laterTag = await db.prepare('SELECT id FROM animal_tags WHERE animal_id=? AND is_current=1 AND valid_from>?').bind(reuseId, entryDate).first();
-    if (laterTag) throw new ApiError(409, 'La fecha de ingreso no puede preceder al último arete de la ficha anterior');
   } else if (reuseId !== undefined) {
     throw new ApiError(409, 'La ficha anterior cambió; revise el código antes de confirmar');
   }
-  const occupiedTag = await db.prepare('SELECT animal_id FROM animal_tags WHERE tag=? AND is_current=1').bind(code).first<{animal_id:number}>();
+
+  let inactiveTagArchive: { tagId: number; animalId: number; updatedAt: string; archivedTag: string; archiveDate: string } | null = null;
+  const occupiedTag = await db.prepare(`
+    SELECT t.id AS tag_id, t.animal_id, t.valid_from, a.is_active, a.exit_date, a.deactivated_at, a.updated_at
+    FROM animal_tags t
+    JOIN animals a ON a.id = t.animal_id
+    WHERE t.tag = ? AND t.is_current = 1
+  `).bind(code).first<{
+    tag_id: number; animal_id: number; valid_from: string; is_active: number;
+    exit_date: string | null; deactivated_at: string | null; updated_at: string;
+  }>();
   if (occupiedTag && Number(occupiedTag.animal_id) !== reuseId) {
-    throw new ApiError(409, `El arete ${code} ya está asignado a otro animal`);
+    if (Number(occupiedTag.is_active) === 1) {
+      throw new ApiError(409, `El arete ${code} ya está asignado a otro animal`);
+    }
+    const archivedTag = `${code.slice(0, 22)}-ARCH-${occupiedTag.animal_id}`;
+    await assertArchiveRefFree(db, archivedTag);
+    inactiveTagArchive = {
+      tagId: Number(occupiedTag.tag_id),
+      animalId: Number(occupiedTag.animal_id),
+      updatedAt: occupiedTag.updated_at,
+      archivedTag,
+      archiveDate: archiveDateForInactive(occupiedTag.valid_from, occupiedTag.exit_date, occupiedTag.deactivated_at),
+    };
   }
 
   const mother = await resolveParent(db, motherId, motherExternal, 'madre', 'hembra', barnIds);
@@ -1246,12 +1287,26 @@ export async function createAnimal(
     ...(duplicate ? [
       db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(
         SELECT 1 FROM animals WHERE id=? AND code=? AND is_active=0 AND barn_id=? AND updated_at=?)
-        AND NOT EXISTS(SELECT 1 FROM animal_tags WHERE animal_id=? AND is_current=1 AND valid_from>?)
-        THEN 0 ELSE -1 END`).bind(reuseId, code, duplicate.barn_id, duplicate.updated_at, reuseId, entryDate),
+        ${duplicateTagArchive ? 'AND EXISTS(SELECT 1 FROM animal_tags WHERE id=? AND animal_id=? AND tag=? AND is_current=1)' : ''}
+        THEN 0 ELSE -1 END`).bind(
+        reuseId, code, duplicate.barn_id, duplicate.updated_at,
+        ...(duplicateTagArchive ? [duplicateTagArchive.tagId, reuseId, code] : []),
+      ),
       db.prepare('UPDATE animals SET code=?,updated_at=? WHERE id=? AND code=? AND is_active=0').bind(archivedCode, createdAt, reuseId, code),
-      db.prepare('UPDATE animal_tags SET is_current=0,valid_to=? WHERE animal_id=? AND is_current=1').bind(entryDate, reuseId),
-      db.prepare(`INSERT INTO animal_tags(animal_id,tag,valid_from,is_current,created_by_user_id,created_at) VALUES(?,?,?,1,?,?)`).bind(reuseId, archivedCode, entryDate, actorUserId, createdAt),
+      ...(duplicateTagArchive ? [
+        db.prepare('UPDATE animal_tags SET is_current=0,valid_to=? WHERE id=? AND animal_id=? AND is_current=1').bind(duplicateTagArchive.archiveDate, duplicateTagArchive.tagId, reuseId),
+        db.prepare(`INSERT INTO animal_tags(animal_id,tag,valid_from,is_current,created_by_user_id,created_at) VALUES(?,?,?,1,?,?)`).bind(reuseId, archivedCode, duplicateTagArchive.archiveDate, actorUserId, createdAt),
+      ] : []),
       db.prepare('UPDATE alert_occurrences SET animal_code=? WHERE animal_code=?').bind(archivedCode, code),
+      db.prepare('DELETE FROM inventory_write_guard'),
+    ] : []),
+    ...(inactiveTagArchive ? [
+      db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(
+        SELECT 1 FROM animals WHERE id=? AND is_active=0 AND updated_at=?)
+        AND EXISTS(SELECT 1 FROM animal_tags WHERE id=? AND animal_id=? AND tag=? AND is_current=1)
+        THEN 0 ELSE -1 END`).bind(inactiveTagArchive.animalId, inactiveTagArchive.updatedAt, inactiveTagArchive.tagId, inactiveTagArchive.animalId, code),
+      db.prepare('UPDATE animal_tags SET is_current=0,valid_to=? WHERE id=? AND animal_id=? AND is_current=1').bind(inactiveTagArchive.archiveDate, inactiveTagArchive.tagId, inactiveTagArchive.animalId),
+      db.prepare(`INSERT INTO animal_tags(animal_id,tag,valid_from,is_current,created_by_user_id,created_at) VALUES(?,?,?,1,?,?)`).bind(inactiveTagArchive.animalId, inactiveTagArchive.archivedTag, inactiveTagArchive.archiveDate, actorUserId, createdAt),
       db.prepare('DELETE FROM inventory_write_guard'),
     ] : []),
     db.prepare(`
@@ -1389,7 +1444,7 @@ export async function createAnimal(
   if(originType==='interna'){statements.unshift(unidentifiedHeadGuard(db,barnId,locationCode,lotCode,stageCode,sex,entryDate));statements.push(db.prepare('DELETE FROM litter_identification_guard'));}
 
   if(locationGuard){statements.unshift(locationGuard);statements.push(db.prepare('DELETE FROM inventory_write_guard'));}
-  await commitOperation(db, claim, statements, audits).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,reuseId !== undefined ? 'La ficha anterior, la ubicación o el inventario cambió; actualice antes de reutilizar el código' : 'La ubicación, la camada o su historial cambió; revise la fecha y las crías pendientes');throw error;});
+  await commitOperation(db, claim, statements, audits).catch((error:unknown)=>{if(/guard_id/.test(String(error)))throw new ApiError(409,reuseId !== undefined || inactiveTagArchive !== null ? 'La ficha anterior, la ubicación o el inventario cambió; actualice antes de reutilizar el código' : 'La ubicación, la camada o su historial cambió; revise la fecha y las crías pendientes');throw error;});
 
   const animal = await getAnimal(db, code, scope);
   return { animal, replayed: false };

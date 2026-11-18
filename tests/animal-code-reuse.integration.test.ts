@@ -70,14 +70,44 @@ describe('Reutilización automática de códigos de animales', () => {
     expect((await api('/api/animals', input('001'))).status).toBe(409);
   }, 90000);
 
-  it('no revela ni reutiliza fichas fuera de los galpones autorizados', async () => {
+  it('bloquea códigos en uso real aunque estén en otro galpón, pero permite registrar códigos inactivos o históricos sin revelar la ficha previa', async () => {
     const original = await api('/api/animals', input('SCOPE-REUSE'));
+    expect(original.status, await original.clone().text()).toBe(201);
     const old = (await original.json() as { animal: { id: number } }).animal;
-    await api('/api/animals/SCOPE-REUSE/deactivate', { reason: 'Desactivar' });
-    const response = await api('/api/animals', { ...input('SCOPE-REUSE'), barnId: 2 }, '2');
-    expect(response.status).toBe(409);
-    expect(await response.json()).not.toHaveProperty('inactiveAnimal');
+
+    const blockedActive = await api('/api/animals', { ...input('SCOPE-REUSE'), barnId: 2 }, '2');
+    expect(blockedActive.status).toBe(409);
+    expect(await blockedActive.json()).not.toHaveProperty('inactiveAnimal');
     expect(await db.prepare('SELECT code FROM animals WHERE id=?').bind(old.id).first()).toEqual({ code: 'SCOPE-REUSE' });
+
+    await api('/api/animals/SCOPE-REUSE/deactivate', { reason: 'Desactivar' });
+    const response = await api('/api/animals', { ...input('SCOPE-REUSE'), barnId: 2, entryDate: '2024-12-14' }, '2');
+    expect(response.status, await response.clone().text()).toBe(201);
+    const createdBody = await response.json() as { animal: { id: number; code: string; barnId: number } };
+    expect(createdBody.animal.id).not.toBe(old.id);
+    expect(createdBody.animal.code).toBe('SCOPE-REUSE');
+    expect(createdBody.animal.barnId).toBe(2);
+    expect(await db.prepare('SELECT code,is_active FROM animals WHERE id=?').bind(old.id).first()).toEqual({ code: `SCOPE-REUSE-ARCH-${old.id}`, is_active: 0 });
+  }, 90000);
+
+  it('permite registrar un código aunque un animal inactivo con otro código conserve ese arete', async () => {
+    const first = await api('/api/animals', input('TAG-HOLDER-BASE'));
+    expect(first.status, await first.clone().text()).toBe(201);
+    const old = (await first.json() as { animal: { id: number } }).animal;
+    const tagChange = await api('/api/animals/TAG-HOLDER-BASE/tags', { tag: 'TAG-LIBRE-01', effectiveDate: today, reason: 'Cambio de arete' });
+    expect(tagChange.status, await tagChange.clone().text()).toBe(200);
+
+    const blocked = await api('/api/animals', input('TAG-LIBRE-01'));
+    expect(blocked.status).toBe(409);
+
+    await api('/api/animals/TAG-HOLDER-BASE/deactivate', { reason: 'Desactivar ficha anterior' });
+    const created = await api('/api/animals', input('TAG-LIBRE-01'));
+    expect(created.status, await created.clone().text()).toBe(201);
+    const fresh = (await created.json() as { animal: { id: number; code: string; currentTag: string } }).animal;
+    expect(fresh.id).not.toBe(old.id);
+    expect(fresh.code).toBe('TAG-LIBRE-01');
+    expect(fresh.currentTag).toBe('TAG-LIBRE-01');
+    expect(await db.prepare('SELECT tag,is_current FROM animal_tags WHERE animal_id=? AND is_current=1').bind(old.id).first()).toEqual({ tag: `TAG-LIBRE-01-ARCH-${old.id}`, is_current: 1 });
   }, 90000);
 
   it('no cruza tratamientos, correcciones ni vacunas al reutilizar el código', async () => {
