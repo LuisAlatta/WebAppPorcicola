@@ -401,7 +401,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
         anchor.href = url;
         anchor.download = fileName;
         anchor.click();
-        URL.revokeObjectURL(url);
+        window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
         setNotice(`Informe completo (${data.rows.length} filas) descargado.`);
       }
     } catch (e) {
@@ -660,7 +660,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                   multiple
                   size={4}
                   value={groupBy ? groupBy.split(',') : []}
-                  onChange={e => setGroupBy(Array.from(e.target.selectedOptions).map(option => option.value).join(','))}
+                  onChange={e => setGroupBy(Array.from(e.target.selectedOptions).map(option => option.value).filter(Boolean).join(','))}
                 >
                   <option value="">Sin agrupación (limpiar selección)</option>
                   {['finance', 'cashflow'].includes(source) && <option value="month">Mes</option>}
@@ -668,7 +668,7 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                     <option key={f.key} value={f.key}>{f.label}</option>
                   ))}
                 </select>
-                <small className="text-muted text-xs mt-1 block">Ctrl o ⌘ permite elegir galpón y mes a la vez.</small>
+                <small className="text-muted text-xs mt-1 block">Puedes elegir una o varias dimensiones de agrupación.</small>
               </FormField>
               <FormField label="Ordenar por" htmlFor="report-order-by">
                 <select id="report-order-by" className="form-select" value={orderBy} onChange={e => setOrderBy(e.target.value)}>
@@ -977,6 +977,10 @@ export function ModuloReportes({ perfil }: { perfil: Perfil }) {
                               href={reportSourceHref(row)}
                               className="btn btn-outline btn-sm"
                               aria-label={`Abrir registro de origen para fila ${i + 1}`}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                window.dispatchEvent(new CustomEvent('porcicola:navigate', { detail: { path: reportSourceHref(row) } }));
+                              }}
                             >
                               <span className="inline-flex items-center justify-center gap-2 leading-none text-xs">
                                 <span>Abrir origen</span>

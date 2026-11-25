@@ -10,12 +10,13 @@ export function SelectorGalpones({ perfil, selected, onContinue }: { perfil: Per
   const [ids, setIds] = useState(selected);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
   useEffect(() => {
     if (managing) return;
     let cancelled = false;
     void (async () => {
       try {
-        const response = await fetch('/api/barns');
+        const response = await fetch('/api/barns', { signal: AbortSignal.timeout(30_000) });
         const data = await response.json() as { barns?: { id: number; name: string }[]; error?: string };
         if (!response.ok || !data.barns) throw new Error(data.error ?? 'No se pudieron cargar los galpones');
         if (!cancelled) { setBarns(data.barns); setIds(current => current.filter(id => data.barns!.some(barn => barn.id === id))); }
@@ -23,8 +24,9 @@ export function SelectorGalpones({ perfil, selected, onContinue }: { perfil: Per
       finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
-  }, [managing]);
+  }, [managing, retryKey]);
   const closeManagement = () => { setLoading(true); setError(''); setManaging(false); };
+  const allSelected = barns.length > 0 && ids.length === barns.length;
   return <section className="module-container barn-selector">
     <div className="barn-selector-header">
       <div><h1>Galpones</h1><p>{managing ? 'Organiza tus instalaciones y su equipo.' : 'Elige dónde quieres trabajar. Puedes seleccionar varios.'}</p></div>
@@ -32,10 +34,21 @@ export function SelectorGalpones({ perfil, selected, onContinue }: { perfil: Per
     </div>
     {managing && perfil === 'administrador' ? <ModuloAdministracion perfil={perfil} barnsOnly onNavigate={closeManagement} /> : <>
     {loading && <div role="status" className="barn-selector-loading"><p>Cargando galpones…</p><div className="barn-selection-grid" aria-hidden="true">{[0, 1, 2, 3].map(index => <div className="barn-option-skeleton" key={index} />)}</div></div>}
-    {error && <div className="barn-selector-message" role="alert"><p>{error}</p><button type="button" className="btn btn-outline" onClick={() => window.location.reload()}>Volver a intentar</button></div>}
+    {error && <div className="barn-selector-message" role="alert"><p>{error}</p><button type="button" className="btn btn-outline" onClick={() => { setError(''); setLoading(true); setRetryKey(k => k + 1); }}>Volver a intentar</button></div>}
     {!loading && !error && !barns.length && <div className="barn-selector-message" role="status"><IconBuilding size={28} /><p>{perfil === 'administrador' ? 'No hay galpones disponibles. Usa Administrar galpones para crear o activar uno.' : 'No tienes galpones disponibles. Consulta con el administrador.'}</p></div>}
     {!loading && !error && barns.length > 0 && <>
-      <div className="barn-selection-summary"><span>Galpones disponibles</span><span>{barns.length}</span></div>
+      <div className="barn-selection-summary">
+        <span>Galpones disponibles ({barns.length})</span>
+        {barns.length > 1 && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setIds(allSelected ? [] : barns.map(barn => barn.id))}
+          >
+            {allSelected ? 'Limpiar selección' : 'Seleccionar todos'}
+          </button>
+        )}
+      </div>
       <div className="barn-selection-grid">
         {barns.map(barn => {
           const checked = ids.includes(barn.id);

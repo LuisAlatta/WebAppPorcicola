@@ -468,7 +468,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
   }, [appliedFilters, options]);
 
   const removeFilter = (key: keyof Filters) => {
-    const next = { ...appliedFilters, [key]: key === 'active' ? '1' : '', ...(key === 'barnId' ? { location: '' } : {}) } as Filters;
+    const next = { ...appliedFilters, [key]: key === 'active' ? '1' : '', ...(key === 'barnId' ? { location: '' } : {}), ...(key === 'status' && appliedFilters.active === '' ? { active: '1' } : {}) } as Filters;
     setFilters((prev) => ({ ...prev, ...next }));
     listRequest.current++;
     setPage(0);
@@ -1080,7 +1080,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
           <div className="card">
             <form className="animal-search-bar" onSubmit={event => { event.preventDefault(); applyFilters(true); }}>
               <FormField label="Buscar" htmlFor="ani-q" className="animal-search-field">
-                <input id="ani-q" type="search" className="form-input" value={filters.q}
+                <input id="ani-q" type="search" enterKeyHint="search" autoCorrect="off" spellCheck={false} className="form-input" value={filters.q}
                   onChange={event => setFilter('q', event.target.value)} placeholder="Código o nombre del animal" />
               </FormField>
               <button type="submit" className="btn btn-primary animal-icon-button" aria-label="Buscar" title="Buscar" disabled={loading}><IconSearch size={18} /></button>
@@ -1346,7 +1346,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         <p className="animal-card-location">
                           <IconBuilding size={14} />
                           <span>{animal.barnName}</span>
-                          <span className="animal-card-place">{animal.locationName ?? 'Sin ubicación'}{animal.lotName ? ` · Lote ${animal.lotName}` : ''}</span>
+                          <span className="animal-card-place">{animal.locationName ?? 'Sin ubicación'}{animal.lotName ? ` · ${/^lote\b/i.test(animal.lotName) ? animal.lotName : `Lote ${animal.lotName}`}` : ''}</span>
                         </p>
 
                         <div className="animal-card-actions">
@@ -1448,7 +1448,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               pageSize={pageSize}
               total={total}
               loading={loading}
-              onPage={(next) => { listRequest.current++; setPage(next); }}
+              onPage={(next) => { listRequest.current++; setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
               navLabel="Páginas del padrón"
               prevLabel="Página anterior del padrón"
               nextLabel="Página siguiente del padrón"
@@ -1501,6 +1501,9 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 <input
                   id="ani-code"
                   type="text"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className={`form-input ${fieldErrors.code ? 'input-error' : ''}`}
                   value={form.code}
                   onChange={(event) => setField('code', event.target.value)}
@@ -1600,6 +1603,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   {...inputError('birthWeightKg')}
                   id="ani-birth-weight"
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min="0"
                   className="form-input"
@@ -1627,6 +1631,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                   {...inputError('weaningWeightKg')}
                   id="ani-weaning-weight"
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min="0.01"
                   className="form-input"
@@ -1664,6 +1669,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         <input
                           id="ani-purchase-amount"
                           type="number"
+                          inputMode="decimal"
                           min="0.01"
                           step="0.01"
                           placeholder="0.00"
@@ -1984,12 +1990,12 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 <div className="detail-item"><dt>Tipo</dt><dd>{detail.animalTypeLabel}</dd></div>
                 <div className="detail-item"><dt>Sexo</dt><dd>{detail.sexLabel}</dd></div>
                 <div className="detail-item"><dt>Raza</dt><dd>{detail.breed ?? 'Sin dato'}</dd></div>
-                <div className="detail-item"><dt>Aptitud</dt><dd>{detail.aptitude ?? 'Sin definir'}</dd></div>
+                <div className="detail-item"><dt>Aptitud</dt><dd>{options?.aptitudes.find((item) => item.code === detail.aptitude)?.name ?? detail.aptitude ?? 'Sin definir'}</dd></div>
                 <div className="detail-item"><dt>Procedencia</dt><dd>{detail.originLabel}{detail.originDetail ? ` · ${detail.originDetail}` : ''}</dd></div>
                 <div className="detail-item"><dt>Fecha de ingreso</dt><dd className="font-mono tabular-nums">{detail.entryDate}</dd></div>
-                <div className="detail-item"><dt>Etapa de ingreso</dt><dd>{detail.entryStageCode}</dd></div>
+                <div className="detail-item"><dt>Etapa de ingreso</dt><dd>{options?.stages.find((stage) => stage.code === detail.entryStageCode)?.name ?? detail.entryStageCode}</dd></div>
                 <div className="detail-item"><dt>Ubicación</dt><dd>{detail.locationName ?? 'Sin asignar'}</dd></div>
-                <div className="detail-item"><dt>Lote</dt><dd>{detail.lotName ? `Lote ${detail.lotName}` : 'Sin lote'}</dd></div>
+                <div className="detail-item"><dt>Lote</dt><dd>{detail.lotName ? (/^lote\b/i.test(detail.lotName) ? detail.lotName : `Lote ${detail.lotName}`) : 'Sin lote'}</dd></div>
                 <div className="detail-item"><dt>Marrana (madre)</dt><dd className="font-mono">{detail.mother ? (detail.mother.code ?? detail.mother.external ?? 'Sin dato') : 'Desconocida'}</dd></div>
                 <div className="detail-item"><dt>Verraco (padre)</dt><dd className="font-mono">{detail.father ? (detail.father.code ?? detail.father.external ?? 'Sin dato') : 'Desconocido'}</dd></div>
                 <div className="detail-item"><dt>Peso al nacer</dt><dd className="font-mono font-bold tabular-nums">{formatWeight(detail.birthWeightKg)}</dd></div>
@@ -2062,6 +2068,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                         id="ani-weight-kg"
                         className="form-input font-numeric tabular-nums font-bold"
                         type="number"
+                        inputMode="decimal"
                         min="0.01"
                         max="500"
                         step="0.01"
@@ -2174,6 +2181,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                                   id={`weight-corr-kg-${weight.id}`}
                                   className="form-input font-numeric tabular-nums font-bold"
                                   type="number"
+                                  inputMode="decimal"
                                   min="0.01"
                                   max="500"
                                   step="0.01"
@@ -2586,6 +2594,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                               <input
                                 id="ani-exit-amount"
                                 type="number"
+                                inputMode="decimal"
                                 min="0.01"
                                 step="0.01"
                                 placeholder="0.00"
@@ -2713,6 +2722,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                 </div>
               </header>
               <div className="modal-body">
+                {physicalActionError && <InlineAlert tone="error">{physicalActionError}</InlineAlert>}
                 <p className="text-sm text-muted">
                   Se cancelará el registro de salida del animal <strong>{detail.code}</strong>, se reintegrará 1 cabeza al inventario del galpón y se generará el contra-asiento financiero auditable.
                 </p>
@@ -2724,7 +2734,6 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
                     onChange={(e) => setSaleReturnReason(e.target.value)}
                     placeholder="Ej. Reclamo del cliente o transacción revertida"
                     required
-                    autoFocus
                   />
                 </FormField>
               </div>

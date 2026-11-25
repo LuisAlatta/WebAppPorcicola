@@ -184,9 +184,8 @@ export function InformesProductivos({ barns }: { barns: { id: number; name: stri
       anchor.href = url;
       anchor.download = `${fresh.kind === 'weights' ? 'pesos' : 'partos-camadas'}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
       anchor.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch (err) {
-      setResult(null);
       setError(errorMessage(err, 'No se pudo exportar el informe'));
     } finally {
       setBusy(false);

@@ -218,6 +218,8 @@ export function BocetoLogin({ onLogin }: LoginProps) {
             <img
               src="/logo.jpg"
               alt="Logo Mi Granja PRO"
+              width={180}
+              height={140}
               className="login-brand-logo"
             />
           </div>
@@ -235,8 +237,11 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 id="login-username"
                 className="form-input login-input"
                 type="text"
+                inputMode="email"
+                enterKeyHint="next"
                 autoComplete="username"
                 autoCapitalize="none"
+                autoCorrect="off"
                 spellCheck={false}
                 name="username"
                 placeholder="ej. admin@granja.pe"
@@ -268,6 +273,7 @@ export function BocetoLogin({ onLogin }: LoginProps) {
                 id="login-password"
                 className="form-input login-input input-has-trail"
                 type={showPassword ? 'text' : 'password'}
+                enterKeyHint="go"
                 autoComplete="current-password"
                 name="password"
                 placeholder="••••••••"
@@ -339,13 +345,14 @@ export function BocetoLogin({ onLogin }: LoginProps) {
             </span>
           </button>
 
-          <div className="login-quick-roles" aria-label="Perfiles de acceso rápido">
+          <div className="login-quick-roles" role="group" aria-label="Perfiles de acceso rápido">
             {DEMO_ACCOUNTS.map((acc) => {
               const isSelected = selectedRole === acc.role;
               return (
                 <button
                   key={acc.role}
                   type="button"
+                  aria-pressed={isSelected}
                   className={`btn-quick-role ${isSelected ? 'is-selected' : ''}`}
                   onClick={() => fillDemoAccount(acc)}
                   disabled={loading}

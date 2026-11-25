@@ -99,7 +99,12 @@ export function ModalDialog({ labelledBy, onDismiss, dismissDisabled = false, ch
   };
 
   return createPortal(
-    <div className={`modal-backdrop${placement === 'center' ? ' modal-backdrop-centered' : ''}`}>
+    <div
+      className={`modal-backdrop${placement === 'center' ? ' modal-backdrop-centered' : ''}`}
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !dismissDisabled) onDismiss();
+      }}
+    >
       <div
         ref={dialogRef}
         className={`modal-content card p-4${size === 'wide' ? ' modal-content-wide' : ''}`}

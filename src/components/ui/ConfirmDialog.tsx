@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { ModalDialog } from '../ModalDialog';
 import { IconAlertCircle, IconAlertTriangle, IconX } from '../icons';
 
@@ -27,17 +27,18 @@ export function ConfirmDialog({
   onConfirm,
   onDismiss,
 }: ConfirmDialogProps) {
+  const titleId = useId();
   return (
-    <ModalDialog labelledBy="confirm-dialog-title" onDismiss={onDismiss} dismissDisabled={busy}>
+    <ModalDialog labelledBy={titleId} onDismiss={onDismiss} dismissDisabled={busy}>
       <div className="modal-header">
         <span className={`modal-icon modal-icon-${tone}`} aria-hidden="true">
           {tone === 'danger' ? <IconAlertTriangle size={20} /> : <IconAlertCircle size={20} />}
         </span>
         <div className="modal-body">
-          <h2 id="confirm-dialog-title">{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           {description && <p className="text-sm text-muted">{description}</p>}
         </div>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onDismiss} disabled={busy} aria-label="Cerrar">
+        <button type="button" className="icon-button" onClick={onDismiss} disabled={busy} aria-label="Cerrar">
           <IconX size={16} />
         </button>
       </div>

@@ -11,6 +11,7 @@ import {
 export function PwaControls() {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
   const [confirmUpdate, setConfirmUpdate] = useState(false);
+  const [snoozed, setSnoozed] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState('');
   const updatingRef = useRef(false);
@@ -73,10 +74,11 @@ export function PwaControls() {
 
   const dismissUpdate = () => {
     setConfirmUpdate(false);
+    setSnoozed(true);
     window.requestAnimationFrame(() => updateButtonRef.current?.focus());
   };
 
-  if (!waiting && !updating && !updateError) return null;
+  if ((!waiting || snoozed) && !updating && !updateError) return null;
 
   return (
     <>

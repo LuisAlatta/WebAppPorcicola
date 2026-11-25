@@ -18,7 +18,7 @@ import { ModuloSanidad } from './components/ModuloSanidad';
 import { ModuloAlertas } from './components/ModuloAlertas';
 import { SessionState } from './components/SessionState';
 import { DataState } from './components/DataState';
-import { BarnScopeBar, InlineAlert } from './components/ui';
+import { BarnScopeBar, ConfirmDialog, InlineAlert } from './components/ui';
 const ModuloFinanzas = lazy(() => import('./components/ModuloFinanzas').then(module => ({default:module.ModuloFinanzas})));
 const ModuloAnimales = lazy(() => import('./components/ModuloAnimales').then(module => ({default:module.ModuloAnimales})));
 const ModuloReportes = lazy(() => import('./components/ModuloReportes').then(module => ({default:module.ModuloReportes})));
@@ -64,9 +64,12 @@ function App() {
   const [estadoSesion,setEstadoSesion]=useState<'cargando'|'lista'|'error'>('cargando');
   const [usuarioActual, setUsuarioActual] = useState<string>('');
   const [logoutError,setLogoutError]=useState('');
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [barnSelection, setBarnSelection] = useState<{ ids: number[]; names: string[] }>({ ids: [], names: [] });
   const [choosingBarns, setChoosingBarns] = useState(false);
   const isAnimalView = ['animales', 'listado', 'formulario', 'detalle'].includes(vistaActual);
+  const isGlobalAdminView = vistaActual === 'configuracion' || vistaActual === 'administracion';
   const animalBarnProps = { barnNames: barnSelection.names, onChangeBarns: () => setChoosingBarns(true) };
   const hasBarnSelection = barnSelection.ids.length > 0;
 
@@ -100,12 +103,26 @@ function App() {
       const match=window.location.pathname.match(/^\/animal\/(.+)$/);
       if(match){try{setSelectedAnimalId(decodeURIComponent(match[1]));}catch{setSelectedAnimalId('');}}
     };
+    const handleSpaNav = (event: Event) => {
+      const detail = (event as CustomEvent<{ path?: string }>).detail;
+      if (!detail?.path || typeof window === 'undefined') return;
+      window.history.pushState(null, '', detail.path);
+      handlePopState();
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    };
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('porcicola:navigate', handleSpaNav);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('porcicola:navigate', handleSpaNav);
+    };
   }, []);
 
   const handleNavigate = (vista: Vista) => {
     setVistaActual(vista);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
     if (typeof window !== 'undefined' && window.history) {
       let targetPath = '/';
       if (vista === 'galpones') targetPath = '/galpones';
@@ -145,18 +162,24 @@ function App() {
   };
 
   const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
     setLogoutError('');
     try {
       const response=await fetch('/api/auth/logout', { method: 'POST' });
       if(!response.ok)throw new Error('No se pudo cerrar la sesión. Vuelve a intentar.');
     } catch {
       setLogoutError('No se pudo cerrar la sesión en el servidor. Comprueba la conexión y vuelve a intentar.');
+      setLoggingOut(false);
+      setConfirmLogout(false);
       return;
     }
     clearOperationAttempts();
     setEstaAutenticado(false);
     setSelectedBarnIds([]);
     setBarnSelection({ ids: [], names: [] });
+    setConfirmLogout(false);
+    setLoggingOut(false);
     handleNavigate('login');
   };
 
@@ -228,16 +251,28 @@ function App() {
           perfilActual={perfilActual}
           usuario={usuarioActual}
           onNavigate={handleNavbarNavigate}
-          onLogout={handleLogout}
+          onLogout={() => setConfirmLogout(true)}
           onBack={choosingBarns && hasBarnSelection ? () => setChoosingBarns(false) : undefined}
           hideBack={!hasBarnSelection}
         />
       )}
       <PwaControls />
       {logoutError && <InlineAlert tone="error" onDismiss={() => setLogoutError('')}>{logoutError}</InlineAlert>}
+      {confirmLogout && (
+        <ConfirmDialog
+          title="Cerrar sesión"
+          description="Si tienes un formulario abierto sin guardar, se perderán los datos pendientes."
+          confirmLabel="Cerrar sesión"
+          busyLabel="Cerrando sesión…"
+          busy={loggingOut}
+          tone="danger"
+          onConfirm={() => void handleLogout()}
+          onDismiss={() => setConfirmLogout(false)}
+        />
+      )}
 
       <main className="main-content">
-        {estaAutenticado && vistaActual !== 'login' && barnSelection.ids.length > 0 && !isAnimalView && <BarnScopeBar names={barnSelection.names} onChangeBarns={() => setChoosingBarns(true)} />}
+        {estaAutenticado && vistaActual !== 'login' && !choosingBarns && vistaActual !== 'galpones' && barnSelection.ids.length > 0 && !isAnimalView && !isGlobalAdminView && <BarnScopeBar names={barnSelection.names} onChangeBarns={() => setChoosingBarns(true)} />}
         {renderVista()}
       </main>
 

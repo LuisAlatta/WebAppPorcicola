@@ -208,16 +208,29 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [status, setStatus] = useState('pending');
+  const [cycleQuery, setCycleQuery] = useState('');
+  const [litterEventType, setLitterEventType] = useState<'weaning' | 'death' | 'adoption'>('weaning');
+
+  const filteredCycles = useMemo(() => {
+    const q = cycleQuery.trim().toLowerCase();
+    if (!q) return cycles;
+    return cycles.filter((c) =>
+      c.femaleCode.toLowerCase().includes(q)
+      || (c.femaleAlias ?? '').toLowerCase().includes(q)
+      || c.barnName.toLowerCase().includes(q)
+    );
+  }, [cycles, cycleQuery]);
 
   const hasActiveFilters = useMemo(
-    () => Boolean(from || to || status !== 'pending'),
-    [from, to, status]
+    () => Boolean(from || to || status !== 'pending' || cycleQuery.trim()),
+    [from, to, status, cycleQuery]
   );
 
   const clearFilters = () => {
     setFrom('');
     setTo('');
     setStatus('pending');
+    setCycleQuery('');
   };
   const [busy, setBusy] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
@@ -293,8 +306,8 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
     const [cycleRes, targetLittersRes, femaleRes, sireRes] = await Promise.all([
       fetch(`/api/reproduction/cycles?${params.toString()}`, { signal: AbortSignal.timeout(30000) }),
       fetch('/api/reproduction/litters/targets', { signal: AbortSignal.timeout(30000) }),
-      fetch('/api/animals?sex=hembra&status=activo&limit=500', { signal: AbortSignal.timeout(30000) }),
-      fetch('/api/animals?type=verraco&status=activo&limit=500', { signal: AbortSignal.timeout(30000) }),
+      fetch('/api/animals?sex=hembra&status=activo&active=1&limit=500', { signal: AbortSignal.timeout(30000) }),
+      fetch('/api/animals?type=verraco&status=activo&active=1&limit=500', { signal: AbortSignal.timeout(30000) }),
     ]);
 
     const cycleBody = (await cycleRes.json()) as { error?: string; cycles?: Cycle[] };
@@ -849,7 +862,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
               {!isAntecedent && (
                 <>
                   <FormField label="Repetición de celo (días)" helper="Se recomiendan 21 días desde la inseminación; puede modificarlos.">
-                    <input className="form-input" type="number" min="1" max="120" step="1" required value={form.heatRepeatDays} onChange={e => setForm(prev => ({ ...prev, heatRepeatDays: e.target.value }))} />
+                    <input className="form-input" type="number" inputMode="numeric" min="1" max="120" step="1" required value={form.heatRepeatDays} onChange={e => setForm(prev => ({ ...prev, heatRepeatDays: e.target.value }))} />
                   </FormField>
                   <FormField label="Fecha probable de repetición de celo">
                     <input className="form-input" type="date" readOnly value={projectedDate(form.serviceDate, form.heatRepeatDays)} />
@@ -924,7 +937,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
             <div className="grid-3">
               {!isAntecedent && <>
                 <FormField label="Días hasta el parto" helper="Se suman a la fecha de inseminación.">
-                  <input className="form-input" type="number" min="1" max="150" step="1" required value={form.gestationDays} onChange={e => setForm(prev => ({ ...prev, gestationDays: e.target.value }))} />
+                  <input className="form-input" type="number" inputMode="numeric" min="1" max="150" step="1" required value={form.gestationDays} onChange={e => setForm(prev => ({ ...prev, gestationDays: e.target.value }))} />
                 </FormField>
                 <FormField label="Fecha probable de parto calculada">
                   <input className="form-input" type="date" readOnly value={projectedDate(form.serviceDate, form.gestationDays)} />
@@ -1057,7 +1070,19 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
               </>
             }
           >
-        <div className="grid-3 mb-4">
+        <div className="grid-4 mb-4">
+          <FormField label="Buscar marrana">
+            <input
+              type="search"
+              enterKeyHint="search"
+              autoCorrect="off"
+              spellCheck={false}
+              className="form-input"
+              placeholder="Código, alias o galpón"
+              value={cycleQuery}
+              onChange={(e) => setCycleQuery(e.target.value)}
+            />
+          </FormField>
           <FormField label="Desde">
             <input type="date" className="form-input" value={from} onChange={(e) => setFrom(e.target.value)} />
           </FormField>
@@ -1099,7 +1124,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
               </button>
             }
           />
-        ) : !cycles.length ? (
+        ) : !filteredCycles.length ? (
           <DataState
             variant="empty"
             title="Sin ciclos reproductivos para los filtros seleccionados"
@@ -1109,7 +1134,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
           />
         ) : (
           <div className="flex flex-col gap-3">
-            {cycles.map((cycle) => (
+            {filteredCycles.map((cycle) => (
               <article className="reproduction-cycle" key={cycle.id}>
                 {/* Header del Ciclo */}
                 <header className="data-card-head">
@@ -1280,7 +1305,10 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                             onClick={() => {
                               const nextCycleId = litterEventCycle === cycle.id ? null : cycle.id;
                               setLitterEventCycle(nextCycleId);
-                              if (nextCycleId) setLitterEventEffectiveDate(cycle.litter?.farrowingDate ?? farmToday());
+                              if (nextCycleId) {
+                                setLitterEventType('weaning');
+                                setLitterEventEffectiveDate(cycle.litter?.farrowingDate ?? farmToday());
+                              }
                             }}
                           >
                             <IconPlus size={14} />
@@ -1646,7 +1674,12 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                     <p className="text-xs text-muted mb-2">{cycle.femaleCode} · camada {cycle.litter.id.slice(0, 8)}</p>
                     <div className="grid-3">
                       <FormField label="Evento" labelClassName="text-xs">
-                        <select name="eventType" className="form-select">
+                        <select
+                          name="eventType"
+                          className="form-select"
+                          value={litterEventType}
+                          onChange={(event) => setLitterEventType(event.target.value as 'weaning' | 'death' | 'adoption')}
+                        >
                           <option value="weaning">Destete parcial</option>
                           <option value="death">Baja en lactancia</option>
                           <option value="adoption">Adopción hacia otra camada</option>
@@ -1675,14 +1708,18 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
 
                     <div className="grid-3">
                       <FormField label="Cantidad" labelClassName="text-xs">
-                        <input name="quantity" type="number" min="1" step="1" className="form-input" required />
+                        <input name="quantity" type="number" inputMode="numeric" min="1" step="1" className="form-input" required />
                       </FormField>
-                      <FormField label="Peso promedio al destete (kg)" labelClassName="text-xs">
-                        <input name="weightKg" type="number" min="0.01" step="0.01" className="form-input" />
-                      </FormField>
-                      <FormField label="Causa de baja (si aplica)" labelClassName="text-xs">
-                        <input name="cause" className="form-input" />
-                      </FormField>
+                      {litterEventType === 'weaning' && (
+                        <FormField label="Peso promedio al destete (kg)" labelClassName="text-xs">
+                          <input name="weightKg" type="number" inputMode="decimal" min="0.01" step="0.01" className="form-input" />
+                        </FormField>
+                      )}
+                      {litterEventType === 'death' && (
+                        <FormField label="Causa de baja" labelClassName="text-xs">
+                          <input name="cause" className="form-input" />
+                        </FormField>
+                      )}
                     </div>
 
                     {!!cycle.litter.identifiedAnimals?.length && (
@@ -1702,30 +1739,35 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       </fieldset>
                     )}
 
-                    <div className="grid-3">
-                      <FormField label="Etapa destino (destete)" labelClassName="text-xs">
-                        <input name="destinationStageCode" className="form-input" defaultValue="inicio" />
-                      </FormField>
-                      <FormField label="Galpón destino" labelClassName="text-xs">
-                        <input
-                          name="destinationBarnId"
-                          type="number"
-                          min="1"
-                          className="form-input"
-                          defaultValue={cycle.barnId}
-                        />
-                      </FormField>
-                      <FormField label="Ubicación destino (destete)" labelClassName="text-xs">
-                        <input name="destinationLocationCode" className="form-input" />
-                      </FormField>
-                    </div>
+                    {litterEventType === 'weaning' && (
+                      <>
+                        <div className="grid-3">
+                          <FormField label="Etapa destino (destete)" labelClassName="text-xs">
+                            <input name="destinationStageCode" className="form-input" defaultValue="inicio" />
+                          </FormField>
+                          <FormField label="Galpón destino (ID)" labelClassName="text-xs" helper={`Actual: ${cycle.barnName}`}>
+                            <input
+                              name="destinationBarnId"
+                              type="number"
+                              inputMode="numeric"
+                              min="1"
+                              className="form-input"
+                              defaultValue={cycle.barnId}
+                            />
+                          </FormField>
+                          <FormField label="Ubicación destino (destete)" labelClassName="text-xs">
+                            <input name="destinationLocationCode" className="form-input" />
+                          </FormField>
+                        </div>
+                        <FormField label="Lote destino (destete)" labelClassName="text-xs">
+                          <input name="destinationLotCode" className="form-input" />
+                        </FormField>
+                      </>
+                    )}
 
-                    <div className="grid-2">
-                      <FormField label="Lote destino (destete)" labelClassName="text-xs">
-                        <input name="destinationLotCode" className="form-input" />
-                      </FormField>
+                    {litterEventType === 'adoption' && (
                       <FormField label="Camada destino (adopción)" labelClassName="text-xs">
-                        <select name="destinationLitterId" className="form-select">
+                        <select name="destinationLitterId" className="form-select" required>
                           <option value="">Seleccione</option>
                           {targetLitters
                             .filter((target) =>
@@ -1740,7 +1782,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                             ))}
                         </select>
                       </FormField>
-                    </div>
+                    )}
 
                     <FormField label="Motivo" labelClassName="text-xs">
                       <input name="reason" className="form-input" required minLength={5} />

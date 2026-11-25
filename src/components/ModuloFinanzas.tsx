@@ -168,13 +168,13 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
   }, [load]);
 
   const totalMinor = useMemo(() => {
-    const match = form.amount.match(/^(\d{1,12})(?:\.(\d{1,2}))?$/);
+    const match = form.amount.trim().replace(',', '.').match(/^(\d{1,12})(?:\.(\d{1,2}))?$/);
     return match ? Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0')) : 0;
   }, [form.amount]);
 
   const allocatedMinor = useMemo(() => {
     return allocations.reduce((total, line) => {
-      const value = line.amount || (allocations.length === 1 ? form.amount : '');
+      const value = (line.amount || (allocations.length === 1 ? form.amount : '')).trim().replace(',', '.');
       const match = value.match(/^(\d{1,12})(?:\.(\d{1,2}))?$/);
       return total + (match ? Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0')) : 0);
     }, 0);
@@ -262,7 +262,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
         anchor.href = url;
         anchor.download = file.name;
         anchor.click();
-        URL.revokeObjectURL(url);
+        window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
         setNotice(`Informe completo de ${pluralize(data.rows.length, 'fila', 'filas')} descargado.`);
       }
     } catch (err) {

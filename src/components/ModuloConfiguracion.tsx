@@ -491,6 +491,7 @@ export function ModuloConfiguracion() {
     setStageKey(newOperationKey('cfg-stage'));
     setStageError(null);
     setSection('etapas');
+    window.setTimeout(() => document.getElementById('stage-editor-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
   const handleSaveStage = async (e: React.FormEvent) => {
@@ -882,7 +883,7 @@ export function ModuloConfiguracion() {
               {stageError && (
                 <InlineAlert tone="error" onDismiss={() => setStageError(null)}>{stageError}</InlineAlert>
               )}
-              <form onSubmit={handleSaveStage}>
+              <form id="stage-editor-form" onSubmit={handleSaveStage}>
                 <div className="form-grid mb-3">
                   <FormField label="Código">
                     <input type="text" className="form-input" required value={stageCode} onChange={(e) => setStageCode(e.target.value)} placeholder="Ej. preinicio" />
@@ -891,10 +892,10 @@ export function ModuloConfiguracion() {
                     <input type="text" className="form-input" required value={stageName} onChange={(e) => setStageName(e.target.value)} placeholder="Ej. Preinicio" />
                   </FormField>
                   <FormField label="Orden">
-                    <input type="number" className="form-input" min={0} value={stageSort} onChange={(e) => setStageSort(e.target.value)} />
+                    <input type="number" inputMode="numeric" className="form-input" min={0} value={stageSort} onChange={(e) => setStageSort(e.target.value)} />
                   </FormField>
                   <FormField label="Peso inicial (kg, vacío = abierto)">
-                    <input type="number" step="0.01" min={0} className="form-input" value={stageInitialWeight} onChange={(e) => setStageInitialWeight(e.target.value)} />
+                    <input type="number" inputMode="decimal" step="0.01" min={0} className="form-input" value={stageInitialWeight} onChange={(e) => setStageInitialWeight(e.target.value)} />
                   </FormField>
                   <FormField label="Peso final (kg, vacío = abierto)">
                     <input type="number" step="0.01" min={0} className="form-input" value={stageFinalWeight} onChange={(e) => setStageFinalWeight(e.target.value)} />

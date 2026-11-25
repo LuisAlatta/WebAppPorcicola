@@ -77,7 +77,7 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
       <FormField label={searchLabel} htmlFor={`${id}-search`}>
         <div className="animal-picker-search">
           <span className="animal-picker-search-icon" aria-hidden="true"><IconSearch size={16} /></span>
-          <input id={`${id}-search`} className="form-input" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Código, alias o arete" />
+          <input id={`${id}-search`} className="form-input" type="search" enterKeyHint="search" autoCorrect="off" spellCheck={false} value={query} onChange={event => setQuery(event.target.value)} placeholder="Código, alias o arete" />
         </div>
       </FormField>
       {value.length > 0 && (

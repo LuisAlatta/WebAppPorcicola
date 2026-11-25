@@ -26,6 +26,7 @@ import { BarnBackupImport } from './BarnBackupImport';
 import { ModuloConfiguracion } from './ModuloConfiguracion';
 import { ModuleTabs } from './ModuleTabs';
 import {
+  ConfirmDialog,
   InlineAlert,
   PageHeader,
   StatusBadge,
@@ -138,6 +139,8 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
   const [loading, setLoading] = useState<boolean>(perfil === 'administrador');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [userToggleTarget, setUserToggleTarget] = useState<UserItem | null>(null);
+  const [userToggling, setUserToggling] = useState(false);
 
   // Formulario nuevo usuario
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
@@ -345,6 +348,7 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
   const handleToggleUserStatus = async (user: UserItem) => {
     setErrorMsg(null);
     setSuccessMsg(null);
+    setUserToggling(true);
     const nextStatus = user.is_active === 1 ? 0 : 1;
 
     try {
@@ -360,10 +364,13 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
         return;
       }
 
+      setUserToggleTarget(null);
       setSuccessMsg(`Estado de ${user.name} actualizado exitosamente`);
       await refreshData();
     } catch (err) {
       setErrorMsg(errorMessage(err, 'Error al actualizar estado del usuario'));
+    } finally {
+      setUserToggling(false);
     }
   };
 
@@ -661,7 +668,8 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                     <button
                       type="button"
                       className="btn btn-outline"
-                      onClick={() => handleToggleUserStatus(u)}
+                      disabled={userToggling}
+                      onClick={() => setUserToggleTarget(u)}
                       title={u.is_active === 1 ? 'Desactivar cuenta' : 'Activar cuenta'}
                     >
                       <IconUser size={14} /><span>{u.is_active === 1 ? 'Desactivar' : 'Activar'}</span>
@@ -670,6 +678,20 @@ export function ModuloAdministracion({ perfil, onNavigate, barnsOnly = false }: 
                 </DataCard>
               ))}
             </DataCardList>
+          )}
+          {userToggleTarget && (
+            <ConfirmDialog
+              title={userToggleTarget.is_active === 1 ? `Desactivar a ${userToggleTarget.name}` : `Activar a ${userToggleTarget.name}`}
+              description={userToggleTarget.is_active === 1
+                ? 'La cuenta dejará de poder iniciar sesión hasta volver a activarla.'
+                : 'La cuenta recuperará acceso a los galpones que tenga asignados.'}
+              confirmLabel={userToggleTarget.is_active === 1 ? 'Desactivar' : 'Activar'}
+              busyLabel="Guardando…"
+              busy={userToggling}
+              tone={userToggleTarget.is_active === 1 ? 'danger' : 'primary'}
+              onConfirm={() => void handleToggleUserStatus(userToggleTarget)}
+              onDismiss={() => setUserToggleTarget(null)}
+            />
           )}
 
           {/* Modal / Formulario Nueva Cuenta */}

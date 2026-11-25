@@ -109,7 +109,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
     recurrenceDays: '180',
     referenceDate: '',
     isActive: true,
-    reason: 'Alta de regla de prueba',
+    reason: '',
   });
   const [manual, setManual] = useState({
     animalCode: '',
@@ -145,6 +145,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({ status: filter.status });
@@ -168,11 +169,12 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
 
     setRules(r.rules ?? []);
     setRows(s.schedules ?? []);
+    setLoading(false);
   }, [filter]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void load().catch((err) => setError(errorMessage(err, 'Error cargando vacunas')));
+      void load().catch((err) => { setError(errorMessage(err, 'Error cargando vacunas')); setLoading(false); });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
@@ -463,7 +465,9 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
       </div>}
 
       {/* Agenda de vacunas */}
-      {rows.length === 0 ? (
+      {loading ? (
+        <DataState variant="loading" title="Cargando agenda de vacunación…" />
+      ) : rows.length === 0 ? (
         <DataState
           variant="empty"
           title="Agenda de inmunización al día"
@@ -910,12 +914,14 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             Animal <strong className="text-body font-numeric">{applyTarget.animalCode}</strong> · Vacuna{' '}
             <strong className="text-body">{applyTarget.vaccineName}</strong> · {applyTarget.barnName}
           </p>
+          {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
           <form onSubmit={confirmApply}>
             <div className="form-grid mb-4">
               <FormField label="Dosis aplicada:" htmlFor="apply-dosage" labelClassName="text-xs">
                 <input
                   id="apply-dosage"
                   type="number"
+                  inputMode="decimal"
                   step="0.001"
                   min="0.001"
                   className="form-input"
@@ -1013,13 +1019,14 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
         <ModalDialog labelledBy="vaccine-annul-title" onDismiss={()=>setAnnulTarget(null)} dismissDisabled={busy}>
           <h4 id="vaccine-annul-title" className="text-lg font-bold mb-2">Anular Aplicación de Vacuna</h4>
           <p className="text-xs text-muted mb-3">{annulTarget.vaccineName} · {annulTarget.animalCode}. Se retirará su efecto clínico y su retiro. La dosis volverá a pendientes; las siguientes dosis recurrentes pendientes se retirarán hasta registrar la aplicación real.</p>
+          {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
           <form onSubmit={async(event)=>{
             event.preventDefault();
             const result=await send(`/api/vaccines/schedules/${annulTarget.id}/annul`,{reason:annulReason,operationKey:annulOperationKey},'Aplicación anulada; la dosis volvió a pendientes y el original se conserva en la auditoría.');
             if(result)setAnnulTarget(null);
           }}>
             <FormField label="Motivo de anulación:" htmlFor="vaccine-annul-reason" className="mb-4" labelClassName="text-xs">
-              <input id="vaccine-annul-reason" className="form-input" required autoFocus value={annulReason} onChange={(event)=>setAnnulReason(event.target.value)}/>
+              <input id="vaccine-annul-reason" className="form-input" required value={annulReason} onChange={(event)=>setAnnulReason(event.target.value)}/>
             </FormField>
             <div className="form-actions">
               <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={()=>setAnnulTarget(null)} data-action="back">Cancelar</button>
@@ -1044,6 +1051,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             <strong className="text-body">{scheduleTarget.row.vaccineName}</strong> (Fecha actual:{' '}
             {scheduleTarget.row.scheduledDate})
           </p>
+          {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
           <form onSubmit={confirmChangeSchedule}>
             <div className="form-stack mb-4">
               {!scheduleTarget.cancel && (
@@ -1066,7 +1074,6 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                   onChange={(e) => setScheduleChangeForm({ ...scheduleChangeForm, reason: e.target.value })}
                   placeholder="ej. Ajuste por condición del animal"
                   required
-                  autoFocus
                 />
               </FormField>
             </div>
@@ -1128,6 +1135,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
             Regla: <strong className="text-body">{deactivateTarget.vaccineName}</strong> (
             {categoryLabels[deactivateTarget.targetCategory] ?? deactivateTarget.targetCategory}).
           </p>
+          {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
           <form onSubmit={confirmDeactivate}>
             <FormField label="Motivo de desactivación:" htmlFor="deact-rule-reason" className="mb-4" labelClassName="text-xs">
               <input
@@ -1137,7 +1145,6 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
                 onChange={(e) => setDeactivateReason(e.target.value)}
                 placeholder="ej. Cambio de esquema sanitario"
                 required
-                autoFocus
               />
             </FormField>
             <div className="form-actions">

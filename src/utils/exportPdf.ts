@@ -16,11 +16,19 @@ export interface ReportFileOptions {
   moneyTotals?: Record<string,{income:number;expense:number;balance:number}>;
 }
 
-const display = (value: unknown) => value === null || value === undefined ? '—' : value instanceof Date ? value.toLocaleDateString('es-PE') : String(value);
+const safeText = (value: string) =>
+  value
+    .replace(/\r/g, '')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/[^\x20-\x7E\xA0-\xFF\n]/g, '?');
+const display = (value: unknown) => value === null || value === undefined ? '-' : value instanceof Date ? value.toLocaleDateString('es-PE') : safeText(String(value));
 
 export function wrapReportText(text:string,measure:(text:string)=>number,width:number):string[]{
   const lines:string[]=[];let line='';
-  for(const character of text.replace(/\r/g,'')){
+  for(const character of safeText(text)){
     if(character==='\n'){lines.push(line);line='';continue;}
     if(line&&measure(line+character)>width){lines.push(line);line='';}
     line+=character;

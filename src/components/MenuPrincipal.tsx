@@ -30,7 +30,7 @@ interface MenuOption {
   adminOnly?: boolean;
 }
 
-export function MenuPrincipal({ perfil, onNavigate }: MenuPrincipalProps) {
+export function MenuPrincipal({ perfil, usuario, onNavigate }: MenuPrincipalProps) {
   const options: MenuOption[] = [
     {
       view: 'animales',
@@ -115,7 +115,7 @@ export function MenuPrincipal({ perfil, onNavigate }: MenuPrincipalProps) {
     <div className="menu-app-container">
       <header className="menu-app-header">
         <h1 className="menu-app-title">Tu granja</h1>
-        <p className="menu-app-subtitle">Elige un módulo para trabajar.</p>
+        <p className="menu-app-subtitle">{usuario ? `${usuario} · ` : ''}Elige un módulo para trabajar.</p>
       </header>
       <div className="menu-app-grid">
         {options.map((opt) => (

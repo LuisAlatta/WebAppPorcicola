@@ -20,7 +20,10 @@ export function SearchField({ value, onChange, placeholder, label, minWidth = 18
           <span className="search-icon"><IconSearch size={14} /></span>
           <input
             id={id}
-            type="text"
+            type="search"
+            enterKeyHint="search"
+            autoCorrect="off"
+            spellCheck={false}
             className="form-input form-select-sm search-input"
             placeholder={placeholder}
             value={value}

@@ -6,10 +6,13 @@ export function money(minor: number, currency: string): string {
   const formatted = (minor / 100).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (currency === 'PEN') return `S/ ${formatted}`;
   if (currency === 'USD') return `$ ${formatted}`;
+  if (currency === 'EUR') return `€ ${formatted}`;
   return `${currency} ${formatted}`;
 }
 
 export function formatDate(value: string): string {
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('es-PE');
 }

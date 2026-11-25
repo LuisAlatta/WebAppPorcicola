@@ -116,6 +116,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [attendTarget, setAttendTarget] = useState<Alert | null>(null);
   const [attendReason, setAttendReason] = useState('');
@@ -146,11 +147,12 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
     setNotifications(data[2].notifications ?? []);
     setUnreadCount(data[2].unreadCount ?? 0);
     if (data[3]?.rules) setRules(data[3].rules);
+    setLoading(false);
   }, [filter, perfil]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void load().catch(reason => setError(errorMessage(reason, 'Error al cargar alertas')));
+      void load().catch(reason => { setError(errorMessage(reason, 'Error al cargar alertas')); setLoading(false); });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
@@ -313,6 +315,10 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                       href={item.actionUrl}
                       className="btn btn-outline btn-sm"
                       aria-label={`Abrir actuación para notificación: ${item.title}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        window.dispatchEvent(new CustomEvent('porcicola:navigate', { detail: { path: item.actionUrl } }));
+                      }}
                     >
                       <span className="inline-flex items-center justify-center gap-2 leading-none text-xs">
                         <span>Abrir actuación</span>
@@ -591,12 +597,50 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                     ]} />
                     <DataCardNote>
                       {Object.entries(alert.details)
-                        .map(([key, value]) => `${key}: ${String(value)}`)
-                        .join(' · ') || '—'}
+                        .filter(([key, value]) =>
+                          value !== null && value !== undefined && value !== '' &&
+                          !['criticalRuleId', 'criticalThresholdDays', 'criticalAgeDays', 'criticalRoles', 'eventLink', 'escalatedAt', 'decisionRequired', 'missing'].includes(key),
+                        )
+                        .map(([key, value]) => {
+                          const labels: Record<string, string> = {
+                            animalCode: 'Animal',
+                            stageCode: 'Etapa',
+                            measuredKg: 'Peso (kg)',
+                            measuredDate: 'Fecha pesaje',
+                            minimumKg: 'Mínimo (kg)',
+                            differenceKg: 'Diferencia (kg)',
+                            weightKg: 'Peso (kg)',
+                            weighedOn: 'Pesado el',
+                            targetKg: 'Meta (kg)',
+                            vaccine: 'Vacuna',
+                            scheduledDate: 'Programada',
+                            probableDate: 'Parto probable',
+                            expectedDate: 'Fecha prevista',
+                            remaining: 'Restantes',
+                            product: 'Producto',
+                            responsible: 'Responsable',
+                            responsibleName: 'Responsable',
+                            shift: 'Turno',
+                            feedCode: 'Alimento',
+                            plannedKg: 'Previsto (kg)',
+                            servedKg: 'Servido (kg)',
+                            pendingKg: 'Pendiente (kg)',
+                            reason: 'Motivo',
+                          };
+                          return `${labels[key] ?? key}: ${String(value)}`;
+                        })
+                        .join(' · ') || 'Sin detalles adicionales'}
                     </DataCardNote>
                     {alert.resolutionReason && <DataCardNote>Resolución: {alert.resolutionReason}</DataCardNote>}
                     <DataCardActions>
-                      <a href={alert.eventLink} className="btn btn-outline"><IconArrowRight size={14} /><span>Ver evento original</span></a>
+                      <a
+                        href={alert.eventLink}
+                        className="btn btn-outline"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          window.dispatchEvent(new CustomEvent('porcicola:navigate', { detail: { path: alert.eventLink } }));
+                        }}
+                      ><IconArrowRight size={14} /><span>Ver evento original</span></a>
                       {alert.status === 'pending' && (
                         <button
                           type="button"
@@ -639,6 +683,15 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
               </DataCardList>
             ) : (
               /* Sin DataState: su role="status" chocaría con el aviso de éxito del módulo (e2e usa getByRole('status')) */
+              loading ? (
+                <div className="data-state data-state-loading mt-3">
+                  <p className="inline-flex items-center gap-2">
+                    <IconRefreshCw size={16} className="spinner-icon text-primary" />
+                    <span>Cargando agenda de avisos…</span>
+                  </p>
+                  <div className="data-skeleton" aria-hidden="true"><div /><div /><div /></div>
+                </div>
+              ) : (
               <div className="card empty-state-card mt-3">
                 <div className="empty-icon-wrap" aria-hidden="true">
                   <IconCheck size={28} className="text-success" />
@@ -658,8 +711,9 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                   </span>
                 </button>
               </div>
+              )
             )}
-            <Pagination page={currentPage} pageSize={pageSize} total={alerts.length} loading={busy} onPage={setPage} navLabel="Paginación de la agenda" prevLabel="Página anterior de avisos" nextLabel="Página siguiente de avisos" unit="avisos" />
+            <Pagination page={currentPage} pageSize={pageSize} total={alerts.length} loading={busy} onPage={(next) => { setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); }} navLabel="Paginación de la agenda" prevLabel="Página anterior de avisos" nextLabel="Página siguiente de avisos" unit="avisos" />
           </SectionCard>
         </>
       )}

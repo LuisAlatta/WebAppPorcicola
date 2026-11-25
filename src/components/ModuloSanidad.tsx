@@ -114,6 +114,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
     to: '',
   });
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -153,11 +154,12 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
     setEvents(e.events ?? []);
     setAlerts(w.alerts ?? []);
     setUpcoming(u.events ?? []);
+    setLoading(false);
   }, [filter]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void load().catch((err) => setError(errorMessage(err, 'Error cargando sanidad')));
+      void load().catch((err) => { setError(errorMessage(err, 'Error cargando sanidad')); setLoading(false); });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
@@ -240,7 +242,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
             type="button"
             className="btn btn-outline btn-sm"
             disabled={busy}
-            onClick={() => void load()}
+            onClick={() => { setLoading(true); void load().catch((err) => { setError(errorMessage(err, 'Error cargando sanidad')); setLoading(false); }); }}
             aria-label="Actualizar registros sanitarios"
           >
             <span className="inline-flex items-center justify-center gap-2 leading-none">
@@ -257,10 +259,12 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
           label="Retiros vigentes"
           className={alerts.length > 0 ? 'border-l-4 border-warning' : undefined}
           icon={<IconShield size={16} className={alerts.length > 0 ? 'text-warning' : 'text-success'} />}
-          value={alerts.length}
+          value={loading ? '…' : alerts.length}
           detail={
-            <span className={alerts.length > 0 ? 'text-warning font-semibold' : 'text-success'}>
-              {alerts.length > 0
+            <span className={loading ? 'text-muted' : alerts.length > 0 ? 'text-warning font-semibold' : 'text-success'}>
+              {loading
+                ? 'Verificando retiros vigentes…'
+                : alerts.length > 0
                 ? pluralize(alerts.length, 'animal restringido', 'animales restringidos')
                 : 'Inocuidad 100% · Sin restricciones'}
             </span>
@@ -309,7 +313,9 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
         title="Periodo de retiro vigente"
         subtitle="Los animales listados no pueden registrarse como vendidos ni faenados hasta la fecha indicada por inocuidad del fármaco."
       >
-        {alerts.length === 0 ? (
+        {loading ? (
+          <DataState variant="loading" title="Verificando retiros vigentes…" />
+        ) : alerts.length === 0 ? (
           <DataState
             variant="empty"
             title="Inocuidad alimentaria garantizada"
@@ -437,16 +443,16 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
 
             <p className="text-xs text-muted">
               Para vacunas utilice{' '}
-              <a href="#vacunas" className="text-primary font-semibold underline">
+              <button type="button" className="barn-assoc-link text-primary font-semibold" onClick={() => setSection('vacunacion')}>
                 Vacunación y calendario
-              </a>
+              </button>
               .{' '}
               {perfil === 'veterinario' ? (
                 'Para registrar una muerte, solicite al responsable o administrador que registre la salida desde la ficha del animal.'
               ) : (
                 <>
                   Para bajas utilice la ficha del animal:{' '}
-                  <a href="/animales" className="text-primary font-semibold underline">
+                  <a href="/animales" className="text-primary font-semibold underline" onClick={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent('porcicola:navigate', { detail: { path: '/animales' } })); }}>
                     Registrar una muerte
                   </a>
                   .
@@ -456,7 +462,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
 
             {editing ? (
               <p className="text-xs text-muted card-subtle p-2.5 rounded">
-                La corrección o anulación se aplicará a todos los animales de esta actuación grupal. El registro anterior se conserva en auditoría.
+                Editando actuación de <strong>{editing.animalCode}</strong>. La corrección o anulación se aplicará a todos los animales de esta actuación grupal. El registro anterior se conserva en auditoría.
               </p>
             ) : (
               <FormField>
@@ -492,6 +498,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                 <input
                   id="health-dosage"
                   type="number"
+                  inputMode="decimal"
                   min="0.001"
                   step="0.001"
                   className="form-input"
