@@ -164,6 +164,16 @@ function movementDelta(type: MovementType, quantity: number): number {
   return quantity;
 }
 
+/**
+ * Excluye movimientos vinculados a fichas desactivadas/eliminadas del padrón
+ * sin salida física (is_active = 0 y exit_date IS NULL). Conserva salidas
+ * físicas (venta, muerte, descarte) para historial, mortalidad y corte pasado,
+ * así como movimientos colectivos (animal_id IS NULL).
+ */
+export function activeInventoryMovementSql(alias = 'm'): string {
+  return ` AND NOT EXISTS (SELECT 1 FROM animals a_excl WHERE a_excl.id = ${alias}.animal_id AND a_excl.is_active = 0 AND a_excl.exit_date IS NULL)`;
+}
+
 /** Revalida el mínimo histórico dentro del mismo batch que escribe los movimientos. */
 export function stockGuardStatement(
   db: D1Database,
@@ -179,7 +189,7 @@ export function stockGuardStatement(
       FROM (SELECT effective_date, id,
         COALESCE(reverses_movement_id, id) AS ordering_id,
         CASE WHEN movement_type IN ('sale','death','transfer_out') THEN -quantity ELSE quantity END AS delta
-        FROM inventory_movements m WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
+        FROM inventory_movements m WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?${activeInventoryMovementSql('m')}
           AND NOT (m.movement_type='adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
           AND NOT EXISTS (SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=m.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%'))
     )), 0) >= 0 THEN 0 ELSE -1 END`)
@@ -309,7 +319,7 @@ async function listMovementsQuery(
     INNER JOIN barns b ON b.id = m.barn_id
     INNER JOIN users u ON u.id = m.created_by_user_id
     LEFT JOIN operation_log o ON o.id = m.operation_log_id
-    WHERE ${where.join(' AND ')}${scope.sql}
+    WHERE ${where.join(' AND ')}${scope.sql}${activeInventoryMovementSql('m')}
     ORDER BY m.effective_date DESC, m.id DESC
     LIMIT ?
   `).bind(...params, ...scope.params, limit).all<Row>();
@@ -362,7 +372,7 @@ export async function getInventorySnapshot(
         THEN -m.quantity ELSE m.quantity END) AS heads
     FROM inventory_movements m
     INNER JOIN barns b ON b.id = m.barn_id
-    WHERE m.effective_date <= ?${balanceScope.sql}
+    WHERE m.effective_date <= ?${balanceScope.sql}${activeInventoryMovementSql('m')}
     GROUP BY m.barn_id, b.code, b.name, m.location_code, m.lot_code, m.stage_code, m.sex
     HAVING heads <> 0
     ORDER BY b.code, m.stage_code, m.lot_code, m.sex
@@ -399,13 +409,15 @@ export async function getInventorySnapshot(
     SELECT a.barn_id, a.location_code, a.lot_code, a.current_stage_code AS stage_code, a.sex, COUNT(*) AS identified
     FROM animals a
     WHERE a.entry_date <= ? AND (a.exit_date IS NULL OR a.exit_date > ?)
+      AND (a.is_active = 1 OR a.exit_date IS NOT NULL)
       AND NOT EXISTS (SELECT 1 FROM animal_location_history h0 WHERE h0.animal_id = a.id)${identifiedScope.sql}
     GROUP BY a.barn_id, a.location_code, a.lot_code, a.current_stage_code, a.sex
     UNION ALL
     SELECT h.barn_id, h.location_code, h.lot_code, h.stage_code, a.sex, COUNT(*) AS identified
     FROM animal_location_history h JOIN animals a ON a.id = h.animal_id
     WHERE h.valid_from <= ? AND (h.valid_until IS NULL OR h.valid_until > ?)
-      AND a.entry_date <= ? AND (a.exit_date IS NULL OR a.exit_date > ?)${historicalScope.sql}
+      AND a.entry_date <= ? AND (a.exit_date IS NULL OR a.exit_date > ?)
+      AND (a.is_active = 1 OR a.exit_date IS NOT NULL)${historicalScope.sql}
     GROUP BY h.barn_id, h.location_code, h.lot_code, h.stage_code, a.sex
   `).bind(asOf, asOf, ...identifiedScope.params, asOf, asOf, asOf, asOf, ...historicalScope.params).all<Row>();
 
@@ -451,7 +463,7 @@ export async function getInventorySnapshot(
       CASE WHEN m.quantity > 0 THEN 1 ELSE 0 END AS positive,
       SUM(m.quantity) AS total
     FROM inventory_movements m
-    WHERE m.effective_date >= ? AND m.effective_date <= ?${summaryScope.sql}
+    WHERE m.effective_date >= ? AND m.effective_date <= ?${summaryScope.sql}${activeInventoryMovementSql('m')}
       AND NOT (m.movement_type = 'adjustment' AND EXISTS (SELECT 1 FROM operation_log o
         WHERE o.id = m.operation_log_id AND o.operation_type = 'litter.weaning'))
       AND NOT (m.movement_type = 'adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
@@ -761,7 +773,7 @@ export async function registerMovement(
   const bucketRows = await db.prepare(`
     SELECT id, effective_date, movement_type, quantity
     FROM inventory_movements m
-    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
+    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?${activeInventoryMovementSql('m')}
       AND NOT (m.movement_type='adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
       AND NOT EXISTS (SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=m.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%')
     ORDER BY effective_date ASC, COALESCE(reverses_movement_id,id), id ASC
@@ -942,8 +954,8 @@ export async function transferInventory(
   const destinationBarn = barns.results?.find((barn) => Number(barn.id) === destinationBarnId);
   let warning: string | null = null;
   if (sourceBarnId !== destinationBarnId && destinationBarn?.capacity !== null && destinationBarn?.capacity !== undefined) {
-    const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out')
-      THEN -quantity ELSE quantity END), 0) AS heads FROM inventory_movements WHERE barn_id = ? AND effective_date <= ?`)
+    const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN m.movement_type IN ('sale','death','transfer_out')
+      THEN -m.quantity ELSE m.quantity END), 0) AS heads FROM inventory_movements m WHERE m.barn_id = ? AND m.effective_date <= ?${activeInventoryMovementSql('m')}`)
       .bind(destinationBarnId, effectiveDate).first<{ heads: number }>();
     const projected = Number(occupied?.heads ?? 0) + quantity;
     if (projected > Number(destinationBarn.capacity)) warning = `El destino quedaría sobre capacidad: ${projected}/${destinationBarn.capacity} cabezas.`;
@@ -951,9 +963,9 @@ export async function transferInventory(
 
   // Evita aceptar una corrección que deje saldo negativo en cualquier fecha posterior.
   for (const [barnId, location, lot, stage, delta] of [[sourceBarnId, sourceLocationCode, sourceLotCode, stageCode, -quantity], [destinationBarnId, destinationLocationCode, destinationLotCode, destinationStageCode, quantity]] as const) {
-    const rows = await db.prepare(`SELECT effective_date, movement_type, quantity FROM inventory_movements
-      WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
-      ORDER BY effective_date, id`).bind(barnId, location, lot, stage, sex).all<Row>();
+    const rows = await db.prepare(`SELECT m.effective_date, m.movement_type, m.quantity FROM inventory_movements m
+      WHERE m.barn_id = ? AND m.location_code IS ? AND m.lot_code IS ? AND m.stage_code = ? AND m.sex = ?${activeInventoryMovementSql('m')}
+      ORDER BY m.effective_date, m.id`).bind(barnId, location, lot, stage, sex).all<Row>();
     const timeline = (rows.results ?? []).map((row) => ({ date: String(row.effective_date), delta: movementDelta(String(row.movement_type) as MovementType, Number(row.quantity)) }));
     timeline.push({ date: effectiveDate, delta });
     timeline.sort((a, b) => a.date.localeCompare(b.date));
@@ -992,9 +1004,9 @@ export async function transferInventory(
     // Un movimiento colectivo solo puede consumir cabezas sin ficha individual.
     db.prepare(`INSERT INTO inventory_write_guard (guard_id)
       SELECT CASE WHEN
-        (SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out') THEN -quantity ELSE quantity END),0)
-         FROM inventory_movements WHERE barn_id=? AND location_code IS ? AND lot_code IS ? AND stage_code=? AND sex=? AND effective_date<=?)
-        >= (SELECT COUNT(*) FROM animals a WHERE a.sex=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>?) AND (
+        (SELECT COALESCE(SUM(CASE WHEN m.movement_type IN ('sale','death','transfer_out') THEN -m.quantity ELSE m.quantity END),0)
+         FROM inventory_movements m WHERE m.barn_id=? AND m.location_code IS ? AND m.lot_code IS ? AND m.stage_code=? AND m.sex=? AND m.effective_date<=?${activeInventoryMovementSql('m')})
+        >= (SELECT COUNT(*) FROM animals a WHERE a.sex=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>?) AND (a.is_active = 1 OR a.exit_date IS NOT NULL) AND (
           EXISTS (SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ? AND h.stage_code=? AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?))
           OR (NOT EXISTS (SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id) AND a.barn_id=? AND a.location_code IS ? AND a.lot_code IS ? AND a.current_stage_code=?)
         )) THEN 0 ELSE -1 END`).bind(sourceBarnId, sourceLocationCode, sourceLotCode, stageCode, sex, effectiveDate,
@@ -1045,10 +1057,10 @@ export async function reconcileInventory(
   const barn = await db.prepare('SELECT id, name FROM barns WHERE id = ?').bind(barnId).first<{ id: number; name: string }>();
   if (!barn) throw new ApiError(404, 'Galpón no encontrado');
   if (scope.allowedBarnNames && !scope.allowedBarnNames.includes(barn.name)) throw new ApiError(403, 'Acceso denegado al galpón');
-  const expectedRow = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out')
-      THEN -quantity ELSE quantity END), 0) AS heads
-    FROM inventory_movements WHERE barn_id = ? AND location_code IS ? AND lot_code IS ?
-      AND stage_code = ? AND sex = ? AND effective_date <= ?`)
+  const expectedRow = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN m.movement_type IN ('sale','death','transfer_out')
+      THEN -m.quantity ELSE m.quantity END), 0) AS heads
+    FROM inventory_movements m WHERE m.barn_id = ? AND m.location_code IS ? AND m.lot_code IS ?
+      AND m.stage_code = ? AND m.sex = ? AND m.effective_date <= ?${activeInventoryMovementSql('m')}`)
     .bind(barnId, locationCode, lotCode, stageCode, sex, effectiveDate).first<{ heads: number }>();
   const expectedHeads = Number(expectedRow?.heads ?? 0);
   const variance = countedHeads - expectedHeads;
@@ -1159,7 +1171,7 @@ export async function previewMovementCorrection(
   if (alreadyCorrected) throw new ApiError(409, 'El movimiento ya tiene una corrección registrada');
   if (type !== 'adjustment' && correctedQuantity < 0) throw new ApiError(400, 'La cantidad corregida debe ser positiva');
   const rows = await db.prepare(`SELECT id, effective_date, movement_type, quantity FROM inventory_movements m
-    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
+    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?${activeInventoryMovementSql('m')}
     AND NOT (m.movement_type='adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
     AND NOT EXISTS (SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=m.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%')
     ORDER BY effective_date, COALESCE(reverses_movement_id,id), id`).bind(barnId, original.location_code ?? null, original.lot_code ?? null, original.stage_code, original.sex).all<Row>();
@@ -1221,7 +1233,7 @@ export async function correctInventoryMovement(
   const inverseDelta = -oldDelta;
   const locationGuard = newDelta>oldDelta ? await assertLocationForBarn(db,barnId,locationCode,effectiveDate,{stockAfterWrite:true}) : null;
   const rows = await db.prepare(`SELECT id, effective_date, movement_type, quantity FROM inventory_movements m
-    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
+    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?${activeInventoryMovementSql('m')}
     AND NOT (m.movement_type='adjustment' AND m.reverses_movement_id IS NOT NULL AND m.notes LIKE 'Reversión del movimiento #%')
     AND NOT EXISTS (SELECT 1 FROM inventory_movements r WHERE r.reverses_movement_id=m.id AND r.movement_type='adjustment' AND r.notes LIKE 'Reversión del movimiento #%')
     ORDER BY effective_date, COALESCE(reverses_movement_id,id), id`).bind(barnId, locationCode, lotCode, stageCode, sex).all<Row>();

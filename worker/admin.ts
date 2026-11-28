@@ -14,6 +14,7 @@ import {
   type AuditRecordInput,
 } from './events';
 import { describeBarnBlockers } from './barn-associations';
+import { activeInventoryMovementSql } from './inventory';
 
 export interface Env {
   DB: D1Database;
@@ -994,8 +995,8 @@ export async function updateBarnStatus(
   }
 
   if (newStatus === 'inactivo' && barn.status !== 'inactivo') {
-    const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out')
-        THEN -quantity ELSE quantity END), 0) AS heads FROM inventory_movements WHERE barn_id = ?`)
+    const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN m.movement_type IN ('sale','death','transfer_out')
+        THEN -m.quantity ELSE m.quantity END), 0) AS heads FROM inventory_movements m WHERE m.barn_id = ?${activeInventoryMovementSql('m')}`)
       .bind(barnId).first<{ heads: number }>();
     if (Number(occupied?.heads ?? 0) > 0) {
       throw new Error(`No se puede cerrar el galpón: quedan ${Number(occupied?.heads)} cabezas sin trasladar o dar de baja`);

@@ -554,7 +554,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect((await enUso.json() as { error: string }).error).toContain('ya está asignado');
   });
 
-  it('desactiva la ficha sin registrar salida física ni alterar el inventario', async () => {
+  it('desactiva la ficha sin registrar salida física y la excluye del inventario hasta reactivarla', async () => {
     const antes = await inventoryTotals('2026-06-30');
     const salidasAntes = await db.prepare(`
       SELECT COUNT(*) AS total FROM inventory_movements
@@ -576,7 +576,7 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     expect(bajaBody.animal.status).toBe('activo');
 
     const despues = await inventoryTotals('2026-06-30');
-    expect(despues.summary.total.available).toBe(antes.summary.total.available);
+    expect(despues.summary.total.available).toBe(antes.summary.total.available - 1);
 
     const salidasDespues = await db.prepare(`
       SELECT COUNT(*) AS total FROM inventory_movements
@@ -598,6 +598,8 @@ describe('Fichas individuales de animales · T09 (ANI-01..ANI-08, INV-04)', () =
     });
     expect(reactivar.status).toBe(200);
     expect((await reactivar.json() as { animal: AnimalDetail }).animal.isActive).toBe(true);
+    const reactivado = await inventoryTotals('2026-06-30');
+    expect(reactivado.summary.total.available).toBe(antes.summary.total.available);
   });
 
   it('reconstruye como identificada una ficha que salió después de la fecha de corte', async () => {

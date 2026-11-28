@@ -1,6 +1,6 @@
 import { ApiError, commitOperation, createOperationClaim, currentFarmDate, isValidDateString, lookupExistingOperation, normalizeReason } from './events';
 import { getConfigSnapshot, type ConfigSnapshot, type StageItem } from './config';
-import { getInventorySnapshot } from './inventory';
+import { activeInventoryMovementSql, getInventorySnapshot } from './inventory';
 import { resolveAnimalRef } from './animal-lookup';
 
 type Row = Record<string, unknown>;
@@ -298,7 +298,7 @@ export async function getFeedProjection(db:D1Database,asOfValue:unknown,scope:Fe
   const movementScope=barnIds===null?'':barnIds.length?` AND m.barn_id IN (${barnIds.map(()=>'?').join(',')})`:' AND 0=1';
   const headDelta="CASE WHEN m.movement_type IN ('sale','death','transfer_out') THEN -m.quantity ELSE m.quantity END";
   const populationRows=await db.prepare(`SELECT m.barn_id,m.stage_code,SUM(${headDelta}) AS heads,SUM(CASE WHEN m.effective_date<=? THEN ${headDelta} ELSE 0 END) AS start_heads,
-    SUM(CASE WHEN m.effective_date>? THEN 1 ELSE 0 END) AS changes FROM inventory_movements m WHERE m.effective_date<=?${movementScope} GROUP BY m.barn_id,m.stage_code`).bind(from,from,asOf,...(barnIds??[])).all<Row>();
+    SUM(CASE WHEN m.effective_date>? THEN 1 ELSE 0 END) AS changes FROM inventory_movements m WHERE m.effective_date<=?${movementScope}${activeInventoryMovementSql('m')} GROUP BY m.barn_id,m.stage_code`).bind(from,from,asOf,...(barnIds??[])).all<Row>();
   const populations=new Map((populationRows.results??[]).map(row=>[`${row.barn_id}:${row.stage_code}`,row]));
   const consumedRows=await db.prepare(`SELECT t.barn_id,t.stage_code,SUM(t.consumed_kg) AS consumed_kg,COUNT(DISTINCT CASE WHEN t.consumed_kg IS NOT NULL THEN t.effective_date END) AS measured_days,
     SUM(CASE WHEN t.consumed_kg IS NULL THEN 1 ELSE 0 END) AS unmeasured_turns FROM feed_turns t WHERE t.effective_date BETWEEN ? AND ?${turnScope} GROUP BY t.barn_id,t.stage_code`).bind(from,asOf,...(barnIds??[])).all<Row>();

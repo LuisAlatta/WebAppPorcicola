@@ -9,7 +9,7 @@ import {
   type AuditRecordInput,
 } from './events';
 import { getConfigSnapshot, type ConfigSnapshot } from './config';
-import { locationEventGuardStatement, stockGuardStatement } from './inventory';
+import { activeInventoryMovementSql, locationEventGuardStatement, stockGuardStatement } from './inventory';
 import { assertLocationForBarn } from './locations';
 
 /**
@@ -1066,17 +1066,17 @@ async function unidentifiedHeads(
 ): Promise<number> {
   const headsRow = await db.prepare(`
     SELECT COALESCE(SUM(
-      CASE WHEN movement_type IN ('sale', 'death', 'transfer_out')
-        THEN -quantity ELSE quantity END
+      CASE WHEN m.movement_type IN ('sale', 'death', 'transfer_out')
+        THEN -m.quantity ELSE m.quantity END
     ), 0) AS heads
-    FROM inventory_movements
-    WHERE barn_id = ? AND location_code IS ? AND lot_code IS ? AND stage_code = ? AND sex = ?
-      AND effective_date <= ?
+    FROM inventory_movements m
+    WHERE m.barn_id = ? AND m.location_code IS ? AND m.lot_code IS ? AND m.stage_code = ? AND m.sex = ?
+      AND m.effective_date <= ?${activeInventoryMovementSql('m')}
   `).bind(barnId, locationCode, lotCode, stageCode, sex, date).first<{ heads: number }>();
 
   const identifiedRow = await db.prepare(`
     SELECT COUNT(*) AS total FROM animals a
-    WHERE a.sex=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>? OR EXISTS(SELECT 1 FROM inventory_movements ex JOIN operation_log eo ON eo.id=ex.operation_log_id WHERE ex.animal_id=a.id AND ex.effective_date=a.exit_date AND eo.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death'))) AND NOT EXISTS(SELECT 1 FROM inventory_movements ex JOIN operation_log eo ON eo.id=ex.operation_log_id WHERE ex.animal_id=a.id AND ex.effective_date<=? AND eo.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death') AND NOT EXISTS(SELECT 1 FROM inventory_movements ret JOIN operation_log ro ON ro.id=ret.operation_log_id WHERE ret.animal_id=a.id AND ret.reverses_movement_id=ex.id AND ret.effective_date<=? AND ro.operation_type='animal.sale.return')) AND (
+    WHERE a.sex=? AND a.entry_date<=? AND (a.is_active = 1 OR a.exit_date IS NOT NULL) AND (a.exit_date IS NULL OR a.exit_date>? OR EXISTS(SELECT 1 FROM inventory_movements ex JOIN operation_log eo ON eo.id=ex.operation_log_id WHERE ex.animal_id=a.id AND ex.effective_date=a.exit_date AND eo.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death'))) AND NOT EXISTS(SELECT 1 FROM inventory_movements ex JOIN operation_log eo ON eo.id=ex.operation_log_id WHERE ex.animal_id=a.id AND ex.effective_date<=? AND eo.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death') AND NOT EXISTS(SELECT 1 FROM inventory_movements ret JOIN operation_log ro ON ro.id=ret.operation_log_id WHERE ret.animal_id=a.id AND ret.reverses_movement_id=ex.id AND ret.effective_date<=? AND ro.operation_type='animal.sale.return')) AND (
       EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ? AND h.stage_code=? AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?))
       OR (NOT EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id) AND a.barn_id=? AND a.location_code IS ? AND a.lot_code IS ? AND a.current_stage_code=?)
     )
@@ -1089,12 +1089,12 @@ function unidentifiedHeadGuard(db:D1Database,barnId:number,locationCode:string|n
   return db.prepare(`INSERT INTO litter_identification_guard(guard_id)
     WITH points(day,movement_id) AS (
       SELECT ?6,9223372036854775807
-      UNION ALL SELECT m.effective_date,m.id FROM inventory_movements m WHERE m.barn_id=?1 AND m.location_code IS ?2 AND m.lot_code IS ?3 AND m.stage_code=?4 AND m.sex=?5 AND m.effective_date>?6
-      UNION ALL SELECT a.entry_date,9223372036854775807 FROM animals a WHERE a.sex=?5 AND a.entry_date>?6 AND (EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.barn_id=?1 AND h.location_code IS ?2 AND h.lot_code IS ?3 AND h.stage_code=?4) OR (a.barn_id=?1 AND a.location_code IS ?2 AND a.lot_code IS ?3 AND a.current_stage_code=?4))
+      UNION ALL SELECT m.effective_date,m.id FROM inventory_movements m WHERE m.barn_id=?1 AND m.location_code IS ?2 AND m.lot_code IS ?3 AND m.stage_code=?4 AND m.sex=?5 AND m.effective_date>?6${activeInventoryMovementSql('m')}
+      UNION ALL SELECT a.entry_date,9223372036854775807 FROM animals a WHERE a.sex=?5 AND a.entry_date>?6 AND (a.is_active = 1 OR a.exit_date IS NOT NULL) AND (EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.barn_id=?1 AND h.location_code IS ?2 AND h.lot_code IS ?3 AND h.stage_code=?4) OR (a.barn_id=?1 AND a.location_code IS ?2 AND a.lot_code IS ?3 AND a.current_stage_code=?4))
     )
     SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM points p WHERE
-      (SELECT COALESCE(SUM(CASE WHEN m.movement_type IN ('sale','death','transfer_out') THEN -m.quantity ELSE m.quantity END),0) FROM inventory_movements m WHERE m.barn_id=?1 AND m.location_code IS ?2 AND m.lot_code IS ?3 AND m.stage_code=?4 AND m.sex=?5 AND (m.effective_date<p.day OR (m.effective_date=p.day AND m.id<=p.movement_id)))
-      - (SELECT COUNT(*) FROM animals a WHERE a.sex=?5 AND a.entry_date<=p.day AND (a.exit_date IS NULL OR a.exit_date>=p.day OR EXISTS(SELECT 1 FROM inventory_movements ex JOIN operation_log eo ON eo.id=ex.operation_log_id WHERE ex.animal_id=a.id AND ex.effective_date=a.exit_date AND eo.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death')))
+      (SELECT COALESCE(SUM(CASE WHEN m.movement_type IN ('sale','death','transfer_out') THEN -m.quantity ELSE m.quantity END),0) FROM inventory_movements m WHERE m.barn_id=?1 AND m.location_code IS ?2 AND m.lot_code IS ?3 AND m.stage_code=?4 AND m.sex=?5 AND (m.effective_date<p.day OR (m.effective_date=p.day AND m.id<=p.movement_id))${activeInventoryMovementSql('m')})
+      - (SELECT COUNT(*) FROM animals a WHERE a.sex=?5 AND a.entry_date<=p.day AND (a.is_active = 1 OR a.exit_date IS NOT NULL) AND (a.exit_date IS NULL OR a.exit_date>=p.day OR EXISTS(SELECT 1 FROM inventory_movements ex JOIN operation_log eo ON eo.id=ex.operation_log_id WHERE ex.animal_id=a.id AND ex.effective_date=a.exit_date AND eo.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death')))
         AND NOT EXISTS(SELECT 1 FROM inventory_movements ex JOIN operation_log eo ON eo.id=ex.operation_log_id WHERE ex.animal_id=a.id AND eo.operation_type IN ('animal.sale','animal.purchase.return','animal.death','animal.discard','litter.death') AND (ex.effective_date<p.day OR (ex.effective_date=p.day AND ex.id<=p.movement_id)) AND NOT EXISTS(SELECT 1 FROM inventory_movements ret JOIN operation_log ro ON ro.id=ret.operation_log_id WHERE ret.animal_id=a.id AND ret.reverses_movement_id=ex.id AND ro.operation_type='animal.sale.return' AND (ret.effective_date<p.day OR (ret.effective_date=p.day AND ret.id<=p.movement_id))))
         AND (EXISTS(SELECT 1 FROM animal_location_history h WHERE h.animal_id=a.id AND h.barn_id=?1 AND h.location_code IS ?2 AND h.lot_code IS ?3 AND h.stage_code=?4
           AND (h.valid_from<p.day OR (h.valid_from=p.day AND COALESCE((SELECT MIN(im.id) FROM inventory_movements im WHERE im.operation_log_id=h.operation_log_id AND im.animal_id=a.id),0)<=p.movement_id))
@@ -2078,8 +2078,8 @@ export async function transferAnimal(
   }
   let warning: string | null = null;
   if (destinationBarnId !== sourceBarnId && destination.capacity !== null && destination.capacity !== undefined) {
-    const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN movement_type IN ('sale','death','transfer_out')
-      THEN -quantity ELSE quantity END), 0) AS heads FROM inventory_movements WHERE barn_id = ? AND effective_date <= ?`)
+    const occupied = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN m.movement_type IN ('sale','death','transfer_out')
+      THEN -m.quantity ELSE m.quantity END), 0) AS heads FROM inventory_movements m WHERE m.barn_id = ? AND m.effective_date <= ?${activeInventoryMovementSql('m')}`)
       .bind(destinationBarnId, effectiveDate).first<{ heads: number }>();
     const projected = Number(occupied?.heads ?? 0) + 1;
     if (projected > Number(destination.capacity)) warning = `El destino quedaría sobre capacidad: ${projected}/${destination.capacity} cabezas.`;
@@ -2290,8 +2290,9 @@ export interface ToggleAvailabilityInput {
 }
 
 /**
- * Desactiva la disponibilidad de una ficha (ANI-08). No registra venta ni muerte
- * y no altera el inventario físico: solo la retira de las selecciones nuevas.
+ * Desactiva o reactiva la disponibilidad de una ficha (ANI-08). No registra venta
+ * ni muerte y conserva su historial y auditoría; mientras está inactiva sin salida
+ * física, queda excluida del inventario activo de los galpones.
  */
 export async function setAnimalAvailability(
   db: D1Database,

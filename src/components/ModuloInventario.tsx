@@ -265,6 +265,12 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
 
   const options = data?.options;
   const totals = data?.summary.total;
+  const activeStages = useMemo(() => {
+    if (!data) return [];
+    return data.summary.byStage.filter(
+      (stage) => stage.available > 0 || stage.entries > 0 || stage.exits > 0 || stage.deaths > 0,
+    );
+  }, [data]);
 
   const balances = useMemo(() => {
     if (!data) return [];
@@ -599,9 +605,9 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
             />
           </div>
 
-          <SectionCard title="Resumen por etapa" subtitle="Mortalidad = muertes sobre entradas del período">
+          <SectionCard title="Resumen por etapa" subtitle="Solo etapas con animales activos o movimientos en el período">
             <DataCardList label="Resumen por etapa">
-              {data.summary.byStage.map((stage) => (
+              {activeStages.map((stage) => (
                 <DataCard key={stage.stageCode}>
                   <DataCardHead
                     title={stage.stageName}
@@ -636,7 +642,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
 
           <SectionCard
             title="Saldos por grupo"
-            subtitle="Identificadas y sin identificar se separan desde T09"
+            subtitle="Existencias activas por galpón, ubicación, lote, etapa y sexo"
             actions={balances.length > 0 ? (
               <>
                 <SearchField
@@ -703,22 +709,31 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
           </SectionCard>
 
           <SectionCard title="Desglose por sexo" subtitle="Entradas, salidas y muertes del período">
-            <DataCardList label="Desglose por sexo" grid>
-              {data.summary.byStage.map((stage) => (
-                <DataCard key={`sex-${stage.stageCode}`}>
-                  <DataCardHead
-                    title={stage.stageName}
-                    badge={<StatusBadge tone="outline" className="tabular-nums font-numeric">{stage.entriesBySex.total} entradas</StatusBadge>}
-                  />
-                  <DataCardMeta items={[
-                    { label: 'Machos', value: stage.entriesBySex.macho, className: 'font-mono tabular-nums' },
-                    { label: 'Hembras', value: stage.entriesBySex.hembra, className: 'font-mono tabular-nums' },
-                    { label: 'Pendientes', value: stage.entriesBySex.pendiente, className: 'font-mono tabular-nums text-muted' },
-                    { label: 'Salidas', value: stage.exitsBySex.total, className: 'font-mono tabular-nums text-danger' },
-                  ]} />
-                </DataCard>
-              ))}
-            </DataCardList>
+            {activeStages.length === 0 ? (
+              <DataState
+                variant="empty"
+                title={`Sin registros por sexo al ${data.asOf}`}
+                description="Cuando existan animales activos o movimientos vigentes en el período, aparecerá su desglose aquí."
+                icon={<IconPig size={26} className="text-primary" />}
+              />
+            ) : (
+              <DataCardList label="Desglose por sexo" grid>
+                {activeStages.map((stage) => (
+                  <DataCard key={`sex-${stage.stageCode}`}>
+                    <DataCardHead
+                      title={stage.stageName}
+                      badge={<StatusBadge tone="outline" className="tabular-nums font-numeric">{stage.entriesBySex.total} entradas</StatusBadge>}
+                    />
+                    <DataCardMeta items={[
+                      { label: 'Machos', value: stage.entriesBySex.macho, className: 'font-mono tabular-nums' },
+                      { label: 'Hembras', value: stage.entriesBySex.hembra, className: 'font-mono tabular-nums' },
+                      { label: 'Pendientes', value: stage.entriesBySex.pendiente, className: 'font-mono tabular-nums text-muted' },
+                      { label: 'Salidas', value: stage.exitsBySex.total, className: 'font-mono tabular-nums text-danger' },
+                    ]} />
+                  </DataCard>
+                ))}
+              </DataCardList>
+            )}
           </SectionCard>
         </div>
       )}
@@ -1355,6 +1370,7 @@ export function ModuloInventario({ perfil }: { perfil: Perfil }) {
                     { label: 'Cantidad', value: formatSigned(movement), className: `font-mono font-bold tabular-nums ${isNegativeMovement(movement) ? 'text-danger' : 'text-success'}` },
                     { label: 'Etapa y sexo', value: `${movement.stageName} · ${SEX_LABELS[movement.sex] ?? movement.sex}` },
                     { label: 'Ubicación y lote', value: [movement.locationName ?? 'Sin ubicación', movement.lotName].filter(Boolean).join(' · ') },
+                    { label: 'Detalle', value: movement.notes ?? <span className="text-muted">Sin detalle</span> },
                     { label: 'Causa', value: movement.causeCode ?? <span className="text-muted">Sin causa</span> },
                     { label: 'Registró', value: movement.createdByName || 'Sin dato' },
                   ]} />
