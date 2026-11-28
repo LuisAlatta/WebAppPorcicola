@@ -1,5 +1,5 @@
 import { AnimalPicker } from './AnimalPicker';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconActivity,
   IconAlertTriangle,
@@ -116,6 +116,10 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const formErrorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (error && section === 'registro') formErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [error, section]);
   const [notice, setNotice] = useState('');
 
   const hasActiveFilters = useMemo(
@@ -284,7 +288,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
         />
       </div>
 
-      {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
+      {error && section !== 'registro' && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
       {notice && <InlineAlert tone="success" onDismiss={() => setNotice('')} autoDismissMs={6000}>{notice}</InlineAlert>}
 
       <ModuleTabs
@@ -482,7 +486,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                 />
               </FormField>
 
-              <FormField label="Lote del producto" htmlFor="health-product-lot">
+              <FormField label="Lote del producto (opcional)" htmlFor="health-product-lot">
                 <input
                   id="health-product-lot"
                   className="form-input"
@@ -555,7 +559,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
               />
             </FormField>
 
-            <FormField label="Observaciones" htmlFor="health-observations">
+            <FormField label="Observaciones (opcional)" htmlFor="health-observations">
               <textarea
                 id="health-observations"
                 className="form-textarea"
@@ -565,6 +569,12 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
                 onChange={(e) => update('observations', e.target.value)}
               />
             </FormField>
+
+            {error && (
+              <div ref={formErrorRef} role="alert">
+                <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>
+              </div>
+            )}
 
             <div className="form-actions">
               <button

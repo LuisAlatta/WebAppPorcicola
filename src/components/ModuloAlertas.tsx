@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconArrowRight,
   IconBell,
@@ -118,6 +118,10 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
   const currentPage = Math.min(page, Math.max(0, Math.ceil(alerts.length / pageSize) - 1));
   const visibleAlerts = alerts.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   const [error, setError] = useState('');
+  const formErrorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (error && section === 'crear') formErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [error, section]);
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -267,7 +271,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
         }
       />
 
-      {error && !attendTarget && (
+      {error && !attendTarget && section !== 'crear' && (
         <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>
       )}
       {notice && (
@@ -476,6 +480,11 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
               </div>
             </fieldset>
             </div>
+            {error && (
+              <div ref={formErrorRef} role="alert">
+                <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>
+              </div>
+            )}
             <div className="form-actions form-actions-sticky">
               <button className="btn btn-primary" disabled={busy} data-action="save">
                 <span className="inline-flex items-center justify-center gap-2 leading-none">

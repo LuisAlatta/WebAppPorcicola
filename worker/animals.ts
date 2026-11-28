@@ -1915,12 +1915,20 @@ async function animalWeightContext(db: D1Database, key: string, weighedOn: strin
   if (barnIds !== null && barnIds.length === 0) throw new ApiError(404, 'Animal no encontrado');
   const row = await fetchAnimalRow(db, key, barnIds);
   if (!row) throw new ApiError(404, 'Animal no encontrado');
-  if (weighedOn < String(row.entry_date) || (row.exit_date && weighedOn > String(row.exit_date))) {
-    throw new ApiError(400, 'La fecha del pesaje debe estar entre el ingreso y la salida del animal');
+  if (row.exit_date && weighedOn > String(row.exit_date)) {
+    throw new ApiError(400, 'La fecha del pesaje no puede ser posterior a la salida del animal');
   }
-  const location = await db.prepare(`SELECT barn_id, location_code, lot_code, stage_code FROM animal_location_history
+  if (row.birth_date && weighedOn < String(row.birth_date)) {
+    throw new ApiError(400, 'La fecha del pesaje no puede ser anterior al nacimiento del animal');
+  }
+  const historical = await db.prepare(`SELECT barn_id, location_code, lot_code, stage_code FROM animal_location_history
     WHERE animal_id = ? AND valid_from <= ? AND (valid_until IS NULL OR valid_until > ?)
     ORDER BY valid_from DESC, id DESC LIMIT 1`).bind(Number(row.id), weighedOn, weighedOn).first<Row>();
+  const location = historical ?? (weighedOn < String(row.entry_date)
+    ? (await db.prepare(`SELECT barn_id, location_code, lot_code, stage_code FROM animal_location_history
+        WHERE animal_id = ? ORDER BY valid_from ASC, id ASC LIMIT 1`).bind(Number(row.id)).first<Row>())
+      ?? { barn_id: row.barn_id, location_code: row.location_code ?? null, lot_code: row.lot_code ?? null, stage_code: row.current_stage_code }
+    : null);
   if (!location) throw new ApiError(409, 'No existe ubicación histórica para esa fecha');
   const barnId = Number(location.barn_id);
   if (barnIds !== null && !barnIds.includes(barnId)) throw new ApiError(403, 'No tiene acceso al galpón donde estaba el animal en la fecha del pesaje');
@@ -1947,8 +1955,9 @@ export async function registerAnimalWeight(db: D1Database, actorUserId: number, 
     authorUserId: actorUserId, entityType: 'animal', entityId: Number(context.row.id), barnId: context.barnId,
     effectiveDate: weighedOn, payload, result: { animalId: Number(context.row.id), weighedOn, weighedTime, weightKg } });
   const animalId=Number(context.row.id);const stageChanged=stageCode!==context.stageAtDate;
-  const statements:D1PreparedStatement[]=[db.prepare('INSERT INTO inventory_write_guard(guard_id) VALUES(1)'),db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?) AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ? AND h.stage_code=?) THEN 0 ELSE -1 END`).bind(animalId,weighedOn,weighedOn,weighedOn,weighedOn,context.barnId,context.locationCode,context.lotCode,context.stageAtDate)];
+  const statements:D1PreparedStatement[]=[db.prepare('INSERT INTO inventory_write_guard(guard_id) VALUES(1)'),db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND ((a.entry_date<=? AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?)) OR (?<a.entry_date AND (a.birth_date IS NULL OR a.birth_date<=?) AND a.is_active=1 AND h.id=(SELECT h0.id FROM animal_location_history h0 WHERE h0.animal_id=a.id ORDER BY h0.valid_from ASC,h0.id ASC LIMIT 1))) AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ? AND h.stage_code=?) THEN 0 ELSE -1 END`).bind(animalId,weighedOn,weighedOn,weighedOn,weighedOn,weighedOn,weighedOn,context.barnId,context.locationCode,context.lotCode,context.stageAtDate)];
   if(stageChanged){
+    if(weighedOn<String(context.row.entry_date))throw new ApiError(400,'Para cambiar de etapa en un pesaje, la fecha debe ser igual o posterior al ingreso del animal');
     const locationGuard=await assertLocationForBarn(db,context.barnId,context.locationCode,weighedOn,{ongoing:true});
     if(locationGuard)statements.push(locationGuard);
     if(context.row.exit_date!==null||Number(context.row.is_active)!==1)throw new ApiError(409,'La ficha no está activa para cambiar de etapa');

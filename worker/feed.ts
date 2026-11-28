@@ -163,14 +163,16 @@ export async function registerFeedMovement(db:D1Database,actorUserId:number,inpu
   if(movementType==='delivery'){
     destinationBarnId=input.destinationBarnId?Number(input.destinationBarnId):null;
     if(animalCode){
-      const resolved=await resolveAnimalRef<Row>(db,animalCode,{columns:'a.id,a.code,a.exit_date,a.is_active,a.barn_id',allowedBarnNames:scope.allowedBarnNames,barnId:destinationBarnId,effectiveDate});
+      const resolved=await resolveAnimalRef<Row>(db,animalCode,{columns:'a.id,a.code,a.birth_date,a.entry_date,a.exit_date,a.is_active,a.barn_id',allowedBarnNames:scope.allowedBarnNames,barnId:destinationBarnId,effectiveDate});
       let animal=resolved.row;
       if(!animal&&resolved.outOfScope&&destinationBarnId!==null){
-        const fallback=await resolveAnimalRef<Row>(db,animalCode,{columns:'a.id,a.code,a.exit_date,a.is_active,a.barn_id',allowedBarnNames:scope.allowedBarnNames,effectiveDate});
+        const fallback=await resolveAnimalRef<Row>(db,animalCode,{columns:'a.id,a.code,a.birth_date,a.entry_date,a.exit_date,a.is_active,a.barn_id',allowedBarnNames:scope.allowedBarnNames,effectiveDate});
         animal=fallback.row;
       }
       if(!animal||String(animal.is_active)==='0'||(animal.exit_date&&effectiveDate>String(animal.exit_date)))throw new ApiError(404,'Animal no disponible en la fecha indicada');
-      const location=await db.prepare(`SELECT barn_id FROM animal_location_history WHERE animal_id=? AND valid_from<=? AND (valid_until IS NULL OR valid_until>?) ORDER BY valid_from DESC,id DESC LIMIT 1`).bind(animal.id,effectiveDate,effectiveDate).first<{barn_id:number}>();
+      if(animal.birth_date&&effectiveDate<String(animal.birth_date))throw new ApiError(400,'La fecha de entrega no puede ser anterior al nacimiento del animal');
+      const historicalLoc=await db.prepare(`SELECT barn_id FROM animal_location_history WHERE animal_id=? AND valid_from<=? AND (valid_until IS NULL OR valid_until>?) ORDER BY valid_from DESC,id DESC LIMIT 1`).bind(animal.id,effectiveDate,effectiveDate).first<{barn_id:number}>();
+      const location=historicalLoc??(effectiveDate<String(animal.entry_date)?(await db.prepare(`SELECT barn_id FROM animal_location_history WHERE animal_id=? ORDER BY valid_from ASC,id ASC LIMIT 1`).bind(animal.id).first<{barn_id:number}>())??{barn_id:Number(animal.barn_id)}:null);
       if(!location)throw new ApiError(409,'No hay ubicación histórica del animal en esa fecha');
       if(destinationBarnId!==null&&destinationBarnId!==Number(location.barn_id))throw new ApiError(400,'El galpón destino no coincide con la ubicación histórica del animal');
       destinationBarnId=Number(location.barn_id);animalId=Number(animal.id);

@@ -162,7 +162,7 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
   if (from > to) throw new ApiError(400, 'El rango de fechas está invertido');
   const ids = await barnIds(db, scope);
   if (ids && !ids.length) return { cycles: [], dateCriterion: 'Fecha del servicio; antecedente usa fecha probable', asOf: currentFarmDate() };
-  const clauses = ['COALESCE(c.service_anchor_date, c.probable_farrowing_date) BETWEEN ? AND ?'];
+  const clauses = ['COALESCE(c.service_anchor_date, c.probable_farrowing_date) BETWEEN ? AND ?', '(a.is_active = 1 OR a.exit_date IS NOT NULL)'];
   const params: unknown[] = [from, to];
   if (ids) { clauses.push(`c.barn_id IN (${ids.map(() => '?').join(',')})`); params.push(...ids); }
   if (filters.status === 'pending') clauses.push(`c.cycle_status = 'open' AND c.reproductive_status IN ('possible_pregnancy','gestation')`);

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconBuilding,
   IconCheck,
@@ -122,6 +122,13 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const formErrorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (error && section === 'registrar') {
+      formErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [error, section]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -431,7 +438,7 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
         }
       />
 
-      {error && !settlementTarget && !reversalTarget && (
+      {error && section !== 'registrar' && !settlementTarget && !reversalTarget && (
         <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>
       )}
       {notice && (
@@ -670,6 +677,11 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
 
             </fieldset>
             </div>
+            {error && (
+              <div ref={formErrorRef} role="alert">
+                <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>
+              </div>
+            )}
             <div className="form-actions form-actions-sticky flex-wrap">
               <p className={totalMinor === allocatedMinor ? 'text-muted tabular-nums m-0' : 'text-danger font-bold tabular-nums m-0'}>
                 Distribuido: {money(allocatedMinor, form.currencyCode)} de {money(totalMinor, form.currencyCode)}

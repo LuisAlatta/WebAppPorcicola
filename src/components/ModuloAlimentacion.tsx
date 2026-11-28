@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconBox,
   IconBuilding,
@@ -258,6 +258,13 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
   const [busy, setBusy] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [notice, setNotice] = useState<string>('');
+  const formErrorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (error && section === 'registrar') {
+      formErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [error, section]);
 
   // Filtros de vistas
   const [stockSearch, setStockSearch] = useState<string>('');
@@ -494,7 +501,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
       />
 
       {/* Avisos contextuales */}
-      {error && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
+      {error && section !== 'registrar' && <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>}
 
       {notice && <InlineAlert tone="success" onDismiss={() => setNotice('')}>{notice}</InlineAlert>}
 
@@ -1272,6 +1279,12 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                     />
                   </FormField>
                 </div>
+
+                {error && (
+                  <div ref={formErrorRef} role="alert">
+                    <InlineAlert tone="error" onDismiss={() => setError('')}>{error}</InlineAlert>
+                  </div>
+                )}
 
                 <div className="form-actions">
                   <button
