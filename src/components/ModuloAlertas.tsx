@@ -9,6 +9,7 @@ import {
   IconShield,
   IconX,
 } from './icons';
+import { AnimalPicker } from './AnimalPicker';
 import { ModalDialog } from './ModalDialog';
 import { ModuleTabs } from './ModuleTabs';
 import { Pagination } from './Pagination';
@@ -464,16 +465,25 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
               <legend>Destino y motivo</legend>
               <div className="form-grid">
             <FormField label="Galpón" htmlFor="manual-alert-barn">
-              <select id="manual-alert-barn" className="form-select" value={form.barnId} onChange={e => setForm({ ...form, barnId: e.target.value })}>
+              <select id="manual-alert-barn" className="form-select" value={form.barnId} onChange={e => setForm({ ...form, barnId: e.target.value, animalCode: '' })}>
                 <option value="">{isAdmin ? 'Granja general' : 'Seleccionar galpón asignado'}</option>
                 {barns.map(barn => (
                   <option value={barn.id} key={barn.id}>{barn.name}</option>
                 ))}
               </select>
             </FormField>
-            <FormField label="Animal / Arete (opcional)" htmlFor="manual-alert-animal">
-              <input id="manual-alert-animal" className="form-input" placeholder="ej. MAR-012 o LEC-045" value={form.animalCode} onChange={e => setForm({ ...form, animalCode: e.target.value })} />
-            </FormField>
+            <div className="form-span-2">
+              <AnimalPicker
+                label="Animal / Arete (opcional)"
+                searchLabel="Buscar animal (opcional)"
+                activeOnly
+                preferIdRef
+                barnId={form.barnId || undefined}
+                emptyLabel="Ninguno (aviso general o por galpón)"
+                value={form.animalCode ? [form.animalCode] : []}
+                onChange={values => setForm({ ...form, animalCode: values[0] ?? '' })}
+              />
+            </div>
             <FormField label="Motivo de atención" htmlFor="manual-alert-reason" className="form-span-2">
               <input id="manual-alert-reason" required minLength={5} className="form-input" placeholder="ej. Observación reportada en inspección diaria" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} />
             </FormField>

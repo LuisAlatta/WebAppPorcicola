@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Miniflare } from 'miniflare';
 import worker from '../worker/index';
 import { currentFarmDate } from '../worker/events';
+import { previewCustomReport, reportDashboard } from '../worker/reports';
 
 const runtime = new Miniflare({
   workers: [{
@@ -151,6 +152,35 @@ describe('Resiliencia transversal entre módulos (códigos repetidos, fechas his
     expect(withdrawalsAfter.alerts).toHaveLength(0);
     const upcomingAfter = await (await req(`/api/health/upcoming?asOf=${today}`, undefined, '1,2')).json() as { events: { barnName: string }[] };
     expect(upcomingAfter.events).toHaveLength(0);
+
+    // Reportes generales y dashboard no muestran fichas eliminadas lógicamente (sowA)
+    const healthReport = await previewCustomReport(db, {
+      source: 'health', name: 'Sanidad general', purpose: 'Verificar exclusión de inactivos',
+      columns: ['animalCode', 'barn'],
+    }, 'administrador', {});
+    expect(healthReport.rows.some(r => r.barn === 'Galpón A')).toBe(false);
+
+    const reproReport = await previewCustomReport(db, {
+      source: 'reproduction', name: 'Reproducción general', purpose: 'Verificar exclusión de inactivos',
+      columns: ['animalCode', 'barn'],
+    }, 'administrador', {});
+    expect(reproReport.rows.some(r => r.barn === 'Galpón A')).toBe(false);
+    expect(reproReport.rows.some(r => r.barn === 'Galpón B')).toBe(true);
+
+    const dashA = await reportDashboard(db, null, null, { allowedBarnNames: ['Galpón A'] });
+    expect(dashA.upcomingFarrowings).toBe(0);
+    expect(dashA.pendingVaccines).toBe(0);
+
+    // Alerta manual con id:<id> funciona sin ambigüedad cuando ambos galpones están seleccionados
+    const manualAlertRes = await req('/api/alerts/manual', {
+      title: 'Revisar condición corporal',
+      dueDate: today,
+      barnId: 2,
+      animalCode: `id:${sowB.animal.id}`,
+      reason: 'Verificación de rutina en Galpón B',
+      operationKey: crypto.randomUUID(),
+    }, '1,2');
+    expect(manualAlertRes.status, await manualAlertRes.clone().text()).toBe(201);
   }, 90000);
 
   it('permite fechas históricas anteriores a entry_date en sanidad, vacunas, pesajes, alimentación y finanzas', async () => {

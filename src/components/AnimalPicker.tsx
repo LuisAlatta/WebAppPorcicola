@@ -10,6 +10,8 @@ type Props = {
   onChange: (values: string[]) => void;
   multiple?: boolean;
   useIdValue?: boolean;
+  preferIdRef?: boolean;
+  barnId?: string | number;
   sex?: string;
   activeOnly?: boolean;
   allBarns?: boolean;
@@ -18,7 +20,7 @@ type Props = {
 };
 
 /** Consulta páginas cortas; las selecciones previas permanecen al buscar otro animal. */
-export function AnimalPicker({ label, searchLabel, value, onChange, multiple, useIdValue, sex, activeOnly, allBarns, required, emptyLabel = 'Seleccionar animal' }: Props) {
+export function AnimalPicker({ label, searchLabel, value, onChange, multiple, useIdValue, preferIdRef, barnId, sex, activeOnly, allBarns, required, emptyLabel = 'Seleccionar animal' }: Props) {
   const id = useId();
   const limit = allBarns ? 500 : 50;
   const [query, setQuery] = useState('');
@@ -33,7 +35,7 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
   for (const item of options) codeCounts.set(item.code, (codeCounts.get(item.code) ?? 0) + 1);
   const optionValueOf = (item: Option) => {
     if (useIdValue) return String(item.id);
-    if (item.id !== undefined && ((codeCounts.get(item.code) ?? 0) > 1 || value.includes(`id:${item.id}`))) {
+    if (item.id !== undefined && (preferIdRef || (codeCounts.get(item.code) ?? 0) > 1 || value.includes(`id:${item.id}`))) {
       return `id:${item.id}`;
     }
     return item.code;
@@ -47,6 +49,7 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
       const params = new URLSearchParams({ limit: String(limit), offset: '0' });
       if (query.trim()) params.set('q', query.trim());
       if (sex) params.set('sex', sex);
+      if (barnId && !allBarns) params.set('barnId', String(barnId));
       if (activeOnly && !allBarns) { params.set('status', 'activo'); params.set('active', '1'); }
       const endpoint = allBarns ? '/api/animal-parents' : '/api/animals';
       void fetch(`${endpoint}?${params}`, { signal: controller.signal }).then(async response => {
@@ -66,7 +69,7 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
       }).finally(() => { if (!cancelled) setBusy(false); });
     }, 250);
     return () => { cancelled = true; window.clearTimeout(timer); controller.abort(); };
-  }, [query, sex, activeOnly, allBarns, limit, useIdValue, retry]);
+  }, [query, sex, barnId, activeOnly, allBarns, limit, useIdValue, retry]);
 
   const displayOf = (key: string) => {
     const found = options.find(item => optionValueOf(item) === key || item.code === key);

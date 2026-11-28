@@ -470,7 +470,7 @@ export function ModuloSanidad({ perfil }: { perfil: Perfil }) {
               </p>
             ) : (
               <FormField>
-                <AnimalPicker label="Animales aplicables" searchLabel="Buscar animales para tratamiento" multiple required activeOnly value={selected} onChange={setSelected} />
+                <AnimalPicker label="Animales aplicables" searchLabel="Buscar animales para tratamiento" multiple required activeOnly preferIdRef value={selected} onChange={setSelected} />
               </FormField>
             )}
 

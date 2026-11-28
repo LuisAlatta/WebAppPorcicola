@@ -595,7 +595,7 @@ export function ModuloVacunas({ perfil }: { perfil: Perfil }) {
 
           <div className="grid-2">
             <FormField>
-              <AnimalPicker label="Animal" searchLabel="Buscar animal para vacuna" activeOnly required value={manual.animalCode ? [manual.animalCode] : []} onChange={values => setManual({ ...manual, animalCode: values[0] ?? '' })} />
+              <AnimalPicker label="Animal" searchLabel="Buscar animal para vacuna" activeOnly preferIdRef required value={manual.animalCode ? [manual.animalCode] : []} onChange={values => setManual({ ...manual, animalCode: values[0] ?? '' })} />
             </FormField>
 
             <FormField label="Nombre de la vacuna" labelClassName="text-xs">

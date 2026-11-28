@@ -10,6 +10,7 @@ import {
   IconTrash,
   IconX,
 } from './icons';
+import { AnimalPicker } from './AnimalPicker';
 import { ModalDialog } from './ModalDialog';
 import { ModuleTabs } from './ModuleTabs';
 import { DataState } from './DataState';
@@ -188,7 +189,11 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
   }, [allocations, form.amount]);
 
   const updateAllocation = (index: number, key: keyof Allocation, value: string) => {
-    setAllocations(old => old.map((line, i) => (i === index ? { ...line, [key]: value } : line)));
+    setAllocations(old => old.map((line, i) => (
+      i === index
+        ? { ...line, [key]: value, ...(key === 'barnId' ? { animalCode: '' } : {}) }
+        : line
+    )));
   };
 
   const exportFinance = async (source: 'finance' | 'cashflow', format: 'pdf' | 'xlsx', share = false) => {
@@ -625,14 +630,18 @@ export function ModuloFinanzas({ perfil }: { perfil: Perfil }) {
                         className="form-input font-numeric tabular-nums"
                       />
                     </FormField>
-                    <FormField label="Animal / Arete (opcional)">
-                      <input
-                        placeholder="ej. MAR-012"
-                        className="form-input"
-                        value={line.animalCode}
-                        onChange={e => updateAllocation(index, 'animalCode', e.target.value)}
+                    <div className="form-span-2">
+                      <AnimalPicker
+                        label="Animal / Arete (opcional)"
+                        searchLabel="Buscar animal (opcional)"
+                        activeOnly
+                        preferIdRef
+                        barnId={line.barnId || undefined}
+                        emptyLabel="Ninguno (sin animal específico)"
+                        value={line.animalCode ? [line.animalCode] : []}
+                        onChange={values => updateAllocation(index, 'animalCode', values[0] ?? '')}
                       />
-                    </FormField>
+                    </div>
                     <FormField label="Lote porcino (opcional)">
                       <input
                         placeholder="ej. LOT-2025-01"

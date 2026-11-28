@@ -16,6 +16,7 @@ import {
 } from './icons';
 import { farmToday, newOperationKey, fetchOperation } from '../utils/operations';
 import { errorMessage } from '../utils/format';
+import { AnimalPicker } from './AnimalPicker';
 import { DataState } from './DataState';
 import { ModuleTabs } from './ModuleTabs';
 import {
@@ -1158,7 +1159,7 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                           className="form-select"
                           required
                           value={form.destinationBarnId}
-                          onChange={(e) => setField('destinationBarnId', e.target.value)}
+                          onChange={(e) => setForm((old) => ({ ...old, destinationBarnId: e.target.value, animalCode: '' }))}
                         >
                           {barns.map((x) => (
                             <option key={x.id} value={x.id}>{x.name}</option>
@@ -1166,16 +1167,18 @@ export function ModuloAlimentacion({ perfil }: { perfil: Perfil }) {
                         </select>
                       </FormField>
 
-                      <FormField label="Animal específico (opcional)" htmlFor="feed-animal-code">
-                        <input
-                          id="feed-animal-code"
-                          className="form-input"
-                          maxLength={40}
-                          value={form.animalCode}
-                          onChange={(e) => setField('animalCode', e.target.value)}
-                          placeholder="Código individual si aplica"
+                      <div className="form-col-span-full">
+                        <AnimalPicker
+                          label="Animal específico (opcional)"
+                          searchLabel="Buscar animal específico (opcional)"
+                          activeOnly
+                          preferIdRef
+                          barnId={form.destinationBarnId || undefined}
+                          emptyLabel="Ninguno (entrega al galpón completo)"
+                          value={form.animalCode ? [form.animalCode] : []}
+                          onChange={(values) => setField('animalCode', values[0] ?? '')}
                         />
-                      </FormField>
+                      </div>
 
                       <div className="form-group form-col-span-full">
                         <label className="checkbox-label" htmlFor="feed-turn-mode">
