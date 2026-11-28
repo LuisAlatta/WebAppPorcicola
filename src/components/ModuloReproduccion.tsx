@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconActivity,
   IconAlertTriangle,
@@ -248,6 +248,13 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const formErrorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (error && section === 'registro') {
+      formErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [error, section]);
   const [notice, setNotice] = useState<string | null>(null);
   const [repeatCycle, setRepeatCycle] = useState<string | null>(null);
   const [manualCycle, setManualCycle] = useState<string | null>(null);
@@ -775,7 +782,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
         }
       />
 
-      {error && !dateCorrection && !countCorrection && !postweaningCycle && !litterEventCycle && (cycles.length > 0 || section === 'registro') && (
+      {error && !dateCorrection && !countCorrection && !postweaningCycle && !litterEventCycle && section !== 'registro' && cycles.length > 0 && (
         <InlineAlert tone="error" onDismiss={() => setError(null)}>{error}</InlineAlert>
       )}
       {notice && <InlineAlert tone="success" autoDismissMs={6000} onDismiss={() => setNotice(null)}>{notice}</InlineAlert>}
@@ -976,7 +983,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 </FormField>
               )}
 
-              <FormField label="Último parto conocido">
+              <FormField label="Último parto conocido (opcional)">
                 <input
                   type="date"
                   className="form-input"
@@ -997,6 +1004,12 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
             </FormField>
             </fieldset>
             </div>
+
+            {error && (
+              <div ref={formErrorRef} role="alert">
+                <InlineAlert tone="error" onDismiss={() => setError(null)}>{error}</InlineAlert>
+              </div>
+            )}
 
             <div className="form-actions">
               <button type="button" className="btn btn-outline" data-action="back" disabled={busy} onClick={() => setSection('ciclos')} aria-label="Volver a la lista de ciclos reproductivos">Volver a ciclos</button>

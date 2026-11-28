@@ -55,7 +55,7 @@ describe('Actualización de esquema desde 0001–0005', () => {
       .filter(name => /^\d+.*\.sql$/.test(name))
       .sort();
 
-    expect(migrationNames).toHaveLength(29);
+    expect(migrationNames).toHaveLength(30);
 
     for (const name of migrationNames.slice(0, 5)) await applyMigration(db, name);
 

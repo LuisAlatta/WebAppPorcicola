@@ -137,7 +137,21 @@ describe('Verracos de todos los galpones y servicios históricos en reproducció
       }],
     });
 
-    // Repetición de servicio también acepta el verraco de otro galpón por ID.
+    // Verifica que se genere la alerta automática de repetición de celo para el 28/11/2026.
+    const alertsRes = await req('/api/alerts?asOf=2026-11-28', undefined, '2');
+    expect(alertsRes.status, await alertsRes.clone().text()).toBe(200);
+    const alertsBody = await alertsRes.json() as {
+      alerts: { key: string; type: string; dueDate: string; bucket: string; title: string; status: string }[];
+    };
+    expect(alertsBody.alerts.find(a => a.key === `heat_repeat:${cycleBody.createdCycleId}`)).toMatchObject({
+      type: 'heat_repeat',
+      dueDate: '2026-11-28',
+      bucket: 'today',
+      title: 'Repetición de celo · 002',
+      status: 'pending',
+    });
+
+    // Repetición de servicio también acepta el verraco de otro galpón por ID y actualiza la fecha de la alerta de celo.
     const repeatRes = await req(`/api/reproduction/cycles/${cycleBody.createdCycleId}/services`, {
       serviceDate: '2026-11-20',
       serviceType: 'inseminacion_artificial',
@@ -146,6 +160,32 @@ describe('Verracos de todos los galpones y servicios históricos en reproducció
       operationKey: crypto.randomUUID(),
     }, '2');
     expect(repeatRes.status, await repeatRes.clone().text()).toBe(201);
+
+    const alertsAfterRepeat = await (await req('/api/alerts?asOf=2026-12-11', undefined, '2')).json() as {
+      alerts: { key: string; dueDate: string; bucket: string; status: string }[];
+    };
+    expect(alertsAfterRepeat.alerts.find(a => a.key === `heat_repeat:${cycleBody.createdCycleId}`)).toMatchObject({
+      dueDate: '2026-12-11',
+      bucket: 'today',
+      status: 'pending',
+    });
+
+    // Al confirmar preñez, la alerta de repetición de celo se resuelve automáticamente y la de parto sigue pendiente.
+    const confirmRes = await req(`/api/reproduction/cycles/${cycleBody.createdCycleId}/events`, {
+      eventType: 'pregnancy_confirmed',
+      eventDate: '2026-11-27',
+      operationKey: crypto.randomUUID(),
+    }, '2');
+    expect(confirmRes.status, await confirmRes.clone().text()).toBe(201);
+
+    const pendingAfterConfirm = await (await req('/api/alerts?status=pending&asOf=2026-12-11', undefined, '2')).json() as {
+      alerts: { key: string; type: string; status: string }[];
+    };
+    expect(pendingAfterConfirm.alerts.find(a => a.key === `heat_repeat:${cycleBody.createdCycleId}`)).toBeUndefined();
+    expect(pendingAfterConfirm.alerts.find(a => a.key === `farrowing:${cycleBody.createdCycleId}`)).toMatchObject({
+      type: 'farrowing',
+      status: 'pending',
+    });
 
     // Sigue rechazando fecha anterior al nacimiento del animal (400) y verraco inactivo (400).
     const beforeBirth = await req('/api/reproduction/cycles', {

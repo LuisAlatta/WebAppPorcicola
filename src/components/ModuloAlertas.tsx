@@ -73,6 +73,9 @@ const groups = [
   ['vaccine:overdue', 'Vacunaciones vencidas'],
   ['vaccine:today', 'Vacunaciones para hoy'],
   ['vaccine:upcoming', 'Vacunas próximas (7 días)'],
+  ['heat_repeat:overdue', 'Celos vencidos'],
+  ['heat_repeat:today', 'Celos previstos hoy'],
+  ['heat_repeat:upcoming', 'Celos próximos (7 días)'],
   ['farrowing:overdue', 'Partos retrasados'],
   ['farrowing:today', 'Partos previstos hoy'],
   ['farrowing:upcoming', 'Partos próximos (7 días)'],
@@ -80,6 +83,7 @@ const groups = [
 
 const labels: Record<string, string> = {
   vaccine: 'Vacunación',
+  heat_repeat: 'Repetición de celo',
   farrowing: 'Parto de marrana',
   weaning: 'Destete de camada',
   treatment: 'Tratamiento veterinario',
@@ -355,7 +359,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
             <FormField label="Tipo de alerta">
               <select className="form-select" value={ruleForm.alertType} onChange={e => setRuleForm({ ...ruleForm, alertType: e.target.value })}>
                 {Object.entries(labels)
-                  .filter(([key]) => ['vaccine', 'farrowing', 'weaning', 'treatment', 'feeding', 'manual', 'low_weight', 'sale_suggestion'].includes(key))
+                  .filter(([key]) => ['vaccine', 'heat_repeat', 'farrowing', 'weaning', 'treatment', 'feeding', 'manual', 'low_weight', 'sale_suggestion'].includes(key))
                   .map(([key, label]) => (
                     <option key={key} value={key}>{label}</option>
                   ))}
@@ -537,7 +541,7 @@ export function ModuloAlertas({ perfil }: { perfil: Perfil }) {
                 <select className="form-select form-select-sm" value={filter.type} onChange={e => setFilter({ ...filter, type: e.target.value, bucket: '' })}>
                   <option value="">Todos los tipos</option>
                   {Object.entries(labels)
-                    .filter(([key]) => ['vaccine', 'farrowing', 'weaning', 'treatment', 'feeding', 'manual', 'low_weight', 'sale_suggestion'].includes(key))
+                    .filter(([key]) => ['vaccine', 'heat_repeat', 'farrowing', 'weaning', 'treatment', 'feeding', 'manual', 'low_weight', 'sale_suggestion'].includes(key))
                     .map(([key, label]) => (
                       <option key={key} value={key}>{label}</option>
                     ))}
