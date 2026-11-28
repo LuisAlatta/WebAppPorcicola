@@ -2041,7 +2041,7 @@ export async function transferAnimal(
   const destinationBarnId = Number(input.destinationBarnId);
   if (!Number.isInteger(destinationBarnId) || destinationBarnId <= 0) throw new ApiError(400, 'Seleccione un galpón destino');
   const effectiveDate = input.effectiveDate ? parseDate(input.effectiveDate, 'Fecha del traslado') : today();
-  if (effectiveDate > today() || effectiveDate < String(row.entry_date)) throw new ApiError(400, 'La fecha del traslado debe estar entre el ingreso y hoy');
+  if (effectiveDate > today() || effectiveDate < String(row.entry_date)) throw new ApiError(400, `La fecha del traslado debe estar entre el ingreso del animal (${String(row.entry_date)}) y hoy`);
   const destination = await db.prepare('SELECT id, name, capacity FROM barns WHERE id = ?').bind(destinationBarnId).first<{ id: number; name: string; capacity: number | null }>();
   if (!destination) throw new ApiError(404, 'El galpón destino no existe');
   if (scope.allowedBarnNames && !scope.allowedBarnNames.includes(destination.name)) throw new ApiError(403, 'Debe tener acceso a ambos galpones para trasladar la ficha');
@@ -2170,7 +2170,7 @@ export async function registerAnimalExit(
   const exitType = String(input.exitType ?? '') as 'sale' | 'death' | 'discard';
   if (exitType !== 'sale' && exitType !== 'death' && exitType !== 'discard') throw new ApiError(400, 'La salida debe ser venta, descarte o muerte');
   const effectiveDate = input.effectiveDate ? parseDate(input.effectiveDate, 'Fecha de salida') : today();
-  if (effectiveDate > today() || effectiveDate < String(row.entry_date)) throw new ApiError(400, 'La fecha de salida debe estar entre el ingreso y hoy');
+  if (effectiveDate > today() || effectiveDate < String(row.entry_date)) throw new ApiError(400, `La fecha de salida debe estar entre el ingreso del animal (${String(row.entry_date)}) y hoy`);
   const causeCode = requireText(input.causeCode, exitType === 'death' ? 'Causa de muerte' : 'Causa de venta o descarte', 60);
   const config = await getConfigSnapshot(db, effectiveDate);
   const causeKey = exitType === 'death' ? 'causa_muerte' : 'causa_descarte';

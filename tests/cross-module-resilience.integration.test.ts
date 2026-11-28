@@ -291,5 +291,52 @@ describe('Resiliencia transversal entre módulos (códigos repetidos, fechas his
       operationKey: crypto.randomUUID(),
     }, '1');
     expect(financeRes.status, await financeRes.clone().text()).toBe(201);
+
+    // 6. Ciclo normal con servicio histórico: genera vacuna preparto aunque caiga antes de entry_date y admite parto histórico
+    const preFarrowRule = await req('/api/vaccines/rules', {
+      vaccineName: 'Preparto E. coli',
+      targetCategory: 'cerda_primeriza',
+      baseEvent: 'farrowing',
+      offsetDays: -21,
+      reason: 'Regla preparto para gestantes ingresadas con servicio histórico',
+      operationKey: crypto.randomUUID(),
+    }, '1');
+    expect(preFarrowRule.status, await preFarrowRule.clone().text()).toBe(201);
+
+    const histCycleRes = await req('/api/reproduction/cycles', {
+      femaleCode: `id:${sow.animal.id}`,
+      serviceDate: '2026-08-20',
+      serviceType: 'inseminacion_artificial',
+      materialSource: 'external',
+      externalSource: 'Dosis externa',
+      operationKey: crypto.randomUUID(),
+    }, '1');
+    expect(histCycleRes.status, await histCycleRes.clone().text()).toBe(201);
+    const { createdCycleId } = await histCycleRes.json() as { createdCycleId: string };
+
+    const preFarrowSched = await (await req('/api/vaccines/schedules', undefined, '1')).json() as {
+      schedules: { vaccineName: string; animalCode: string }[];
+    };
+    expect(preFarrowSched.schedules.some(s => s.vaccineName === 'Preparto E. coli' && s.animalCode === 'HIST-X')).toBe(true);
+
+    const histFarrowRes = await req(`/api/reproduction/cycles/${createdCycleId}/farrowing`, {
+      farrowingDate: pastDate,
+      maleAlive: 4,
+      femaleAlive: 5,
+      reason: 'Parto ocurrido antes de cargar la cerda en la app',
+      operationKey: crypto.randomUUID(),
+    }, '1');
+    expect(histFarrowRes.status, await histFarrowRes.clone().text()).toBe(201);
+    expect(await histFarrowRes.json()).toMatchObject({ historicalOnly: true });
+
+    // 7. Traslado anterior a entry_date indica explícitamente la fecha de ingreso del animal
+    const badTransfer = await req(`/api/animals/id:${sow.animal.id}/transfer`, {
+      destinationBarnId: 2,
+      effectiveDate: pastDate,
+      reason: 'Intento de traslado previo al ingreso',
+      operationKey: crypto.randomUUID(),
+    }, '1,2');
+    expect(badTransfer.status).toBe(400);
+    expect(await badTransfer.text()).toContain(today);
   }, 90000);
 });

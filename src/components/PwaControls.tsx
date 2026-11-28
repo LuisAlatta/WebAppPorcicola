@@ -38,7 +38,10 @@ export function PwaControls() {
         if (cancelled) return;
         registration = result;
         stopObserving = observeWaitingWorker(result, navigator.serviceWorker, (worker) => {
-          setWaiting(worker);
+          setWaiting((previous) => {
+            if (worker && worker !== previous) setSnoozed(false);
+            return worker;
+          });
           if (!worker) setConfirmUpdate(false);
         });
       }).catch(() => undefined);
@@ -47,12 +50,16 @@ export function PwaControls() {
       if (document.visibilityState === 'visible') void registration?.update().catch(() => undefined);
     };
     document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('online', refresh);
     return () => {
       cancelled = true;
       stopObserving?.();
       window.removeEventListener('beforeinstallprompt', prompt);
       window.removeEventListener('appinstalled', installed);
       document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
     };
   }, []);
 

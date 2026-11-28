@@ -248,15 +248,15 @@ export async function recordLitterEvent(db: D1Database, actorUserId: number, lit
 }
 
 export async function recordFarrowing(db: D1Database, actorUserId: number, cycleId: string, input: FarrowingInput, scope: { allowedBarnNames?: string[] | null } = {}) {
-  const cycle = await db.prepare(`SELECT c.*, a.code AS female_code, a.entry_date, a.exit_date,a.updated_at AS animal_updated_at,a.current_stage_code,a.status AS animal_status
+  const cycle = await db.prepare(`SELECT c.*, a.code AS female_code, a.birth_date, a.entry_date, a.exit_date,a.updated_at AS animal_updated_at,a.current_stage_code,a.status AS animal_status
     FROM reproduction_cycles c JOIN animals a ON a.id=c.female_animal_id WHERE c.id=?`).bind(cycleId).first<Row>();
   if (!cycle) throw new ApiError(404, 'Ciclo reproductivo no encontrado');
   const farrowingDate = String(input.farrowingDate ?? '');
   if (!isValidDateString(farrowingDate) || farrowingDate > currentFarmDate()) throw new ApiError(400, 'Fecha de parto inválida o futura');
   if (farrowingDate < String(cycle.cycle_opened_on) && Number(cycle.antecedent) !== 1) throw new ApiError(400, 'El parto debe ser posterior al inicio del ciclo');
+  if (cycle.birth_date && farrowingDate < String(cycle.birth_date)) throw new ApiError(400, 'La fecha de parto no puede ser anterior al nacimiento de la madre');
   if (cycle.exit_date && farrowingDate > String(cycle.exit_date)) throw new ApiError(400, 'La hembra ya no estaba en la granja en la fecha del parto');
   const historicalOnly = farrowingDate < String(cycle.entry_date);
-  if (historicalOnly && Number(cycle.antecedent) !== 1) throw new ApiError(400, 'Solo un ciclo antecedente admite partos previos al ingreso');
   const location = historicalOnly ? null : await db.prepare(`SELECT id,barn_id,location_code,lot_code,stage_code,valid_from,valid_until FROM animal_location_history
     WHERE animal_id=? AND valid_from<=? AND (valid_until IS NULL OR valid_until>?) ORDER BY valid_from DESC,id DESC LIMIT 1`)
     .bind(cycle.female_animal_id, farrowingDate, farrowingDate).first<Row>();
