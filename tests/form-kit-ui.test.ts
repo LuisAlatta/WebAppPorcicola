@@ -54,7 +54,7 @@ describe('Campos compartidos con título integrado', () => {
     expect(html).toContain('value="Maíz"');
   });
   it('aplica el mismo componente a la búsqueda y selección de progenitores', () => {
-    const html = renderToStaticMarkup(createElement(AnimalPicker, { label: 'Madre interna', searchLabel: 'Buscar madre interna', value: [], onChange: () => {} }));
+    const html = renderToStaticMarkup(createElement(AnimalPicker, { label: 'Madre interna', searchLabel: 'Buscar madre interna', sex: 'hembra', allBarns: true, value: [], onChange: () => {} }));
     expect(html.match(/class="field-outline"/g)).toHaveLength(2);
     expect(html).toContain('Buscar madre interna</label></legend>');
     expect(html).toContain('Madre interna</label></legend>');

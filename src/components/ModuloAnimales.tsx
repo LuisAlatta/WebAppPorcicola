@@ -1797,7 +1797,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
               <div className="form-grid">
               <FormField>
                 <div id="ani-mother-field">
-                <AnimalPicker label="Madre interna" searchLabel="Buscar madre interna" sex="hembra" useIdValue value={form.motherId ? [form.motherId] : []} onChange={values => setField('motherId', values[0] ?? '')} emptyLabel="Desconocido o externo" />
+                <AnimalPicker label="Madre interna" searchLabel="Buscar madre interna" sex="hembra" allBarns useIdValue value={form.motherId ? [form.motherId] : []} onChange={values => setField('motherId', values[0] ?? '')} emptyLabel="Desconocido o externo" />
                 </div>
                 {fieldErrors.mother && (
                   <p className="field-error-message" role="alert">
@@ -1822,7 +1822,7 @@ export function ModuloAnimales({ perfil, initialAnimalKey, barnNames = [], onCha
 
               <FormField>
                 <div id="ani-father-field">
-                <AnimalPicker label="Padre interno" searchLabel="Buscar padre interno" sex="macho" useIdValue value={form.fatherId ? [form.fatherId] : []} onChange={values => setField('fatherId', values[0] ?? '')} emptyLabel="Desconocido o externo" />
+                <AnimalPicker label="Padre interno" searchLabel="Buscar padre interno" sex="macho" allBarns useIdValue value={form.fatherId ? [form.fatherId] : []} onChange={values => setField('fatherId', values[0] ?? '')} emptyLabel="Desconocido o externo" />
                 </div>
                 {fieldErrors.father && (
                   <p className="field-error-message" role="alert">

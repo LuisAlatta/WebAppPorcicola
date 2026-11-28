@@ -12,13 +12,15 @@ type Props = {
   useIdValue?: boolean;
   sex?: string;
   activeOnly?: boolean;
+  allBarns?: boolean;
   required?: boolean;
   emptyLabel?: string;
 };
 
 /** Consulta páginas cortas; las selecciones previas permanecen al buscar otro animal. */
-export function AnimalPicker({ label, searchLabel, value, onChange, multiple, useIdValue, sex, activeOnly, required, emptyLabel = 'Seleccionar animal' }: Props) {
+export function AnimalPicker({ label, searchLabel, value, onChange, multiple, useIdValue, sex, activeOnly, allBarns, required, emptyLabel = 'Seleccionar animal' }: Props) {
   const id = useId();
+  const limit = allBarns ? 500 : 50;
   const [query, setQuery] = useState('');
   const [options, setOptions] = useState<Option[]>([]);
   const [error, setError] = useState('');
@@ -42,11 +44,12 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
     const timer = window.setTimeout(() => {
       setBusy(true);
       setError('');
-      const params = new URLSearchParams({ limit: '50', offset: '0' });
+      const params = new URLSearchParams({ limit: String(limit), offset: '0' });
       if (query.trim()) params.set('q', query.trim());
       if (sex) params.set('sex', sex);
-      if (activeOnly) { params.set('status', 'activo'); params.set('active', '1'); }
-      void fetch(`/api/animals?${params}`, { signal: controller.signal }).then(async response => {
+      if (activeOnly && !allBarns) { params.set('status', 'activo'); params.set('active', '1'); }
+      const endpoint = allBarns ? '/api/animal-parents' : '/api/animals';
+      void fetch(`${endpoint}?${params}`, { signal: controller.signal }).then(async response => {
         const data = await response.json() as { animals?: Option[]; total?: number; error?: string };
         if (!response.ok || !Array.isArray(data.animals)) throw new Error(data.error || 'No se pudieron consultar los animales');
         if (cancelled) return;
@@ -63,12 +66,12 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
       }).finally(() => { if (!cancelled) setBusy(false); });
     }, 250);
     return () => { cancelled = true; window.clearTimeout(timer); controller.abort(); };
-  }, [query, sex, activeOnly, useIdValue, retry]);
+  }, [query, sex, activeOnly, allBarns, limit, useIdValue, retry]);
 
   const displayOf = (key: string) => {
     const found = options.find(item => optionValueOf(item) === key || item.code === key);
     if (!found) return key;
-    const showBarn = !useIdValue && found.barnName && ((codeCounts.get(found.code) ?? 0) > 1 || key.startsWith('id:'));
+    const showBarn = Boolean(found.barnName) && (allBarns || (!useIdValue && ((codeCounts.get(found.code) ?? 0) > 1 || key.startsWith('id:'))));
     return `${found.code}${found.alias ? ` · ${found.alias}` : ''}${showBarn ? ` · ${found.barnName}` : ''}`;
   };
 
@@ -109,7 +112,7 @@ export function AnimalPicker({ label, searchLabel, value, onChange, multiple, us
         {busy ? (
           <><IconRefreshCw size={12} className="spinner-icon" /><span>Buscando animales…</span></>
         ) : (
-          <span>{total} coincidencias{total > 50 ? ' · refine la búsqueda para ver otras fichas' : ''}</span>
+          <span>{total} coincidencias{total > limit ? ' · refine la búsqueda para ver otras fichas' : ''}</span>
         )}
       </small>
       {error && (

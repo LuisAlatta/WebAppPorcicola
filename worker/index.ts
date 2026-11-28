@@ -63,6 +63,7 @@ import {
 } from './inventory';
 import {
   listAnimals,
+  listParentCandidates,
   getAnimal,
   createAnimal,
   updateAnimal,
@@ -806,6 +807,35 @@ const worker = {
         const message = (err as Error).message || String(err);
         const status = err instanceof ApiError ? err.status : /UNIQUE constraint|uq_reproduction_open_cycle|guard_id/.test(message) ? 409 : 400;
         return Response.json({ error: message }, { status });
+      }
+    }
+
+    if (path === '/api/animal-parents' && request.method === 'GET') {
+      const token = getSessionToken(request);
+      if (!token) {
+        return Response.json({ error: 'No autenticado: falta sesión' }, { status: 401 });
+      }
+      const session = await validateSession(env.DB, token);
+      if (!session) {
+        return Response.json({ error: 'Sesión inválida, expirada o revocada' }, { status: 401 });
+      }
+      try {
+        const result = await listParentCandidates(env.DB, {
+          q: url.searchParams.get('q'),
+          sex: url.searchParams.get('sex'),
+          limit: url.searchParams.get('limit') !== null
+            ? parseInt(url.searchParams.get('limit') as string, 10)
+            : undefined,
+          offset: url.searchParams.get('offset') !== null
+            ? parseInt(url.searchParams.get('offset') as string, 10)
+            : undefined,
+        });
+        return Response.json({ ok: true, ...result });
+      } catch (err) {
+        if (err instanceof ApiError) {
+          return Response.json({ error: err.message }, { status: err.status });
+        }
+        return Response.json({ error: 'Error consultando progenitores: ' + String(err) }, { status: 500 });
       }
     }
 

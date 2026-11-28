@@ -461,6 +461,84 @@ export interface ListAnimalFilters {
   offset?: number | null;
 }
 
+export interface AnimalParentOption {
+  id: number;
+  code: string;
+  alias: string | null;
+  sex: Sex;
+  barnId: number;
+  barnName: string;
+}
+
+export interface ParentCandidateFilters {
+  q?: string | null;
+  sex?: string | null;
+  limit?: number | null;
+  offset?: number | null;
+}
+
+/** Lista posibles madres (hembras) o padres (machos) activos en todos los galpones. */
+export async function listParentCandidates(
+  db: D1Database,
+  filters: ParentCandidateFilters,
+): Promise<{ animals: AnimalParentOption[]; total: number }> {
+  const where: string[] = ['a.exit_date IS NULL', 'a.is_active = 1'];
+  const params: unknown[] = [];
+
+  if (filters.sex) {
+    if (filters.sex !== 'macho' && filters.sex !== 'hembra') {
+      throw new ApiError(400, 'Sexo de progenitor inválido: use macho o hembra');
+    }
+    where.push('a.sex = ?');
+    params.push(filters.sex);
+  } else {
+    where.push("a.sex IN ('macho', 'hembra')");
+  }
+
+  const q = optionalCode(filters.q);
+  if (q) {
+    where.push(`(
+      a.code LIKE ?
+      OR a.alias LIKE ?
+      OR b.name LIKE ?
+      OR EXISTS (SELECT 1 FROM animal_tags at WHERE at.animal_id = a.id AND at.tag LIKE ?)
+    )`);
+    const like = `%${q}%`;
+    params.push(like, like, like, like);
+  }
+
+  const limit = Math.min(Math.max(Number(filters.limit) || 500, 1), 500);
+  const offset = Math.max(Number(filters.offset) || 0, 0);
+
+  const rows = await db.prepare(`
+    SELECT a.id, a.code, a.alias, a.sex, a.barn_id, b.name AS barn_name
+    FROM animals a
+    INNER JOIN barns b ON b.id = a.barn_id
+    WHERE ${where.join(' AND ')}
+    ORDER BY b.name COLLATE NOCASE, a.code COLLATE NOCASE, a.id ASC
+    LIMIT ? OFFSET ?
+  `).bind(...params, limit, offset).all<Row>();
+
+  const countRow = await db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM animals a
+    INNER JOIN barns b ON b.id = a.barn_id
+    WHERE ${where.join(' AND ')}
+  `).bind(...params).first<{ total: number }>();
+
+  return {
+    animals: (rows.results ?? []).map((row) => ({
+      id: Number(row.id),
+      code: String(row.code),
+      alias: row.alias === null || row.alias === undefined ? null : String(row.alias),
+      sex: String(row.sex) as Sex,
+      barnId: Number(row.barn_id),
+      barnName: String(row.barn_name),
+    })),
+    total: Number(countRow?.total ?? 0),
+  };
+}
+
 /** Padrón de animales con búsqueda por código, alias o arete y filtros combinables. */
 export async function listAnimals(
   db: D1Database,
@@ -912,7 +990,6 @@ async function resolveParent(
   externalValue: unknown,
   field: 'madre' | 'padre',
   expectedSex: 'hembra' | 'macho',
-  barnIds: number[] | null,
 ): Promise<ParentInput> {
   const id = optionalId(idValue, `ID de ${field}`);
   const external = optionalText(externalValue, 60);
@@ -925,7 +1002,6 @@ async function resolveParent(
     SELECT id, code, sex, birth_date, barn_id FROM animals WHERE id = ?
   `).bind(id).first<{ id: number; code: string; sex: string; birth_date: string | null; barn_id: number }>();
   if (!row) throw new ApiError(404, `La ${field} indicada no existe`);
-  assertBarnAllowed(barnIds, Number(row.barn_id));
   if (String(row.sex) !== expectedSex) {
     throw new ApiError(400, `La ${field} debe ser de sexo ${expectedSex === 'hembra' ? 'hembra' : 'macho'}`);
   }
@@ -1250,8 +1326,8 @@ export async function createAnimal(
     };
   }
 
-  const mother = await resolveParent(db, motherId, motherExternal, 'madre', 'hembra', barnIds);
-  const father = await resolveParent(db, fatherId, fatherExternal, 'padre', 'macho', barnIds);
+  const mother = await resolveParent(db, motherId, motherExternal, 'madre', 'hembra');
+  const father = await resolveParent(db, fatherId, fatherExternal, 'padre', 'macho');
   if (mother.id !== null && father.id !== null && mother.id === father.id) {
     throw new ApiError(400, 'La madre y el padre no pueden ser el mismo animal');
   }
@@ -1605,8 +1681,8 @@ export async function updateAnimal(
     if (typeChanged) throw new ApiError(400, 'No se puede cambiar el tipo de una ficha cerrada');
   }
 
-  const mother = await resolveParent(db, motherId, motherExternal, 'madre', 'hembra', barnIds);
-  const father = await resolveParent(db, fatherId, fatherExternal, 'padre', 'macho', barnIds);
+  const mother = await resolveParent(db, motherId, motherExternal, 'madre', 'hembra');
+  const father = await resolveParent(db, fatherId, fatherExternal, 'padre', 'macho');
   if (mother.id !== null && father.id !== null && mother.id === father.id) {
     throw new ApiError(400, 'La madre y el padre no pueden ser el mismo animal');
   }
