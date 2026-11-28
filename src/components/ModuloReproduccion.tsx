@@ -43,6 +43,17 @@ function animalSelectValue(animal: AnimalOption, list: AnimalOption[]) {
   return list.filter((item) => item.code === animal.code).length > 1 ? `id:${animal.id}` : animal.code;
 }
 
+function findAnimalOption(list: AnimalOption[], value: string) {
+  if (!value) return undefined;
+  return list.find((item) => animalSelectValue(item, list) === value) ?? list.find((item) => item.code === value);
+}
+
+function formatAnimalOptionLabel(animal: AnimalOption) {
+  const alias = animal.alias && animal.alias.trim() !== '' && animal.alias.trim() !== animal.code ? ` · ${animal.alias}` : '';
+  const barn = animal.barnName ? ` · ${animal.barnName}` : '';
+  return `${animal.code}${alias}${barn}`;
+}
+
 interface Service {
   id: number;
   serviceNumber: number;
@@ -50,6 +61,7 @@ interface Service {
   serviceType: string;
   sireCode: string | null;
   sireBreed: string | null;
+  sireBarnName?: string | null;
   materialSource: string;
   externalSource: string | null;
   observations: string | null;
@@ -307,13 +319,13 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       fetch(`/api/reproduction/cycles?${params.toString()}`, { signal: AbortSignal.timeout(30000) }),
       fetch('/api/reproduction/litters/targets', { signal: AbortSignal.timeout(30000) }),
       fetch('/api/animals?sex=hembra&status=activo&active=1&limit=500', { signal: AbortSignal.timeout(30000) }),
-      fetch('/api/animals?type=verraco&status=activo&active=1&limit=500', { signal: AbortSignal.timeout(30000) }),
+      fetch('/api/reproduction/sires', { signal: AbortSignal.timeout(30000) }),
     ]);
 
     const cycleBody = (await cycleRes.json()) as { error?: string; cycles?: Cycle[] };
     const targetLitterBody = (await targetLittersRes.json()) as { error?: string; targets?: LitterTarget[] };
     const femaleBody = (await femaleRes.json()) as { animals?: AnimalOption[] };
-    const sireBody = (await sireRes.json()) as { animals?: AnimalOption[] };
+    const sireBody = (await sireRes.json()) as { sires?: AnimalOption[]; animals?: AnimalOption[] };
 
     if (!cycleRes.ok) throw new Error(cycleBody.error ?? 'No se pudieron cargar los ciclos.');
     if (!targetLittersRes.ok) throw new Error(targetLitterBody.error ?? 'No se pudieron cargar las camadas destino.');
@@ -321,7 +333,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       cycles: cycleBody.cycles ?? [],
       targetLitters: targetLitterBody.targets ?? [],
       females: femaleBody.animals ?? [],
-      sires: sireBody.animals ?? [],
+      sires: sireBody.sires ?? sireBody.animals ?? [],
     };
   }, [from, to, status]);
 
@@ -370,7 +382,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
       const payload = {
         ...form,
         serviceType: 'inseminacion_artificial',
-        sireBreed: form.materialSource === 'internal' ? sires.find(sire => animalSelectValue(sire, sires) === form.sireCode || sire.code === form.sireCode)?.breed ?? '' : form.sireBreed,
+        sireBreed: form.materialSource === 'internal' ? findAnimalOption(sires, form.sireCode)?.breed ?? '' : form.sireBreed,
         serviceDate: form.serviceDate,
         dueDate: form.dueDate || undefined,
         lastFarrowingDate: form.lastFarrowingDate || undefined,
@@ -895,13 +907,12 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                       className="form-select"
                       required
                       value={form.sireCode}
-                      onChange={(e) => setForm((prev) => ({ ...prev, sireCode: e.target.value, sireBreed: sires.find(sire => animalSelectValue(sire, sires) === e.target.value || sire.code === e.target.value)?.breed ?? '' }))}
+                      onChange={(e) => setForm((prev) => ({ ...prev, sireCode: e.target.value, sireBreed: findAnimalOption(sires, e.target.value)?.breed ?? '' }))}
                     >
                       <option value="">Seleccione</option>
                       {sires.map((animal) => (
                         <option key={animal.id ?? animal.code} value={animalSelectValue(animal, sires)}>
-                          {animal.code}
-                          {animal.alias ? ` · ${animal.alias}` : ''}{animal.barnName ? ` · ${animal.barnName}` : ''}
+                          {formatAnimalOptionLabel(animal)}
                         </option>
                       ))}
                     </select>
@@ -921,7 +932,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                 <FormField label="Raza del padre/material">
                   <input
                     className="form-input"
-                    value={form.materialSource === 'internal' ? sires.find(sire => animalSelectValue(sire, sires) === form.sireCode || sire.code === form.sireCode)?.breed ?? '' : form.sireBreed}
+                    value={form.materialSource === 'internal' ? findAnimalOption(sires, form.sireCode)?.breed ?? '' : form.sireBreed}
                     readOnly={form.materialSource === 'internal'}
                     placeholder={form.materialSource === 'internal' ? 'Raza del verraco seleccionado' : ''}
                     onChange={(e) => setForm((prev) => ({ ...prev, sireBreed: e.target.value }))}
@@ -1229,6 +1240,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           <span>·</span>
                           <span>
                             Padre/material: <strong>{service.sireCode ?? service.externalSource ?? '—'}</strong>
+                            {service.sireBarnName ? ` · ${service.sireBarnName}` : ''}
                             {service.sireBreed ? ` (${service.sireBreed})` : ''}
                           </span>
                           {service.observations && <span className="italic">({service.observations})</span>}
@@ -2107,7 +2119,7 @@ export function ModuloReproduccion({ perfil }: { perfil: Perfil }) {
                           <option value="">Seleccione si aplica</option>
                           {sires.map((item) => (
                             <option key={item.id ?? item.code} value={animalSelectValue(item, sires)}>
-                              {item.code}{item.barnName ? ` · ${item.barnName}` : ''}
+                              {formatAnimalOptionLabel(item)}
                             </option>
                           ))}
                         </select>

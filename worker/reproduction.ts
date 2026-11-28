@@ -8,6 +8,14 @@ import { resolveAnimalRef } from './animal-lookup';
 type Row = Record<string, unknown>;
 export interface ReproductionScope { allowedBarnNames?: string[] | null }
 export type LitterTarget = { litterId: string; motherCode: string; barnName: string; historicalOnly: boolean };
+export type ReproductionSireOption = {
+  id: number;
+  code: string;
+  alias: string | null;
+  breed: string | null;
+  barnId: number;
+  barnName: string;
+};
 type ServiceInput = {
   femaleCode?: unknown; serviceDate?: unknown; serviceType?: unknown; sireCode?: unknown;
   sireBreed?: unknown; materialSource?: unknown; externalSource?: unknown; aptitude?: unknown;
@@ -58,7 +66,7 @@ async function barnIds(db: D1Database, scope: ReproductionScope): Promise<number
 }
 async function femaleAtDate(db: D1Database, code: string, effectiveDate: string, scope: ReproductionScope) {
   const resolved = await resolveAnimalRef<Row>(db, code, {
-    columns: 'a.id, a.code, a.sex, a.animal_type, a.breed, a.aptitude, a.entry_date, a.exit_date, a.is_active, a.barn_id',
+    columns: 'a.id, a.code, a.sex, a.animal_type, a.breed, a.aptitude, a.birth_date, a.entry_date, a.exit_date, a.is_active, a.barn_id, a.location_code, a.lot_code',
     allowedBarnNames: scope.allowedBarnNames,
     effectiveDate,
   });
@@ -66,10 +74,17 @@ async function femaleAtDate(db: D1Database, code: string, effectiveDate: string,
   const female = resolved.row;
   if (!female) throw new ApiError(404, 'Hembra no encontrada');
   if (female.sex !== 'hembra' || !['cerda', 'reemplazo'].includes(String(female.animal_type))) throw new ApiError(400, 'El animal seleccionado no es una hembra reproductiva');
-  if (effectiveDate < String(female.entry_date) || (female.exit_date && effectiveDate > String(female.exit_date))) throw new ApiError(400, 'La hembra debe estar presente en la granja en la fecha del evento');
-  const location = await db.prepare(`SELECT h.barn_id, h.location_code, h.lot_code FROM animal_location_history h
+  if (Number(female.is_active) === 0 && female.exit_date === null) throw new ApiError(400, 'La hembra está inactiva');
+  if (female.exit_date && effectiveDate > String(female.exit_date)) throw new ApiError(400, 'La hembra debe estar presente en la granja en la fecha del evento');
+  if (female.birth_date && effectiveDate < String(female.birth_date)) throw new ApiError(400, 'La fecha del evento no puede ser anterior al nacimiento de la hembra');
+  const historical = await db.prepare(`SELECT h.barn_id, h.location_code, h.lot_code FROM animal_location_history h
     WHERE h.animal_id = ? AND h.valid_from <= ? AND (h.valid_until IS NULL OR h.valid_until > ?)
     ORDER BY h.valid_from DESC, h.id DESC LIMIT 1`).bind(Number(female.id), effectiveDate, effectiveDate).first<Row>();
+  const location = historical ?? (effectiveDate < String(female.entry_date)
+    ? (await db.prepare(`SELECT h.barn_id, h.location_code, h.lot_code FROM animal_location_history h
+        WHERE h.animal_id = ? ORDER BY h.valid_from ASC, h.id ASC LIMIT 1`).bind(Number(female.id)).first<Row>())
+      ?? { barn_id: female.barn_id, location_code: female.location_code ?? null, lot_code: female.lot_code ?? null }
+    : null);
   if (!location) throw new ApiError(409, 'No existe ubicación histórica de la hembra para esa fecha');
   const barnId = Number(location.barn_id);
   const allowed = await barnIds(db, scope);
@@ -77,28 +92,49 @@ async function femaleAtDate(db: D1Database, code: string, effectiveDate: string,
   return { female, barnId, locationCode: location.location_code === null ? null : String(location.location_code), lotCode: location.lot_code === null ? null : String(location.lot_code) };
 }
 async function sireAtDate(db: D1Database, sireCode: string, serviceDate: string, scope: ReproductionScope) {
-  const resolved = await resolveAnimalRef<Row>(db, sireCode, {
-    columns: 'a.id, a.code, a.sex, a.animal_type, a.breed, a.entry_date, a.exit_date, a.is_active, a.barn_id',
-    allowedBarnNames: scope.allowedBarnNames,
-    effectiveDate: serviceDate,
-  });
-  if (resolved.outOfScope) throw new ApiError(403, 'No tiene acceso al galpón del verraco en la fecha del servicio');
+  const sireColumns = 'a.id, a.code, a.sex, a.animal_type, a.breed, a.birth_date, a.entry_date, a.exit_date, a.is_active, a.barn_id';
+  let resolved: { row: Row | null; outOfScope: boolean };
+  try {
+    resolved = await resolveAnimalRef<Row>(db, sireCode, {
+      columns: sireColumns,
+      allowedBarnNames: null,
+      effectiveDate: serviceDate,
+      ambiguousMessage: `Hay más de un verraco con el código ${sireCode} en la granja; selecciónelo desde la lista`,
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 409 && scope.allowedBarnNames) {
+      resolved = await resolveAnimalRef<Row>(db, sireCode, {
+        columns: sireColumns,
+        allowedBarnNames: scope.allowedBarnNames,
+        effectiveDate: serviceDate,
+      });
+    } else {
+      throw err;
+    }
+  }
   const sire = resolved.row;
   if (!sire || sire.sex !== 'macho' || sire.animal_type !== 'verraco') throw new ApiError(400, 'El reproductor interno debe ser un verraco existente');
-  const sireBarnId = await assertSireAccess(db, sire, serviceDate, scope);
+  if (Number(sire.is_active) === 0 && sire.exit_date === null) throw new ApiError(400, 'El verraco seleccionado está inactivo');
+  const sireBarnId = await assertSireAccess(db, sire, serviceDate);
   return { sire, sireBarnId };
 }
-async function assertSireAccess(db: D1Database, sire: Row, effectiveDate: string, scope: ReproductionScope) {
-  if (effectiveDate < String(sire.entry_date) || (sire.exit_date && effectiveDate > String(sire.exit_date))) throw new ApiError(400, 'El verraco no estaba presente en la granja en la fecha del servicio');
-  const location = await db.prepare(`SELECT barn_id FROM animal_location_history WHERE animal_id=? AND valid_from<=?
+async function assertSireAccess(db: D1Database, sire: Row, effectiveDate: string) {
+  if (sire.exit_date && effectiveDate > String(sire.exit_date)) throw new ApiError(400, 'El verraco no estaba presente en la granja en la fecha del servicio');
+  if (sire.birth_date && effectiveDate < String(sire.birth_date)) throw new ApiError(400, 'La fecha del servicio no puede ser anterior al nacimiento del verraco');
+  const historical = await db.prepare(`SELECT barn_id FROM animal_location_history WHERE animal_id=? AND valid_from<=?
     AND (valid_until IS NULL OR valid_until>?) ORDER BY valid_from DESC,id DESC LIMIT 1`).bind(Number(sire.id), effectiveDate, effectiveDate).first<{ barn_id: number }>();
+  const location = historical ?? (effectiveDate < String(sire.entry_date)
+    ? (await db.prepare(`SELECT barn_id FROM animal_location_history WHERE animal_id=? ORDER BY valid_from ASC,id ASC LIMIT 1`).bind(Number(sire.id)).first<{ barn_id: number }>())
+      ?? { barn_id: Number(sire.barn_id) }
+    : null);
   if (!location) throw new ApiError(409, 'No existe ubicación histórica del verraco para esa fecha');
-  const allowed = await barnIds(db, scope);
-  if (allowed !== null && !allowed.includes(Number(location.barn_id))) throw new ApiError(403, 'No tiene acceso al galpón del verraco en la fecha del servicio');
   return Number(location.barn_id);
 }
 function serviceLocationGuard(db:D1Database,context:Awaited<ReturnType<typeof femaleAtDate>>,sire:Row|null,sireBarnId:number|null,effectiveDate:string){
-  return db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?) AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ?) AND (? IS NULL OR EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND a.entry_date<=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?) AND h.barn_id=?)) THEN 0 ELSE -1 END`).bind(context.female.id,effectiveDate,effectiveDate,effectiveDate,effectiveDate,context.barnId,context.locationCode,context.lotCode,sire?.id??null,sire?.id??null,effectiveDate,effectiveDate,effectiveDate,effectiveDate,sireBarnId);
+  return db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND ((a.entry_date<=? AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?)) OR (?<a.entry_date AND (a.birth_date IS NULL OR a.birth_date<=?) AND a.is_active=1 AND h.id=(SELECT h0.id FROM animal_location_history h0 WHERE h0.animal_id=a.id ORDER BY h0.valid_from ASC,h0.id ASC LIMIT 1))) AND h.barn_id=? AND h.location_code IS ? AND h.lot_code IS ?) AND (? IS NULL OR EXISTS(SELECT 1 FROM animals a JOIN animal_location_history h ON h.animal_id=a.id WHERE a.id=? AND (a.exit_date IS NULL OR a.exit_date>=?) AND ((a.entry_date<=? AND h.valid_from<=? AND (h.valid_until IS NULL OR h.valid_until>?)) OR (?<a.entry_date AND (a.birth_date IS NULL OR a.birth_date<=?) AND a.is_active=1 AND h.id=(SELECT h0.id FROM animal_location_history h0 WHERE h0.animal_id=a.id ORDER BY h0.valid_from ASC,h0.id ASC LIMIT 1))) AND h.barn_id=?)) THEN 0 ELSE -1 END`).bind(
+    context.female.id, effectiveDate, effectiveDate, effectiveDate, effectiveDate, effectiveDate, effectiveDate, context.barnId, context.locationCode, context.lotCode,
+    sire?.id ?? null, sire?.id ?? null, effectiveDate, effectiveDate, effectiveDate, effectiveDate, effectiveDate, effectiveDate, sireBarnId,
+  );
 }
 function reschedulePrepartum(db:D1Database,cycleId:string,dueDate:string,now:string){return [
   db.prepare(`INSERT INTO inventory_write_guard(guard_id) SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM vaccine_occurrences v JOIN vaccine_rules r ON r.id=v.rule_version_id JOIN animals a ON a.id=v.animal_id WHERE v.status='pending' AND v.source_event_type='expected_farrowing' AND v.source_event_id=? AND (date(?,printf('%+d days',r.offset_days))<a.entry_date OR (a.exit_date IS NOT NULL AND date(?,printf('%+d days',r.offset_days))>a.exit_date))) THEN 0 ELSE -1 END`).bind(cycleId,dueDate,dueDate),
@@ -109,6 +145,7 @@ function mapService(row: Row) {
   return { id: Number(row.id), serviceNumber: Number(row.service_number), serviceDate: String(row.service_date),
     serviceType: String(row.service_type), sireAnimalId: row.sire_animal_id === null ? null : Number(row.sire_animal_id),
     sireCode: row.sire_code_snapshot === null ? null : String(row.sire_code_snapshot), sireBreed: row.sire_breed_snapshot === null ? null : String(row.sire_breed_snapshot),
+    sireBarnName: row.sire_barn_name === null || row.sire_barn_name === undefined ? null : String(row.sire_barn_name),
     materialSource: String(row.material_source), externalSource: row.external_source === null ? null : String(row.external_source),
     aptitude: row.aptitude === null ? null : String(row.aptitude), observations: row.observations === null ? null : String(row.observations) };
 }
@@ -137,7 +174,10 @@ export async function listReproductionCycles(db: D1Database, filters: { from?: u
   const today = currentFarmDate();
   const cycles = await Promise.all((result.results ?? []).map(async (row) => {
     const [serviceRows, eventRows, planRow, litterRow, previousLitter] = await Promise.all([
-      db.prepare('SELECT * FROM reproduction_services WHERE cycle_id = ? ORDER BY service_date, service_number').bind(row.id).all<Row>(),
+      db.prepare(`SELECT s.*, sb.name AS sire_barn_name FROM reproduction_services s
+        LEFT JOIN animals sa ON sa.id = s.sire_animal_id
+        LEFT JOIN barns sb ON sb.id = sa.barn_id
+        WHERE s.cycle_id = ? ORDER BY s.service_date, s.service_number`).bind(row.id).all<Row>(),
       db.prepare('SELECT * FROM reproduction_events WHERE cycle_id = ? ORDER BY event_date, id').bind(row.id).all<Row>(),
       db.prepare('SELECT * FROM reproduction_weaning_plans WHERE cycle_id=?').bind(row.id).first<Row>(),
       db.prepare('SELECT * FROM litters WHERE cycle_id=?').bind(row.id).first<Row>(),
@@ -206,9 +246,34 @@ export async function listLitterTargets(db: D1Database, scope: ReproductionScope
   })) };
 }
 
+/** Lista todos los verracos activos de la granja (todos los galpones) para inseminación. */
+export async function listReproductionSires(db: D1Database): Promise<{ sires: ReproductionSireOption[] }> {
+  const rows = await db.prepare(`
+    SELECT a.id, a.code, a.alias, a.breed, a.barn_id, b.name AS barn_name
+    FROM animals a
+    JOIN barns b ON b.id = a.barn_id
+    WHERE a.animal_type = 'verraco' AND a.sex = 'macho' AND a.status = 'activo'
+      AND a.is_active = 1 AND a.exit_date IS NULL
+    ORDER BY b.name COLLATE NOCASE, a.code COLLATE NOCASE, a.id ASC
+  `).all<Row>();
+  return {
+    sires: (rows.results ?? []).map((row) => ({
+      id: Number(row.id),
+      code: String(row.code),
+      alias: row.alias === null || row.alias === undefined ? null : String(row.alias),
+      breed: row.breed === null || row.breed === undefined ? null : String(row.breed),
+      barnId: Number(row.barn_id),
+      barnName: String(row.barn_name),
+    })),
+  };
+}
+
 async function getGestationDays(db: D1Database, effectiveDate: string): Promise<number> {
   const config = await getConfigSnapshot(db, effectiveDate);
-  const value = config.stages.find((stage) => stage.code === 'gestacion')?.durationDays;
+  const configured = config.stages.find((stage) => stage.code === 'gestacion')?.durationDays;
+  if (Number.isInteger(configured) && Number(configured) > 0 && Number(configured) <= 150) return Number(configured);
+  const fallback = await db.prepare(`SELECT duration_days FROM stage_versions WHERE code='gestacion' AND status='active' ORDER BY effective_from DESC, id DESC LIMIT 1`).first<{ duration_days: number | null }>();
+  const value = fallback?.duration_days;
   if (!Number.isInteger(value) || Number(value) <= 0 || Number(value) > 150) throw new ApiError(409, `Configure una duración de gestación válida antes de registrar el servicio (vigencia ${effectiveDate})`);
   return Number(value);
 }
@@ -233,7 +298,10 @@ export async function createReproductionCycle(db: D1Database, actorUserId: numbe
     sire = resolvedSire.sire;
     sireBarnId = resolvedSire.sireBarnId;
   }
-  const gestationDays = intervalDays(input.gestationDays, await getGestationDays(db, serviceDate), 150, 'Duración de gestación');
+  const defaultGestationDays = input.gestationDays === undefined || input.gestationDays === null || input.gestationDays === ''
+    ? await getGestationDays(db, serviceDate)
+    : 114;
+  const gestationDays = intervalDays(input.gestationDays, defaultGestationDays, 150, 'Duración de gestación');
   const heatRepeatDays = intervalDays(input.heatRepeatDays, 21, 120, 'Repetición de celo');
   const suppliedDue = input.dueDate ? date(input.dueDate, 'Fecha probable de parto') : null;
   if (suppliedDue && suppliedDue < serviceDate) throw new ApiError(400, 'La fecha probable de parto no puede preceder al servicio');
@@ -337,7 +405,7 @@ export async function recordReproductionEvent(db: D1Database, actorUserId: numbe
   if (!['palpation', 'pregnancy_confirmed', 'abortion', 'closed'].includes(eventType)) throw new ApiError(400, 'Tipo de evento reproductivo no válido');
   const eventDate = date(input.eventDate, 'Fecha del evento');
   if (eventDate < String(cycle.cycle_opened_on) || eventDate > currentFarmDate()) throw new ApiError(400, 'La fecha del evento debe estar entre el inicio del ciclo y hoy');
-  const context = await femaleAtDate(db, String(cycle.female_code), eventDate, scope);
+  const context = await femaleAtDate(db, `id:${Number(cycle.female_animal_id)}`, eventDate, scope);
   const physiologicalStatus = input.physiologicalStatus === undefined ? null : String(input.physiologicalStatus);
   if (physiologicalStatus && !PHYSIOLOGICAL_STATES.includes(physiologicalStatus)) throw new ApiError(400, 'Estado fisiológico no válido');
   if (eventType === 'palpation' && !physiologicalStatus) throw new ApiError(400, 'Seleccione el resultado fisiológico de la palpación');

@@ -12,6 +12,7 @@ for (const width of [320, 412, 1280]) {
       const url = new URL(route.request().url());
       const path = url.pathname;
       if (path === '/api/auth/me') return route.fulfill({ json: { user: { role: 'administrador', username: 'prueba@granja.test' } } });
+      if (path === '/api/reproduction/sires') return route.fulfill({ json: { ok: true, sires: [{ id: 2, code: 'PADRE-IA', alias: null, barnId: 1, barnName: 'Galpón A', breed: 'Duroc' }] } });
       if (path === '/api/animals') return route.fulfill({ json: { animals: [{ code: url.searchParams.has('type') ? 'PADRE-IA' : 'MADRE-IA', barnName: 'Galpón A', breed: 'Duroc' }] } });
       if (path.endsWith('/events')) {
         cycle = { ...cycle, reproductiveStatus: 'gestation' };

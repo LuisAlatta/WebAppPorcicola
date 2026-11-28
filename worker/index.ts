@@ -76,7 +76,7 @@ import {
   registerAnimalSaleReturn,
 } from './animals';
 import {
-  listReproductionCycles, listLitterTargets, createReproductionCycle, addReproductionService,
+  listReproductionCycles, listLitterTargets, listReproductionSires, createReproductionCycle, addReproductionService,
   recordReproductionEvent, updateReproductionCycle, createPregnantAntecedent,
   saveWeaningPlan,
 } from './reproduction';
@@ -725,6 +725,10 @@ const worker = {
       }
       const scope = { allowedBarnNames: selectedBarnNames ?? (session.user.role === 'administrador' ? null : session.barns) };
       try {
+        if (path === '/api/reproduction/sires' && request.method === 'GET') {
+          const result = await listReproductionSires(env.DB);
+          return Response.json({ ok: true, ...result });
+        }
         if (path === '/api/reproduction/litters/targets' && request.method === 'GET') {
           const result = await listLitterTargets(env.DB, scope);
           return Response.json({ ok: true, ...result });
